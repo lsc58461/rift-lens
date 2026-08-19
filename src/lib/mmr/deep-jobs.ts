@@ -10,6 +10,7 @@
 
 import "server-only";
 import { cache } from "@/lib/cache";
+import { canon } from "@/lib/identity";
 import { getAnalysis, saveAnalysis } from "@/lib/store";
 import { withLowPriority } from "@/lib/riot/limiter";
 import { getAccountByRiotId, getRankedMatchIds } from "@/lib/riot/client";
@@ -50,11 +51,11 @@ function resultKey(
   gameName: string,
   tagLine: string,
 ): string {
-  return `${kind}:${platform}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  return `${kind}:${platform}:${canon(gameName)}#${canon(tagLine)}`;
 }
 
 function jobKey(platform: string, gameName: string, tagLine: string): string {
-  return `deepjob:${platform}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  return `deepjob:${platform}:${canon(gameName)}#${canon(tagLine)}`;
 }
 
 /** 현재 최신 매치 ID (account/matchids 캐시를 타므로 저렴) */
@@ -135,7 +136,7 @@ function quickMarkerKey(
   gameName: string,
   tagLine: string,
 ): string {
-  return `quickjob:${platform}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  return `quickjob:${platform}:${canon(gameName)}#${canon(tagLine)}`;
 }
 
 /** 다른 인스턴스에서 빠른 분석이 진행 중인지 (트리거 중복 방지용) */

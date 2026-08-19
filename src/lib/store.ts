@@ -3,6 +3,7 @@
 
 import "server-only";
 import { getSql } from "./db";
+import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "./riot/types";
 
@@ -32,8 +33,8 @@ export async function findSummonerByName(
     SELECT puuid, game_name, tag_line, profile_icon_id, summoner_level, updated_at
     FROM summoners
     WHERE fp = ${fp} AND platform = ${platform}
-      AND lower(game_name) = ${gameName.toLowerCase()}
-      AND lower(tag_line) = ${tagLine.toLowerCase()}`;
+      AND lower(normalize(game_name, NFKC)) = ${canon(gameName)}
+      AND lower(normalize(tag_line, NFKC)) = ${canon(tagLine)}`;
   const row = rows[0] as SummonerRow | undefined;
   return row && fresh(row.updated_at, maxAgeMs) ? row : null;
 }
@@ -204,8 +205,8 @@ export async function getAnalysis(
   const rows = await sql`
     SELECT result FROM analyses
     WHERE platform = ${platform} AND kind = ${kind}
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}`;
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}`;
   if (rows[0]) return rows[0].result as MmrEstimate;
   if (!puuid) return null;
   const byPuuid = await sql`
@@ -223,8 +224,8 @@ export async function findPuuidByOldName(
   fp?: string,
 ): Promise<string | null> {
   const sql = await getSql();
-  const nameLower = gameName.toLowerCase();
-  const tagLower = tagLine.toLowerCase();
+  const nameLower = canon(gameName);
+  const tagLower = canon(tagLine);
   // summoners는 puuid PK라 옛 이름이 남아 있는 경우가 많다(가장 신뢰도 높은 소스).
   // puuid 컬럼 추가 이전에 저장된 analyses/recent_searches는 puuid가 비어 있을 수 있다.
   // PUUID는 API 키 단위 암호화라, 현재 키 지문(fp)의 행만 유효하다
@@ -232,12 +233,14 @@ export async function findPuuidByOldName(
     ? await sql`
         SELECT puuid FROM summoners
         WHERE fp = ${fp} AND platform = ${platform}
-          AND lower(game_name) = ${nameLower} AND lower(tag_line) = ${tagLower}
+          AND lower(normalize(game_name, NFKC)) = ${nameLower}
+            AND lower(normalize(tag_line, NFKC)) = ${tagLower}
         ORDER BY updated_at DESC LIMIT 1`
     : await sql`
         SELECT puuid FROM summoners
         WHERE platform = ${platform}
-          AND lower(game_name) = ${nameLower} AND lower(tag_line) = ${tagLower}
+          AND lower(normalize(game_name, NFKC)) = ${nameLower}
+            AND lower(normalize(tag_line, NFKC)) = ${tagLower}
         ORDER BY updated_at DESC LIMIT 1`;
   if (rows[0]) return rows[0].puuid as string;
 
@@ -267,8 +270,8 @@ export async function findRenamedTo(
   const rows = await sql`
     SELECT new_game_name, new_tag_line FROM name_history
     WHERE platform = ${platform}
-      AND old_name_lower = ${gameName.toLowerCase()}
-      AND old_tag_lower = ${tagLine.toLowerCase()}`;
+      AND old_name_lower = ${canon(gameName)}
+      AND old_tag_lower = ${canon(tagLine)}`;
   const r = rows[0];
   return r
     ? { gameName: r.new_game_name as string, tagLine: r.new_tag_line as string }
@@ -287,7 +290,7 @@ export async function recordNameChange(
   await sql`
     INSERT INTO name_history
       (platform, old_name_lower, old_tag_lower, new_game_name, new_tag_line)
-    VALUES (${platform}, ${oldGameName.toLowerCase()}, ${oldTagLine.toLowerCase()},
+    VALUES (${platform}, ${canon(oldGameName)}, ${canon(oldTagLine)},
             ${newGameName}, ${newTagLine})
     ON CONFLICT (platform, old_name_lower, old_tag_lower) DO UPDATE
     SET new_game_name = EXCLUDED.new_game_name,
@@ -296,13 +299,13 @@ export async function recordNameChange(
   await sql`
     DELETE FROM name_history
     WHERE platform = ${platform}
-      AND old_name_lower = ${newGameName.toLowerCase()}
-      AND old_tag_lower = ${newTagLine.toLowerCase()}`;
+      AND old_name_lower = ${canon(newGameName)}
+      AND old_tag_lower = ${canon(newTagLine)}`;
   // 옛 이름으로 남아 있던 분석·검색 기록 제거. migrateIdentity가 puuid 기준으로
   // 지우지만 puuid 컬럼 도입 이전 행은 비어 있어서 이름 기준으로도 정리한다.
   // (이 시점의 옛 이름은 주인이 없으므로 남의 기록을 지울 위험이 없다)
-  const oldName = oldGameName.toLowerCase();
-  const oldTag = oldTagLine.toLowerCase();
+  const oldName = canon(oldGameName);
+  const oldTag = canon(oldTagLine);
   await sql`
     DELETE FROM analyses
     WHERE platform = ${platform}
@@ -327,8 +330,8 @@ export async function clearRenameMapping(
   await sql`
     DELETE FROM name_history
     WHERE platform = ${platform}
-      AND old_name_lower = ${gameName.toLowerCase()}
-      AND old_tag_lower = ${tagLine.toLowerCase()}`;
+      AND old_name_lower = ${canon(gameName)}
+      AND old_tag_lower = ${canon(tagLine)}`;
 }
 
 /** 닉변 감지: puuid로 저장된 옛 닉네임 행들을 새 닉네임으로 이관 */
@@ -339,8 +342,8 @@ export async function migrateIdentity(
   tagLine: string,
 ): Promise<void> {
   const sql = await getSql();
-  const nameLower = gameName.toLowerCase();
-  const tagLower = tagLine.toLowerCase();
+  const nameLower = canon(gameName);
+  const tagLower = canon(tagLine);
   // 같은 puuid인데 이름이 다른 옛 행 제거 후, 새 이름 행으로 puuid를 기록
   await sql`
     DELETE FROM analyses
@@ -371,7 +374,7 @@ export async function saveAnalysis(
     INSERT INTO analyses
       (platform, game_name_lower, tag_line_lower, kind, game_name, tag_line,
        algo_version, latest_match_id, analyzed_at, result, puuid)
-    VALUES (${platform}, ${gameName.toLowerCase()}, ${tagLine.toLowerCase()}, ${kind},
+    VALUES (${platform}, ${canon(gameName)}, ${canon(tagLine)}, ${kind},
             ${result.account.gameName}, ${result.account.tagLine},
             ${result.algoVersion ?? null}, ${result.latestMatchId ?? null},
             ${result.analyzedAt ? new Date(result.analyzedAt) : null},
@@ -438,7 +441,7 @@ export async function upsertRecentSearch(r: RecentSearchInput): Promise<void> {
       (platform, game_name_lower, tag_line_lower, game_name, tag_line,
        current_label, current_tier, estimated_label, estimated_tier, estimated_points,
        puuid, searched_at)
-    VALUES (${r.platform}, ${r.gameName.toLowerCase()}, ${r.tagLine.toLowerCase()},
+    VALUES (${r.platform}, ${canon(r.gameName)}, ${canon(r.tagLine)},
             ${r.gameName}, ${r.tagLine}, ${r.currentLabel}, ${r.currentTier},
             ${r.estimatedLabel}, ${r.estimatedTier}, ${r.estimatedPoints},
             ${r.puuid ?? null}, now())
@@ -487,7 +490,7 @@ export async function searchRecentSummoners(
   limit = 8,
 ): Promise<SummonerSuggestion[]> {
   const sql = await getSql();
-  const q = `%${query.toLowerCase()}%`;
+  const q = `%${canon(query)}%`;
   const rows = await sql`
     SELECT game_name, tag_line, current_label, current_tier
     FROM recent_searches
@@ -508,8 +511,8 @@ export async function isRecentlySearched(
   const rows = await sql`
     SELECT 1 FROM recent_searches
     WHERE platform = ${platform}
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}
       AND searched_at > now() - interval '30 days'`;
   return rows.length > 0;
 }
@@ -549,7 +552,7 @@ export async function insertVerifiedSummoner(
     INSERT INTO verified_summoners
       (platform, game_name_lower, tag_line_lower, game_name, tag_line, puuid,
        discord_user_id, discord_username)
-    VALUES (${platform}, ${gameName.toLowerCase()}, ${tagLine.toLowerCase()},
+    VALUES (${platform}, ${canon(gameName)}, ${canon(tagLine)},
             ${gameName}, ${tagLine}, ${puuid},
             ${discord?.id ?? null}, ${discord?.username ?? null})
     ON CONFLICT (platform, game_name_lower, tag_line_lower) DO UPDATE
@@ -567,8 +570,8 @@ export async function isVerifiedSummoner(
   const rows = await sql`
     SELECT 1 FROM verified_summoners
     WHERE platform = ${platform} AND active = true
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}`;
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}`;
   return rows.length > 0;
 }
 
@@ -599,8 +602,8 @@ export async function setVerifiedActive(
   await sql`
     UPDATE verified_summoners SET active = ${active}
     WHERE platform = ${platform}
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}`;
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}`;
 }
 
 export interface VerifiedNotifyState {
@@ -624,8 +627,8 @@ export async function getVerifiedNotifyState(
            discord_user_id
     FROM verified_summoners
     WHERE platform = ${platform} AND active = true
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}`;
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}`;
   return (rows[0] as VerifiedNotifyState | undefined) ?? null;
 }
 
@@ -642,8 +645,8 @@ export async function updateVerifiedNotifyState(
         last_points = ${s.last_points}, best_points = ${s.best_points},
         notified_streak = ${s.notified_streak}
     WHERE platform = ${platform}
-      AND game_name_lower = ${gameName.toLowerCase()}
-      AND tag_line_lower = ${tagLine.toLowerCase()}`;
+      AND game_name_lower = ${canon(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}`;
 }
 
 // ── 앱 설정 ─────────────────────────────────────────────

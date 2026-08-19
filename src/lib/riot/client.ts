@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { currentPriority, riotLimiter } from "./limiter";
 import { recordRateLimitHit, trackRateLimiter } from "./rate-status";
 import { cache, cached } from "@/lib/cache";
+import { canon } from "@/lib/identity";
 import {
   clearRenameMapping,
   findSummonerByName,
@@ -115,8 +116,8 @@ export async function getAccountByRiotId(
   );
   // 닉변 감지 — 입력한 이름과 실제 반환된 이름이 다르면(대소문자 제외) 이력 기록
   if (
-    gameName.toLowerCase() !== account.gameName.toLowerCase() ||
-    tagLine.toLowerCase() !== account.tagLine.toLowerCase()
+    canon(gameName) !== canon(account.gameName) ||
+    canon(tagLine) !== canon(account.tagLine)
   ) {
     await recordNameChange(
       platform,
@@ -155,7 +156,7 @@ export async function isRiotIdTaken(
   gameName: string,
   tagLine: string,
 ): Promise<boolean | null> {
-  const key = `taken:${keyFp()}:${platform}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  const key = `taken:${keyFp()}:${platform}:${canon(gameName)}#${canon(tagLine)}`;
   const hit = await cache.get<boolean>(key);
   if (hit !== null) return hit;
 

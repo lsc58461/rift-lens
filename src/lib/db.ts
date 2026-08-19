@@ -37,8 +37,11 @@ async function initSchema(sql: Sql): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (fp, puuid)
     );
-    CREATE INDEX IF NOT EXISTS summoners_name_idx
-    ON summoners (fp, platform, lower(game_name), lower(tag_line));
+    -- 이름 조회는 NFKC로 접은 뒤 비교한다(전각 태그 대응) — 인덱스도 같은 식이어야
+    -- 한다. 기존 lower()만 쓰던 인덱스는 식이 달라 못 타므로 교체한다.
+    DROP INDEX IF EXISTS summoners_name_idx;
+    CREATE INDEX IF NOT EXISTS summoners_canon_idx
+    ON summoners (fp, platform, lower(normalize(game_name, NFKC)), lower(normalize(tag_line, NFKC)));
 
     -- 매치 상세 (불변 데이터)
     CREATE TABLE IF NOT EXISTS matches (
