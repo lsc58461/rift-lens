@@ -114,14 +114,30 @@ class RateLimiter {
 }
 
 // 실제 한도보다 약간 보수적으로 잡아 429를 예방한다.
-// RIOT_KEY_TYPE=prod 이면 Production 키 한도(500/10s, 30000/10min) 기준으로 동작한다.
-export const riotLimiter =
-  process.env.RIOT_KEY_TYPE === "prod"
-    ? new RateLimiter([
-        { capacity: 450, windowMs: 10_000 },
-        { capacity: 27_000, windowMs: 600_000 },
-      ])
-    : new RateLimiter([
-        { capacity: 18, windowMs: 1_000 },
-        { capacity: 95, windowMs: 120_000 },
-      ]);
+// 우선순위: RIOT_RATE_LIMITS(커스텀) > RIOT_KEY_TYPE=prod(표준 프로덕션) > 개발/퍼스널 키.
+// RIOT_RATE_LIMITS 형식: "용량:윈도초" 콤마 구분 (예: "45:10" = 10초당 45건, "45:10,2500:600")
+function limitsFromEnv(): Array<{ capacity: number; windowMs: number }> | null {
+  const raw = process.env.RIOT_RATE_LIMITS;
+  if (!raw) return null;
+  const limits = raw
+    .split(",")
+    .map((part) => {
+      const [cap, winSec] = part.split(":").map((n) => Number(n.trim()));
+      return { capacity: cap, windowMs: winSec * 1000 };
+    })
+    .filter((l) => Number.isFinite(l.capacity) && l.capacity > 0 && l.windowMs > 0);
+  return limits.length > 0 ? limits : null;
+}
+
+export const riotLimiter = new RateLimiter(
+  limitsFromEnv() ??
+    (process.env.RIOT_KEY_TYPE === "prod"
+      ? [
+          { capacity: 450, windowMs: 10_000 },
+          { capacity: 27_000, windowMs: 600_000 },
+        ]
+      : [
+          { capacity: 18, windowMs: 1_000 },
+          { capacity: 95, windowMs: 120_000 },
+        ]),
+);
