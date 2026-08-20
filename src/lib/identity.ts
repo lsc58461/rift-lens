@@ -7,6 +7,9 @@
 //
 // 정규화를 진입점마다 챙기는 대신 키를 만드는 지점(저장 계층·잡 키·API 캐시
 // 키)에서 이 함수를 쓴다 — 호출자가 무엇을 넘기든 같은 계정은 같은 키가 된다.
+// 앞뒤 공백도 함께 제거한다. 라이엇은 "티모말곤안해 #KR1"처럼 공백이 붙어도
+// 같은 계정으로 응답하는데, 정규화에서 공백을 남기면 한 계정이 두 식별자로
+// 갈려 분석 결과를 서로 못 찾고 정밀 분석이 무한 재시작된다.
 export function canon(s: string): string {
-  return s.normalize("NFKC").toLowerCase();
+  return s.normalize("NFKC").trim().toLowerCase();
 }
