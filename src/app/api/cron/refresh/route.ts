@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
         let deepRun: Promise<void> | null = null;
         await ensureQueuedAndSchedule(r.region, r.gameName, r.tagLine, (p, g, t) => {
           // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
-          deepRun = runDeepAnalysis(p, g, t, true);
+          deepRun = runDeepAnalysis(p, g, t);
         });
         if (deepRun) {
           await deepRun;

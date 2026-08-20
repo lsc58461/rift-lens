@@ -7,10 +7,9 @@ export function GET() {
   return NextResponse.json({
     commit: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
     storage: "tables",
-    discord: {
-      publicKey: Boolean(process.env.DISCORD_PUBLIC_KEY),
-      botToken: Boolean(process.env.DISCORD_BOT_TOKEN),
-      clientId: Boolean(process.env.DISCORD_CLIENT_ID),
+    riot: {
+      apiKey: Boolean(process.env.RIOT_API_KEY),
+      rateLimits: process.env.RIOT_RATE_LIMITS ?? null,
     },
   });
 }

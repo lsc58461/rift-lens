@@ -262,7 +262,7 @@ export async function getLeagueEntries(
   const entries = await riotFetch<LeagueEntry[]>(
     `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`,
   );
-  // 히스토리 적재 (디스코드 알림은 정밀분석 완료 시점에 checkMilestones가 담당)
+  // 랭크 히스토리 적재 (LP 인사이트용)
   await insertLeagueSnapshot(keyFp(), platform, puuid, entries).catch(() => {});
   return entries;
 }

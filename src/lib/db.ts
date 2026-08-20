@@ -127,18 +127,6 @@ async function initSchema(sql: Sql): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
-    -- 인증된 소환사 (디스코드 멤버 인증 또는 아이콘 인증) — 디스코드 알림 대상
-    CREATE TABLE IF NOT EXISTS verified_summoners (
-      platform text NOT NULL,
-      game_name_lower text NOT NULL,
-      tag_line_lower text NOT NULL,
-      game_name text NOT NULL,
-      tag_line text NOT NULL,
-      puuid text NOT NULL,
-      active boolean NOT NULL DEFAULT true,
-      verified_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (platform, game_name_lower, tag_line_lower)
-    );
     -- 닉변 이력 — 옛 이름 → 현재 이름 매핑. API 키가 바뀌어도(puuid 재암호화)
     -- 이름 매핑은 살아남아 옛 링크 리다이렉트가 계속 동작한다.
     CREATE TABLE IF NOT EXISTS name_history (
@@ -157,14 +145,8 @@ async function initSchema(sql: Sql): Promise<void> {
     ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS puuid text;
     CREATE INDEX IF NOT EXISTS recent_searches_puuid_idx ON recent_searches (puuid);
 
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS discord_user_id text;
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS discord_username text;
-    -- 알림 상태 (마지막 알림 기준 랭크·시즌 최고·연승 마일스톤)
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS last_tier text;
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS last_rank text;
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS last_points int;
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS best_points int;
-    ALTER TABLE verified_summoners ADD COLUMN IF NOT EXISTS notified_streak int NOT NULL DEFAULT 0;
+    -- 디스코드 연동 제거(2026-08-20): verified_summoners 테이블은 더 이상
+    -- 생성·사용하지 않는다. 기존 배포에 남아 있는 테이블은 수동 DROP 대상.
   `);
 }
 

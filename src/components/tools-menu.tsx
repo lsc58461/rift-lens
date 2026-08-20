@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import {
-  BadgeCheck,
   ChevronDown,
   Heart,
   Sparkles,
@@ -20,7 +19,6 @@ const TOOLS = [
   { icon: Swords, label: "내전 팀 밸런서", href: "/team" },
   { icon: Heart, label: "듀오 궁합 분석", href: "/duo" },
   { icon: Sparkles, label: "시즌 결산", href: "/recap" },
-  { icon: BadgeCheck, label: "소환사 인증 (디코 알림)", href: "/verify" },
 ] as const;
 
 export function ToolsMenu() {

@@ -4,8 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowUpRight,
-  BadgeCheck,
-  Bell,
   LayoutDashboard,
   LogOut,
   Users,
@@ -16,8 +14,6 @@ import { LogoMark } from "@/components/logo-mark";
 const NAV = [
   { href: "/admin", label: "대시보드", icon: LayoutDashboard },
   { href: "/admin/summoners", label: "소환사", icon: Users },
-  { href: "/admin/verified", label: "인증", icon: BadgeCheck },
-  { href: "/admin/notifications", label: "알림", icon: Bell },
   { href: "/admin/maintenance", label: "점검", icon: Wrench },
 ] as const;
 

@@ -46,8 +46,7 @@ export async function GET(req: NextRequest) {
       platform,
       gameName,
       tagLine,
-      // 유저 트리거 정밀분석만 알림 허용 (크론은 runDeepAnalysis 기본값 false)
-      (p, g, t) => after(() => runDeepAnalysis(p, g, t, true)),
+      (p, g, t) => after(() => runDeepAnalysis(p, g, t)),
     );
     if (sched.selfStarted) {
       return NextResponse.json({ state: "running", progress: 0 });

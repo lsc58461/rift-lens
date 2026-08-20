@@ -245,10 +245,6 @@ export async function findPuuidByOldName(
   if (rows[0]) return rows[0].puuid as string;
 
   const fallback = await sql`
-    SELECT puuid FROM verified_summoners
-    WHERE platform = ${platform}
-      AND game_name_lower = ${nameLower} AND tag_line_lower = ${tagLower}
-    UNION ALL
     SELECT puuid FROM analyses
     WHERE platform = ${platform} AND puuid IS NOT NULL
       AND game_name_lower = ${nameLower} AND tag_line_lower = ${tagLower}
@@ -351,12 +347,6 @@ export async function migrateIdentity(
       AND (game_name_lower <> ${nameLower} OR tag_line_lower <> ${tagLower})`;
   await sql`
     DELETE FROM recent_searches
-    WHERE puuid = ${puuid} AND platform = ${platform}
-      AND (game_name_lower <> ${nameLower} OR tag_line_lower <> ${tagLower})`;
-  await sql`
-    UPDATE verified_summoners
-    SET game_name = ${gameName}, tag_line = ${tagLine},
-        game_name_lower = ${nameLower}, tag_line_lower = ${tagLower}
     WHERE puuid = ${puuid} AND platform = ${platform}
       AND (game_name_lower <> ${nameLower} OR tag_line_lower <> ${tagLower})`;
 }
@@ -537,119 +527,6 @@ export async function listMatchesForPuuid(
     participants: r.participants as MatchInfo["participants"],
   }));
 }
-
-// ── 인증된 소환사 (디스코드 알림 대상) ───────────────────
-
-export async function insertVerifiedSummoner(
-  platform: PlatformRegion,
-  gameName: string,
-  tagLine: string,
-  puuid: string,
-  discord?: { id: string; username: string },
-): Promise<void> {
-  const sql = await getSql();
-  await sql`
-    INSERT INTO verified_summoners
-      (platform, game_name_lower, tag_line_lower, game_name, tag_line, puuid,
-       discord_user_id, discord_username)
-    VALUES (${platform}, ${canon(gameName)}, ${canon(tagLine)},
-            ${gameName}, ${tagLine}, ${puuid},
-            ${discord?.id ?? null}, ${discord?.username ?? null})
-    ON CONFLICT (platform, game_name_lower, tag_line_lower) DO UPDATE
-    SET puuid = EXCLUDED.puuid, active = true, verified_at = now(),
-        discord_user_id = COALESCE(EXCLUDED.discord_user_id, verified_summoners.discord_user_id),
-        discord_username = COALESCE(EXCLUDED.discord_username, verified_summoners.discord_username)`;
-}
-
-export async function isVerifiedSummoner(
-  platform: PlatformRegion,
-  gameName: string,
-  tagLine: string,
-): Promise<boolean> {
-  const sql = await getSql();
-  const rows = await sql`
-    SELECT 1 FROM verified_summoners
-    WHERE platform = ${platform} AND active = true
-      AND game_name_lower = ${canon(gameName)}
-      AND tag_line_lower = ${canon(tagLine)}`;
-  return rows.length > 0;
-}
-
-export interface VerifiedRow {
-  platform: PlatformRegion;
-  game_name: string;
-  tag_line: string;
-  active: boolean;
-  verified_at: string;
-  discord_username: string | null;
-}
-
-export async function listVerifiedSummoners(): Promise<VerifiedRow[]> {
-  const sql = await getSql();
-  const rows = await sql`
-    SELECT platform, game_name, tag_line, active, verified_at, discord_username
-    FROM verified_summoners ORDER BY verified_at DESC`;
-  return rows as unknown as VerifiedRow[];
-}
-
-export async function setVerifiedActive(
-  platform: PlatformRegion,
-  gameName: string,
-  tagLine: string,
-  active: boolean,
-): Promise<void> {
-  const sql = await getSql();
-  await sql`
-    UPDATE verified_summoners SET active = ${active}
-    WHERE platform = ${platform}
-      AND game_name_lower = ${canon(gameName)}
-      AND tag_line_lower = ${canon(tagLine)}`;
-}
-
-export interface VerifiedNotifyState {
-  last_tier: string | null;
-  last_rank: string | null;
-  last_points: number | null;
-  best_points: number | null;
-  notified_streak: number;
-  discord_user_id: string | null;
-}
-
-/** 인증+활성 소환사의 알림 상태 조회 (미인증/비활성이면 null) */
-export async function getVerifiedNotifyState(
-  platform: PlatformRegion,
-  gameName: string,
-  tagLine: string,
-): Promise<VerifiedNotifyState | null> {
-  const sql = await getSql();
-  const rows = await sql`
-    SELECT last_tier, last_rank, last_points, best_points, notified_streak,
-           discord_user_id
-    FROM verified_summoners
-    WHERE platform = ${platform} AND active = true
-      AND game_name_lower = ${canon(gameName)}
-      AND tag_line_lower = ${canon(tagLine)}`;
-  return (rows[0] as VerifiedNotifyState | undefined) ?? null;
-}
-
-export async function updateVerifiedNotifyState(
-  platform: PlatformRegion,
-  gameName: string,
-  tagLine: string,
-  s: VerifiedNotifyState,
-): Promise<void> {
-  const sql = await getSql();
-  await sql`
-    UPDATE verified_summoners
-    SET last_tier = ${s.last_tier}, last_rank = ${s.last_rank},
-        last_points = ${s.last_points}, best_points = ${s.best_points},
-        notified_streak = ${s.notified_streak}
-    WHERE platform = ${platform}
-      AND game_name_lower = ${canon(gameName)}
-      AND tag_line_lower = ${canon(tagLine)}`;
-}
-
-// ── 앱 설정 ─────────────────────────────────────────────
 
 export async function getSetting<T>(key: string): Promise<T | null> {
   const sql = await getSql();
