@@ -140,11 +140,35 @@ export async function insertLeagueSnapshot(
 ): Promise<void> {
   const sql = await getSql();
   const solo = entries.find((e) => e.queueType === "RANKED_SOLO_5x5");
+  const tier = solo?.tier ?? null;
+  const rank = solo?.rank ?? null;
+  const lp = solo?.leaguePoints ?? null;
+  const wins = solo?.wins ?? null;
+  const losses = solo?.losses ?? null;
+
+  // 직전 스냅샷과 값이 같으면 새 행을 만들지 않고 관측 시각만 갱신한다.
+  // (변화가 없는데 행을 쌓으면 히스토리에 의미 없는 중복만 늘고,
+  //  그렇다고 그냥 건너뛰면 created_at이 낡아 신선도 판정이 깨져 매번 재조회하게 된다)
+  const touched = await sql`
+    UPDATE league_snapshots SET created_at = now()
+    WHERE id = (
+      SELECT id FROM league_snapshots
+      WHERE fp = ${fp} AND puuid = ${puuid}
+      ORDER BY created_at DESC LIMIT 1
+    )
+      AND solo_tier IS NOT DISTINCT FROM ${tier}
+      AND solo_rank IS NOT DISTINCT FROM ${rank}
+      AND solo_lp IS NOT DISTINCT FROM ${lp}
+      AND solo_wins IS NOT DISTINCT FROM ${wins}
+      AND solo_losses IS NOT DISTINCT FROM ${losses}
+    RETURNING 1`;
+  if (touched.length > 0) return;
+
   await sql`
     INSERT INTO league_snapshots
       (fp, platform, puuid, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses, entries)
-    VALUES (${fp}, ${platform}, ${puuid}, ${solo?.tier ?? null}, ${solo?.rank ?? null},
-            ${solo?.leaguePoints ?? null}, ${solo?.wins ?? null}, ${solo?.losses ?? null},
+    VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank},
+            ${lp}, ${wins}, ${losses},
             ${sql.json(entries as never)})`;
 }
 

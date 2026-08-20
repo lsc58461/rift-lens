@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cache } from "@/lib/cache";
+import { canon } from "@/lib/identity";
 import {
   getDeepJob,
   getFreshDeepResult,
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ changed: false, cooldown: 0, deepRunning: true });
   }
 
-  const cdKey = `reanalyze-cd:${platform}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  const cdKey = `reanalyze-cd:${platform}:${canon(gameName)}#${canon(tagLine)}`;
   const startedAt = await cache.get<number>(cdKey);
   if (startedAt !== null) {
     const remaining = Math.max(

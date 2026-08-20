@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
+import { canon } from "@/lib/identity";
 import { getRunnerStatus, listQueue } from "@/lib/mmr/deep-jobs";
 import { ALGO_VERSION } from "@/lib/mmr/estimate";
 import { getRecentSearches } from "@/lib/recent";
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   }
 
   const summoners = recent.map((r) => {
-    const id = `${r.region}:${r.gameName.toLowerCase()}#${r.tagLine.toLowerCase()}`;
+    const id = `${r.region}:${canon(r.gameName)}#${canon(r.tagLine)}`;
     const quick = quickMap.get(id);
     const deep = deepMap.get(id);
     const FRESH_AGE_MS = 72 * 60 * 60_000;
