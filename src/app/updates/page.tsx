@@ -20,6 +20,28 @@ const CHANGELOG: {
   items: { tag: Tag; text: string }[];
 }[] = [
   {
+    date: "2026-08-20",
+    title: "분석 속도 향상과 디스코드 명령어 개편",
+    items: [
+      {
+        tag: "개선",
+        text: "정밀 분석이 훨씬 빨라졌어요 — 라이엇 API 호출 한도가 올라가면서 몇 분씩 걸리던 분석이 보통 수십 초에 끝납니다",
+      },
+      {
+        tag: "개선",
+        text: "여러 명이 동시에 검색해도 대기열이 훨씬 빨리 빠져요",
+      },
+      {
+        tag: "신규",
+        text: "디스코드 명령어 이름이 바뀌었어요 — /mmr → /rift, /mmr-team → /rift-team, /mmr-duo → /rift-duo, /mmr-recent → /rift-recent",
+      },
+      {
+        tag: "수정",
+        text: "소환사 인증과 승급/강등 디스코드 알림 기능은 종료했어요 (분석 기능에는 영향 없습니다)",
+      },
+    ],
+  },
+  {
     date: "2026-08-19",
     title: "분석 속도와 화면 정리",
     items: [
