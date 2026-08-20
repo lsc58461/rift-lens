@@ -45,6 +45,7 @@ export async function getRecentSearches(): Promise<RecentEntry[]> {
 export async function recordSearch(
   entry: Omit<RecentEntry, "searchedAt" | "region"> & {
     region: PlatformRegion;
+    puuid?: string | null; // 닉변 승계용 — 있으면 함께 저장
   },
 ): Promise<void> {
   try {
@@ -57,6 +58,7 @@ export async function recordSearch(
       estimatedLabel: entry.estimatedLabel,
       estimatedTier: entry.estimatedTier,
       estimatedPoints: entry.estimatedPoints,
+      puuid: entry.puuid ?? null,
     };
     await upsertRecentSearch(input);
   } catch {

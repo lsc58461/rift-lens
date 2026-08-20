@@ -182,7 +182,17 @@ export function runQuickAnalysis(
           }
         },
       );
-      await saveAnalysis("quick", platform, gameName, tagLine, result);
+      const acct = await getAccountByRiotId(platform, gameName, tagLine).catch(
+        () => null,
+      );
+      await saveAnalysis(
+        "quick",
+        platform,
+        gameName,
+        tagLine,
+        result,
+        acct?.puuid,
+      );
       return result;
     } finally {
       await cache.set(mk, null, 1).catch(() => {});
@@ -280,7 +290,8 @@ export async function ensureQueuedAndSchedule(
   }
 
   const holder = await cache.get<RunnerLock>(RUNNER_LOCK_KEY);
-  const busy = holder !== null && holder.at !== 0 && now - holder.at < JOB_STALE_MS;
+  const busy =
+    holder !== null && holder.at !== 0 && now - holder.at < JOB_STALE_MS;
   if (busy) {
     await cache.set(QUEUE_KEY, queue, 60 * 15);
     return { selfStarted: false, ahead: index + 1 };
@@ -349,7 +360,8 @@ export interface RunnerStatus {
 export async function getRunnerStatus(): Promise<RunnerStatus | null> {
   const holder = await cache.get<RunnerLock>(RUNNER_LOCK_KEY);
   const now = Date.now();
-  if (!holder || holder.at === 0 || now - holder.at >= JOB_STALE_MS) return null;
+  if (!holder || holder.at === 0 || now - holder.at >= JOB_STALE_MS)
+    return null;
   const parsed = parseJobKey(holder.key);
   const job = await cache.get<DeepJob>(holder.key);
   if (!parsed || !job) return null;
@@ -398,12 +410,7 @@ export async function runDeepAnalysis(
   try {
     // 백그라운드 작업은 저우선순위 — 페이지 로딩(전경) 호출이 항상 먼저 처리된다
     const result = await withLowPriority(() =>
-      estimateMmr(
-      platform,
-      gameName,
-      tagLine,
-      DEEP_DEPTH,
-      (done, total) => {
+      estimateMmr(platform, gameName, tagLine, DEEP_DEPTH, (done, total) => {
         const p = total ? done / total : 0;
         // 진행률은 5% 단위로만 기록해 DB 쓰기를 아낀다 (러너 락도 함께 갱신)
         if (p - lastWritten >= 0.05) {
@@ -419,10 +426,19 @@ export async function runDeepAnalysis(
             60 * 10,
           );
         }
-      },
-      ),
+      }),
     );
-    await saveAnalysis("deep", platform, gameName, tagLine, result);
+    const acct = await getAccountByRiotId(platform, gameName, tagLine).catch(
+      () => null,
+    );
+    await saveAnalysis(
+      "deep",
+      platform,
+      gameName,
+      tagLine,
+      result,
+      acct?.puuid,
+    );
     await cache.set<DeepJob>(
       jk,
       { state: "done", progress: 1, updatedAt: Date.now() },

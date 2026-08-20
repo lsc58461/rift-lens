@@ -355,11 +355,13 @@ export default async function SummonerPage({
   const champNames = await getChampionNamesKo(ddVersion);
 
   // 저장된 이전 분석에는 프로필 정보가 없을 수 있어 보충 조회 (둘 다 캐시됨)
+  let selfPuuid: string | null = null; // 닉변 승계용 — 아래 조회에서 확보
   let profileIconId = result.profileIconId ?? null;
   let summonerLevel = result.summonerLevel ?? null;
   if (profileIconId === null) {
     try {
       const acct = await getAccountByRiotId(platform, gameName, tagLine);
+      selfPuuid = acct.puuid;
       const summoner = await getSummoner(platform, acct.puuid);
       profileIconId = summoner.profileIconId;
       summonerLevel = summoner.summonerLevel;
@@ -372,6 +374,7 @@ export default async function SummonerPage({
   let lpInsight: LpInsight | null = null;
   try {
     const acct = await getAccountByRiotId(platform, gameName, tagLine);
+    selfPuuid = acct.puuid;
     lpInsight = computeLpInsight(await getLeagueHistory(platform, acct.puuid));
   } catch {
     // 히스토리 조회 실패는 카드 생략으로 처리
@@ -381,14 +384,15 @@ export default async function SummonerPage({
   if (!isBot)
     await recordSearch({
       region: platform,
-    gameName: result.account.gameName,
-    tagLine: result.account.tagLine,
-    currentLabel: result.currentRank?.label ?? null,
-    currentTier: result.currentRank?.tier ?? null,
-    estimatedLabel: result.estimatedRank?.label ?? null,
-    estimatedTier: result.estimatedRank?.tier ?? null,
-    estimatedPoints: result.estimatedPoints,
-  });
+      gameName: result.account.gameName,
+      tagLine: result.account.tagLine,
+      currentLabel: result.currentRank?.label ?? null,
+      currentTier: result.currentRank?.tier ?? null,
+      estimatedLabel: result.estimatedRank?.label ?? null,
+      estimatedTier: result.estimatedRank?.tier ?? null,
+      estimatedPoints: result.estimatedPoints,
+      puuid: selfPuuid,
+    });
 
   const {
     account,
@@ -608,72 +612,76 @@ export default async function SummonerPage({
             : ""
         }`}
       >
-      {/* LP 흐름 — 스냅샷이 쌓여야 표시됨 */}
-      {lpInsight && hasLpSignal(lpInsight) && (
-        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150 fill-mode-backwards">
-          <CardHeader>
-            <CardTitle className="text-base">LP 흐름</CardTitle>
-            <CardDescription>
-              랭크 스냅샷 관측 {lpInsight.observedWins}승{" "}
-              {lpInsight.observedLosses}패 기준 · LP 득실은 내부 지표를 가장
-              직접 반영하는 신호예요
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border px-4 py-3">
-                <div className="text-xs text-muted-foreground">승리당 평균</div>
-                <div className="mt-1 text-xl font-bold text-emerald-500 tabular-nums">
-                  {lpInsight.avgGain !== null
-                    ? `+${lpInsight.avgGain.toFixed(1)} LP`
-                    : "수집 중"}
+        {/* LP 흐름 — 스냅샷이 쌓여야 표시됨 */}
+        {lpInsight && hasLpSignal(lpInsight) && (
+          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150 fill-mode-backwards">
+            <CardHeader>
+              <CardTitle className="text-base">LP 흐름</CardTitle>
+              <CardDescription>
+                랭크 스냅샷 관측 {lpInsight.observedWins}승{" "}
+                {lpInsight.observedLosses}패 기준 · LP 득실은 내부 지표를 가장
+                직접 반영하는 신호예요
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border px-4 py-3">
+                  <div className="text-xs text-muted-foreground">
+                    승리당 평균
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-emerald-500 tabular-nums">
+                    {lpInsight.avgGain !== null
+                      ? `+${lpInsight.avgGain.toFixed(1)} LP`
+                      : "수집 중"}
+                  </div>
+                </div>
+                <div className="rounded-lg border px-4 py-3">
+                  <div className="text-xs text-muted-foreground">
+                    패배당 평균
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-red-500 tabular-nums">
+                    {lpInsight.avgLoss !== null
+                      ? `-${lpInsight.avgLoss.toFixed(1)} LP`
+                      : "수집 중"}
+                  </div>
                 </div>
               </div>
-              <div className="rounded-lg border px-4 py-3">
-                <div className="text-xs text-muted-foreground">패배당 평균</div>
-                <div className="mt-1 text-xl font-bold text-red-500 tabular-nums">
-                  {lpInsight.avgLoss !== null
-                    ? `-${lpInsight.avgLoss.toFixed(1)} LP`
-                    : "수집 중"}
-                </div>
-              </div>
-            </div>
-            {(() => {
-              const v = lpVerdict(lpInsight);
-              if (!v) return null;
-              return (
-                <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-xs sm:text-sm">
-                  {v.tone === "up" && (
-                    <ArrowUp className="size-4 shrink-0 text-emerald-500" />
-                  )}
-                  {v.tone === "down" && (
-                    <ArrowDown className="size-4 shrink-0 text-red-500" />
-                  )}
-                  {v.tone === "flat" && (
-                    <Minus className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span>{v.text}</span>
-                </div>
-              );
-            })()}
-          </CardContent>
-        </Card>
-      )}
+              {(() => {
+                const v = lpVerdict(lpInsight);
+                if (!v) return null;
+                return (
+                  <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-xs sm:text-sm">
+                    {v.tone === "up" && (
+                      <ArrowUp className="size-4 shrink-0 text-emerald-500" />
+                    )}
+                    {v.tone === "down" && (
+                      <ArrowDown className="size-4 shrink-0 text-red-500" />
+                    )}
+                    {v.tone === "flat" && (
+                      <Minus className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span>{v.text}</span>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* 로비 티어 분포 */}
-      {showLobbyDist && (
-        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200 fill-mode-backwards">
-          <CardHeader>
-            <CardTitle className="text-base">로비 티어 분포</CardTitle>
-            <CardDescription>
-              최근 경기들의 로비 평균 랭크가 속한 티어
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LobbyDistribution matches={matches} />
-          </CardContent>
-        </Card>
-      )}
+        {/* 로비 티어 분포 */}
+        {showLobbyDist && (
+          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200 fill-mode-backwards">
+            <CardHeader>
+              <CardTitle className="text-base">로비 티어 분포</CardTitle>
+              <CardDescription>
+                최근 경기들의 로비 평균 랭크가 속한 티어
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LobbyDistribution matches={matches} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* 추이 차트 */}
@@ -725,9 +733,10 @@ export default async function SummonerPage({
       />
 
       <p className="text-xs text-muted-foreground">
-        * 라이엇은 실제 실력대(내부 MMR)를 공개하지 않으므로 이 수치는 같은 경기에 배정된
-        플레이어들의 현재 랭크(로비별 최고/최저 제외 절사평균)와 승패 성과(Elo
-        업데이트)를 결합한 추정치입니다. 표본이 적을수록 오차가 커질 수 있어요.
+        * 라이엇은 실제 실력대(내부 MMR)를 공개하지 않으므로 이 수치는 같은
+        경기에 배정된 플레이어들의 현재 랭크(로비별 최고/최저 제외 절사평균)와
+        승패 성과(Elo 업데이트)를 결합한 추정치입니다. 표본이 적을수록 오차가
+        커질 수 있어요.
       </p>
     </div>
   );
