@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MigrationCard } from "./migration-card";
 import { PageHeader } from "./ui";
 
 interface Maintenance {
@@ -104,6 +105,8 @@ export function MaintenancePanel() {
         title="점검 모드"
         description="어드민·API는 점검 중에도 접속 가능해요"
       />
+
+      <MigrationCard />
 
       <div
         className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-4 py-3 ${state.cls}`}

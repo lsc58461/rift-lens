@@ -574,3 +574,131 @@ export async function adminExpireSession(token: string): Promise<void> {
   const sql = await getSql();
   await sql`UPDATE admin_sessions SET expires_at = now() WHERE token = ${token}`;
 }
+
+// ── API 키 교체 데이터 이관 ─────────────────────────────
+// PUUID는 키 단위 암호화라 키를 바꾸면 옛 지문(fp) 데이터가 조회 불가능해진다.
+// 이름(game_name#tag_line)은 키와 무관하므로, 옛 행의 이름으로 새 키에서 puuid를
+// 다시 받아오면 랭크 스냅샷(LP 히스토리)을 새 키 기준으로 되살릴 수 있다.
+// 매치 상세는 participants 안에 옛 puuid가 박혀 있어 재키잉이 불가능 → 정리 대상.
+
+export interface LegacyStats {
+  summoners: number;
+  snapshots: number;
+  matches: number;
+  identities: number; // 이관 대상 소환사 수(이름 기준 중복 제거)
+}
+
+export async function legacyStats(curFp: string): Promise<LegacyStats> {
+  const sql = await getSql();
+  const [s, sn, m, id] = await Promise.all([
+    sql`SELECT count(*)::int AS n FROM summoners WHERE fp <> ${curFp}`,
+    sql`SELECT count(*)::int AS n FROM league_snapshots WHERE fp <> ${curFp}`,
+    sql`SELECT count(*)::int AS n FROM matches WHERE fp <> ${curFp}`,
+    sql`SELECT count(*)::int AS n FROM (
+          SELECT DISTINCT platform,
+                 lower(normalize(game_name, NFKC)) AS g,
+                 lower(normalize(tag_line, NFKC)) AS t
+          FROM summoners WHERE fp <> ${curFp}
+        ) x`,
+  ]);
+  return {
+    summoners: s[0].n,
+    snapshots: sn[0].n,
+    matches: m[0].n,
+    identities: id[0].n,
+  };
+}
+
+export interface LegacyIdentity {
+  platform: PlatformRegion;
+  game_name: string;
+  tag_line: string;
+  old_fp: string;
+  old_puuid: string;
+}
+
+/** 아직 새 키로 이관되지 않은 옛 소환사 식별자 (스냅샷 많은 순) */
+export async function listLegacyIdentities(
+  curFp: string,
+  limit: number,
+): Promise<LegacyIdentity[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT s.platform, s.game_name, s.tag_line, s.fp AS old_fp, s.puuid AS old_puuid,
+           (SELECT count(*) FROM league_snapshots ls
+             WHERE ls.fp = s.fp AND ls.puuid = s.puuid) AS snaps
+    FROM summoners s
+    WHERE s.fp <> ${curFp}
+    ORDER BY snaps DESC
+    LIMIT ${limit}`;
+  return rows as unknown as LegacyIdentity[];
+}
+
+/**
+ * 옛 스냅샷을 새 키 기준으로 이관하고 옛 소환사 행을 제거한다.
+ * 같은 (fp, platform, puuid, created_at) 충돌은 이미 이관된 것이므로 버린다.
+ */
+export async function migrateLegacyIdentity(
+  id: LegacyIdentity,
+  newFp: string,
+  newPuuid: string,
+): Promise<number> {
+  const sql = await getSql();
+  const moved = await sql`
+    UPDATE league_snapshots
+    SET fp = ${newFp}, puuid = ${newPuuid}
+    WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}
+      AND NOT EXISTS (
+        SELECT 1 FROM league_snapshots x
+        WHERE x.fp = ${newFp} AND x.puuid = ${newPuuid}
+          AND x.created_at = league_snapshots.created_at)
+    RETURNING 1`;
+  await sql`
+    DELETE FROM league_snapshots
+    WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}`;
+  await sql`
+    DELETE FROM summoners
+    WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}`;
+  return moved.length;
+}
+
+/** 이관 불가능한 옛 매치 상세를 배치로 정리 */
+export async function purgeLegacyMatches(
+  curFp: string,
+  limit: number,
+): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql`
+    DELETE FROM matches
+    WHERE ctid IN (
+      SELECT ctid FROM matches WHERE fp <> ${curFp} LIMIT ${limit}
+    )
+    RETURNING 1`;
+  return rows.length;
+}
+
+/** 이관 대상이 사라진(소환사 행이 없는) 고아 스냅샷 정리 */
+export async function purgeOrphanSnapshots(
+  curFp: string,
+  limit: number,
+): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql`
+    DELETE FROM league_snapshots
+    WHERE ctid IN (
+      SELECT ctid FROM league_snapshots WHERE fp <> ${curFp} LIMIT ${limit}
+    )
+    RETURNING 1`;
+  return rows.length;
+}
+
+/**
+ * 이관·정리 후 디스크 공간 회수. DELETE만으로는 파일 크기가 줄지 않는다.
+ * 짧은 배타 락이 걸리지만 대상 테이블이 작아 수백 ms 수준이다.
+ */
+export async function vacuumMigratedTables(): Promise<void> {
+  const sql = await getSql();
+  for (const t of ["league_snapshots", "matches"]) {
+    await sql.unsafe(`VACUUM FULL ${t}`).catch(() => {});
+  }
+}
