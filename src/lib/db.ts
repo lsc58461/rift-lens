@@ -145,8 +145,8 @@ async function initSchema(sql: Sql): Promise<void> {
     ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS puuid text;
     CREATE INDEX IF NOT EXISTS recent_searches_puuid_idx ON recent_searches (puuid);
 
-    -- 디스코드 연동 제거(2026-08-20): verified_summoners 테이블은 더 이상
-    -- 생성·사용하지 않는다. 기존 배포에 남아 있는 테이블은 수동 DROP 대상.
+    -- 디스코드 연동 제거(2026-08-20): verified_summoners 테이블은 생성·사용하지
+    -- 않으며, 기존 배포에 남아 있던 테이블도 DROP 완료.
   `);
 }
 

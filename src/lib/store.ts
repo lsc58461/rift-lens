@@ -702,3 +702,15 @@ export async function vacuumMigratedTables(): Promise<void> {
     await sql.unsafe(`VACUUM FULL ${t}`).catch(() => {});
   }
 }
+
+/** 만료된 캐시 행 정리 — 새벽 크론에서 호출한다(방치하면 계속 누적됨) */
+export async function purgeExpiredCache(limit = 5000): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql`
+    DELETE FROM cache_entries
+    WHERE ctid IN (
+      SELECT ctid FROM cache_entries WHERE expires_at <= now() LIMIT ${limit}
+    )
+    RETURNING 1`;
+  return rows.length;
+}
