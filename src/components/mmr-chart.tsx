@@ -100,7 +100,9 @@ export function MmrChart({
           }
           tickLine={false}
           axisLine={false}
-          width={compact ? 34 : 78}
+          // "그랜드마스터"(7자·약 80px)까지 한 줄에 들어가야 한다 — 좁으면
+          // Recharts가 라벨을 두 줄로 꺾는다
+          width={compact ? 34 : 96}
           fontSize={11}
         />
         <ChartTooltip
