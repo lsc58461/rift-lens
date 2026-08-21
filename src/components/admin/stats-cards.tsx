@@ -59,7 +59,7 @@ export function TierDistributionCard({
             {rows.map((r) => (
               <div
                 key={r.tier ?? "unranked"}
-                className="grid grid-cols-[4.5rem_1fr_3.5rem] items-center gap-2 text-sm"
+                className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2 text-sm"
               >
                 <span
                   className="truncate text-right text-xs font-medium"
@@ -81,9 +81,8 @@ export function TierDistributionCard({
                     }}
                   />
                 </div>
-                <span className="text-right text-xs tabular-nums text-muted-foreground">
-                  {r.n}명 ·{" "}
-                  {total > 0 ? Math.round((r.n / total) * 100) : 0}%
+                <span className="w-16 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">
+                  {r.n}명 {total > 0 ? Math.round((r.n / total) * 100) : 0}%
                 </span>
               </div>
             ))}
