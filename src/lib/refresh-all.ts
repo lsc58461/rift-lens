@@ -13,10 +13,11 @@ import { getSetting, setSetting } from "@/lib/store";
 const STATE_KEY = "refresh-all:state";
 const MAX_ROUNDS = 40; // 폭주 방지 상한
 const ROUND_STALE_MS = 300_000; // 이 시간 넘게 갱신이 없으면 죽은 라운드로 간주
-// 라운드당 처리량과 간격 — 전체 갱신은 정밀 분석을 동반해 부하가 크다.
-// 한 번에 몰아치면 사이트 응답이 느려지므로 조금씩·쉬어가며 돈다.
-const ROUND_LIMIT = 2; // 라운드당 갱신할 소환사 수
-const ROUND_GAP_MS = 20_000; // 라운드 사이 최소 간격
+// 라운드당 처리량 — 한때 응답 지연의 범인으로 보고 2로 줄였으나, 실제 원인은
+// 동결된 인스턴스의 죽은 DB 소켓 재사용이었다(db.ts 헬스체크로 해결). 라이엇
+// 호출도 저우선순위라 유저 요청에 밀리므로 원래 값으로 되돌린다.
+const ROUND_LIMIT = 5; // 라운드당 갱신할 소환사 수
+const ROUND_GAP_MS = 0; // 라운드 사이 최소 간격
 
 export interface RefreshAllState {
   running: boolean;
