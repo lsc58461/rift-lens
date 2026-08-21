@@ -20,11 +20,14 @@ export interface RecentEntry {
   searchedAt: number;
 }
 
-const MAX_ENTRIES = 50;
+const MAX_ENTRIES = 50; // 공개 "최근 검색" 페이지 기본 상한
+const ADMIN_MAX_ENTRIES = 1000; // 관리자는 전체를 본다
 
-export async function getRecentSearches(): Promise<RecentEntry[]> {
+export async function getRecentSearches(
+  limit: number = MAX_ENTRIES,
+): Promise<RecentEntry[]> {
   try {
-    const rows = await listRecentSearches(MAX_ENTRIES);
+    const rows = await listRecentSearches(Math.min(limit, ADMIN_MAX_ENTRIES));
     return rows.map((r) => ({
       region: r.platform,
       gameName: r.game_name,

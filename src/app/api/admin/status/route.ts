@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     getRunnerStatus(),
     listQueue(),
     getRateLimitStatus(),
-    getRecentSearches(),
+    getRecentSearches(1000), // 관리자 화면은 전체 목록을 본다
   ]);
 
   // 기록된 소환사 전체(최근 검색 기준) + 분석 보유·스테일 상태.
