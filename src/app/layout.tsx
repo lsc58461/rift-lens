@@ -20,12 +20,12 @@ const geistMono = Geist_Mono({
 });
 
 const DESCRIPTION =
-  "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기 기록과 함께, 같은 로비에 잡힌 플레이어들의 현재 랭크 분포를 라이엇 공식 API의 공개 데이터로 보여드립니다.";
+  "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기 기록과 함께, 같은 경기에서 만난 플레이어들의 현재 랭크 분포를 라이엇 공식 API의 공개 데이터로 보여드립니다.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://rift-lens.xyz"),
   title: {
-    default: "Rift Lens — 롤 전적 검색 · 매칭 로비 분석",
+    default: "Rift Lens — 롤 전적 검색 · 매칭 랭크 분석",
     template: "%s | Rift Lens",
   },
   description: DESCRIPTION,
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ko_KR",
     siteName: "Rift Lens",
-    title: "Rift Lens — 롤 전적 검색 · 매칭 로비 분석",
+    title: "Rift Lens — 롤 전적 검색 · 매칭 랭크 분석",
     description: DESCRIPTION,
     url: "/",
   },

@@ -20,9 +20,9 @@ const FEATURES = [
   },
   {
     icon: Users,
-    title: "매칭 로비 분석",
+    title: "매칭 랭크 분석",
     description:
-      "최근 경기에서 만난 플레이어들의 현재 랭크 분포를 모아, 요즘 어떤 구간의 로비에서 게임이 잡히는지 보여줍니다.",
+      "최근 경기에서 만난 플레이어들의 현재 랭크 분포를 모아, 요즘 어떤 랭크 구간에서 게임이 잡히는지 보여줍니다.",
   },
   {
     icon: Activity,
@@ -38,7 +38,7 @@ const JSON_LD = {
   name: "Rift Lens",
   url: "https://rift-lens.xyz",
   description:
-    "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기와 매칭 로비의 랭크 분포를 보여주는 사이트",
+    "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기와 함께 매칭된 플레이어들의 랭크 분포를 보여주는 사이트",
   potentialAction: {
     "@type": "SearchAction",
     target: {
@@ -86,13 +86,12 @@ export default function Home() {
           <Sparkles className="size-3.5" />
           라이엇 공식 API 데이터 기반
         </Badge>
-        <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-5xl lg:text-6xl">
-          요즘 나는 어떤{" "}
+        <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-4xl sm:whitespace-nowrap lg:text-5xl">
+          내 경기, 어느{" "}
           <span className="bg-linear-to-r from-primary via-primary to-chart-2 bg-clip-text text-transparent">
-            로비
+            랭크
           </span>
-          에서
-          <br className="sm:hidden" /> 싸우고 있을까?
+          에서 잡힐까?
         </h1>
         <p className="text-muted-foreground text-pretty sm:text-lg">
           최근 솔로랭크 전적과 함께, 같은 경기에 잡힌 플레이어들의 현재 랭크
