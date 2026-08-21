@@ -20,11 +20,13 @@ export function MatchTabs({
   region,
   riotId,
   ddVersion,
+  champNames,
   rows,
 }: {
   region: string;
   riotId: string;
   ddVersion: string;
+  champNames: Record<string, string>;
   rows: MatchRow[];
 }) {
   return (
@@ -58,6 +60,7 @@ export function MatchTabs({
               region={region}
               riotId={riotId}
               ddVersion={ddVersion}
+              champNames={champNames}
               bare
             />
           </TabsContent>

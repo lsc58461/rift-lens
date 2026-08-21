@@ -47,8 +47,26 @@ export async function POST(req: NextRequest) {
       .map((m) => {
         const self = m.participants.find((p) => p.puuid === account.puuid);
         if (!self) return null;
-        const team = m.participants.filter((p) => p.teamId === self.teamId);
-        const enemy = m.participants.filter((p) => p.teamId !== self.teamId);
+        const mine = m.participants.filter((p) => p.teamId === self.teamId);
+        const theirs = m.participants.filter((p) => p.teamId !== self.teamId);
+        // 킬관여율·딜량 비중 계산용 (경기 내 상대 비교라 별도 조회 불필요)
+        const teamKills = mine.reduce((a, p) => a + p.kills, 0);
+        const maxDamage = Math.max(
+          1,
+          ...m.participants.map((p) => p.damage ?? 0),
+        );
+        const player = (p: (typeof m.participants)[number]) => ({
+          name: `${p.riotIdGameName}#${p.riotIdTagline}`,
+          champ: p.championName,
+          position: p.teamPosition,
+          kills: p.kills,
+          deaths: p.deaths,
+          assists: p.assists,
+          cs: p.cs ?? null,
+          damage: p.damage ?? null,
+          items: p.items ?? [],
+          self: p.puuid === account.puuid,
+        });
         return {
           matchId: m.matchId,
           gameCreation: m.gameCreation,
@@ -66,15 +84,10 @@ export async function POST(req: NextRequest) {
           position: self.teamPosition,
           spells: [self.spell1Id ?? 0, self.spell2Id ?? 0],
           items: self.items ?? [],
-          team: team.map((p) => ({
-            name: `${p.riotIdGameName}#${p.riotIdTagline}`,
-            champ: p.championName,
-            self: p.puuid === account.puuid,
-          })),
-          enemy: enemy.map((p) => ({
-            name: `${p.riotIdGameName}#${p.riotIdTagline}`,
-            champ: p.championName,
-          })),
+          teamKills,
+          maxDamage,
+          team: mine.map(player),
+          enemy: theirs.map(player),
         };
       })
       .filter(Boolean);

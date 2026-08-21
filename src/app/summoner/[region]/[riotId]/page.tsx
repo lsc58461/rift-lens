@@ -710,6 +710,7 @@ export default async function SummonerPage({
         region={region}
         riotId={decoded}
         ddVersion={ddVersion}
+        champNames={champNames}
         rows={matches.map((m): MatchRow => {
           const lobby =
             m.lobbyPoints !== null
