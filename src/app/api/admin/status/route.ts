@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
-import { listSummonerStates } from "@/lib/admin-summoners";
+import { getDashboardStats, getSummonerPage } from "@/lib/admin-summoners";
 import { getRunnerStatus, listQueue } from "@/lib/mmr/deep-jobs";
 import { getRateLimitStatus } from "@/lib/riot/rate-status";
-import { hourlyVisitStats, tierDistribution } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -12,38 +11,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // 실행 중·대기열은 deep-jobs가 제공한다 — 어드민이 규칙을 따로 구현하면
-  // 실제 스케줄러가 보는 대기열과 어긋난다(하트비트 끊긴 상위 순번이 숨는 문제)
-  const [running, waiting, rate, summonerStates, tiers, hourly] =
-    await Promise.all([
-      getRunnerStatus(),
-      listQueue(),
-      getRateLimitStatus(),
-      listSummonerStates(),
-      tierDistribution().catch(() => []),
-      hourlyVisitStats(30).catch(() => []),
-    ]);
-
-  // 대시보드에는 개요만 싣는다 — 전체 목록은 /api/admin/summoners에서
-  // 페이지 단위로 받아 목록이 커져도 응답이 무거워지지 않게 한다
-  const summoners = summonerStates.slice(0, 10);
-  const summonerCounts = summonerStates.reduce<Record<string, number>>(
-    (acc, s) => {
-      acc[s.analysis] = (acc[s.analysis] ?? 0) + 1;
-      return acc;
-    },
-    {},
-  );
+  // 이 라우트는 대시보드가 5초마다 폴링한다 — 무거운 집계를 넣지 말 것.
+  // 목록은 최근 10명만, 상태별 개수는 SQL 집계, 통계는 60초 캐시를 쓴다.
+  const [running, waiting, rate, top, stats] = await Promise.all([
+    getRunnerStatus(),
+    listQueue(),
+    getRateLimitStatus(),
+    getSummonerPage({ page: 1, size: 10 }),
+    getDashboardStats(),
+  ]);
 
   return NextResponse.json({
     running,
     waiting,
     rate,
-    summoners,
-    summonerTotal: summonerStates.length,
-    summonerCounts,
-    tiers,
-    hourly,
+    summoners: top.items,
+    summonerTotal: top.totalAll,
+    summonerCounts: top.counts,
+    tiers: stats.tiers,
+    hourly: stats.hourly,
     serverTime: Date.now(),
   });
 }

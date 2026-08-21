@@ -821,3 +821,111 @@ export async function purgeOldVisits(days = 60): Promise<number> {
     RETURNING 1`;
   return rows.length;
 }
+
+// ── 관리자 소환사 목록 (SQL 집계) ────────────────────────
+// 전체 행을 앱으로 끌어와 JS에서 계산하면 목록이 커질수록 어드민이 느려진다.
+// 상태 판정·검색·필터·페이징을 모두 SQL에서 끝내고 필요한 만큼만 가져온다.
+
+export type AdminAnalysisState =
+  | "deep"
+  | "deep-stale"
+  | "quick"
+  | "quick-stale"
+  | "none";
+
+export interface AdminSummonerRow {
+  region: string;
+  name: string;
+  currentLabel: string | null;
+  estimatedLabel: string | null;
+  searchedAt: number;
+  analysis: AdminAnalysisState;
+}
+
+const STATE_SQL = `
+  CASE
+    WHEN a.deep_at IS NOT NULL THEN
+      CASE WHEN a.deep_ver = $1 AND a.deep_at > now() - interval '72 hours'
+                AND NOT (a.quick_at IS NOT NULL AND a.quick_at > a.deep_at
+                         AND a.quick_mid IS DISTINCT FROM a.deep_mid)
+           THEN 'deep' ELSE 'deep-stale' END
+    WHEN a.quick_at IS NOT NULL THEN
+      CASE WHEN a.quick_ver = $1 AND a.quick_at > now() - interval '72 hours'
+           THEN 'quick' ELSE 'quick-stale' END
+    ELSE 'none'
+  END`;
+
+const AGG_SQL = `
+  LEFT JOIN (
+    SELECT platform, game_name_lower, tag_line_lower,
+      max(CASE WHEN kind='deep'  THEN algo_version END)     AS deep_ver,
+      max(CASE WHEN kind='deep'  THEN analyzed_at END)      AS deep_at,
+      max(CASE WHEN kind='deep'  THEN latest_match_id END)  AS deep_mid,
+      max(CASE WHEN kind='quick' THEN algo_version END)     AS quick_ver,
+      max(CASE WHEN kind='quick' THEN analyzed_at END)      AS quick_at,
+      max(CASE WHEN kind='quick' THEN latest_match_id END)  AS quick_mid
+    FROM analyses GROUP BY 1,2,3
+  ) a ON a.platform = r.platform
+     AND a.game_name_lower = r.game_name_lower
+     AND a.tag_line_lower = r.tag_line_lower`;
+
+/** 상태별 개수 (검색어만 반영) */
+export async function adminSummonerCounts(
+  algoVersion: number,
+  q: string,
+): Promise<Record<string, number>> {
+  const sql = await getSql();
+  const like = `%${q.toLowerCase()}%`;
+  const rows = await sql.unsafe(
+    `SELECT ${STATE_SQL} AS state, count(*)::int AS n
+     FROM recent_searches r ${AGG_SQL}
+     WHERE ($2 = '%%' OR lower(r.game_name || '#' || r.tag_line) LIKE $2)
+     GROUP BY 1`,
+    [algoVersion, like],
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows as unknown as { state: string; n: number }[]) {
+    out[r.state] = r.n;
+  }
+  return out;
+}
+
+/** 검색·필터·페이징을 SQL에서 처리한 소환사 목록 */
+export async function adminSummonerPage(
+  algoVersion: number,
+  q: string,
+  filter: string,
+  limit: number,
+  offset: number,
+): Promise<{ rows: AdminSummonerRow[]; total: number }> {
+  const sql = await getSql();
+  const like = `%${q.toLowerCase()}%`;
+  const where = `WHERE ($2 = '%%' OR lower(r.game_name || '#' || r.tag_line) LIKE $2)
+      AND ($3 = 'all' OR ${STATE_SQL} = $3)`;
+
+  const [rows, totalRows] = await Promise.all([
+    sql.unsafe(
+      `SELECT r.platform, r.game_name, r.tag_line, r.current_label,
+              r.estimated_label, r.searched_at, ${STATE_SQL} AS state
+       FROM recent_searches r ${AGG_SQL} ${where}
+       ORDER BY r.searched_at DESC LIMIT $4 OFFSET $5`,
+      [algoVersion, like, filter, limit, offset],
+    ),
+    sql.unsafe(
+      `SELECT count(*)::int AS n FROM recent_searches r ${AGG_SQL} ${where}`,
+      [algoVersion, like, filter],
+    ),
+  ]);
+
+  return {
+    rows: (rows as unknown as Record<string, unknown>[]).map((r) => ({
+      region: r.platform as string,
+      name: `${r.game_name}#${r.tag_line}`,
+      currentLabel: (r.current_label as string) ?? null,
+      estimatedLabel: (r.estimated_label as string) ?? null,
+      searchedAt: new Date(r.searched_at as string).getTime(),
+      analysis: r.state as AdminAnalysisState,
+    })),
+    total: (totalRows as unknown as { n: number }[])[0]?.n ?? 0,
+  };
+}
