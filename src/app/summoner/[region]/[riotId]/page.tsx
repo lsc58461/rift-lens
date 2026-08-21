@@ -60,6 +60,7 @@ import {
 import {
   findPuuidByOldName,
   findRenamedTo,
+  logVisit,
   recordNameChange,
 } from "@/lib/store";
 import {
@@ -378,6 +379,17 @@ export default async function SummonerPage({
     lpInsight = computeLpInsight(await getLeagueHistory(platform, acct.puuid));
   } catch {
     // 히스토리 조회 실패는 카드 생략으로 처리
+  }
+
+  // 방문 로그 — 관리자 시간대 통계용. 내부 도구(크롤러)는 따로 표시해
+  // 실제 유저 사용 패턴이 왜곡되지 않게 한다.
+  if (!isBot) {
+    void logVisit(
+      platform,
+      result.account.gameName,
+      result.account.tagLine,
+      /rift-lens-seed/i.test(ua) ? "tool" : "user",
+    ).catch(() => {});
   }
 
   // 봇 트래픽은 최근 검색에 기록하지 않는다

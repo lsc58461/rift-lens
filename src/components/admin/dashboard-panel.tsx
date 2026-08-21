@@ -18,6 +18,7 @@ import {
   windowLabel,
   type AdminStatus,
 } from "./types";
+import { HourlyVisitsCard, TierDistributionCard } from "./stats-cards";
 import { EmptyState, LiveDot, PageHeader, StatTile } from "./ui";
 
 /**
@@ -329,6 +330,11 @@ export function DashboardPanel() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TierDistributionCard tiers={status?.tiers ?? []} />
+        <HourlyVisitsCard hourly={status?.hourly ?? []} />
       </div>
 
       <p className="text-xs text-muted-foreground">

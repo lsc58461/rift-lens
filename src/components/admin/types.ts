@@ -44,6 +44,8 @@ export interface AdminStatus {
   /** 기록된 소환사 전체 수 (목록 자체는 페이지 API로 받는다) */
   summonerTotal: number;
   summonerCounts: Record<string, number>;
+  tiers: { tier: string | null; n: number }[];
+  hourly: { hour: number; visits: number; summoners: number }[];
 }
 
 export type AnalysisState = AdminStatus["summoners"][number]["analysis"];

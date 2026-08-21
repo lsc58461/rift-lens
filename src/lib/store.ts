@@ -760,3 +760,64 @@ export async function currentNamesByPuuid(
   }
   return out;
 }
+
+// ── 방문 로그·통계 (관리자 대시보드) ─────────────────────
+
+/** 소환사 페이지 방문 기록 — 실패해도 페이지 표시에 영향을 주지 않는다 */
+export async function logVisit(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+  source: "user" | "tool",
+): Promise<void> {
+  const sql = await getSql();
+  await sql`
+    INSERT INTO visit_log (platform, game_name, tag_line, source)
+    VALUES (${platform}, ${gameName}, ${tagLine}, ${source})`;
+}
+
+export interface HourlyVisit {
+  hour: number; // KST 0~23
+  visits: number;
+  summoners: number;
+}
+
+/** 최근 N일간 방문을 KST 시간대별로 집계 (유저 방문만) */
+export async function hourlyVisitStats(days: number): Promise<HourlyVisit[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT EXTRACT(hour FROM at AT TIME ZONE 'Asia/Seoul')::int AS hour,
+           count(*)::int AS visits,
+           count(DISTINCT (platform, game_name, tag_line))::int AS summoners
+    FROM visit_log
+    WHERE source = 'user' AND at > now() - ${`${days} days`}::interval
+    GROUP BY 1 ORDER BY 1`;
+  const map = new Map(rows.map((r) => [r.hour as number, r]));
+  return Array.from({ length: 24 }, (_, h) => {
+    const r = map.get(h) as HourlyVisit | undefined;
+    return { hour: h, visits: r?.visits ?? 0, summoners: r?.summoners ?? 0 };
+  });
+}
+
+export interface TierCount {
+  tier: string | null;
+  n: number;
+}
+
+/** 기록된 소환사의 현재 티어 분포 */
+export async function tierDistribution(): Promise<TierCount[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT current_tier AS tier, count(*)::int AS n
+    FROM recent_searches GROUP BY 1 ORDER BY n DESC`;
+  return rows as unknown as TierCount[];
+}
+
+/** 오래된 방문 로그 정리 (크론에서 호출) */
+export async function purgeOldVisits(days = 60): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql`
+    DELETE FROM visit_log WHERE at < now() - ${`${days} days`}::interval
+    RETURNING 1`;
+  return rows.length;
+}

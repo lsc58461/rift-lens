@@ -9,7 +9,7 @@ import {
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
 import { getRecentSearches } from "@/lib/recent";
-import { purgeExpiredCache } from "@/lib/store";
+import { purgeExpiredCache, purgeOldVisits } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -126,6 +126,7 @@ export async function GET(req: NextRequest) {
 
   // 만료된 캐시 행 정리 (누적 방지 — API 호출 없음)
   const cachePurged = await purgeExpiredCache().catch(() => 0);
+  await purgeOldVisits().catch(() => 0);
 
   return NextResponse.json({
     cachePurged,

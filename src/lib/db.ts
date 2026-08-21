@@ -127,6 +127,18 @@ async function initSchema(sql: Sql): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
+    -- 방문 로그 — 관리자 통계용(시간대 분포). 소환사 페이지가 실제로 열릴 때
+    -- 한 줄씩 쌓고, 오래된 행은 새벽 크론이 정리한다. 봇 트래픽은 기록하지 않는다.
+    CREATE TABLE IF NOT EXISTS visit_log (
+      id bigserial PRIMARY KEY,
+      platform text NOT NULL,
+      game_name text NOT NULL,
+      tag_line text NOT NULL,
+      source text NOT NULL DEFAULT 'user', -- user | tool
+      at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS visit_log_at_idx ON visit_log (at DESC);
+
     -- 닉변 이력 — 옛 이름 → 현재 이름 매핑. API 키가 바뀌어도(puuid 재암호화)
     -- 이름 매핑은 살아남아 옛 링크 리다이렉트가 계속 동작한다.
     CREATE TABLE IF NOT EXISTS name_history (
