@@ -7,7 +7,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronDown, Loader2, Swords } from "lucide-react";
+import { ChevronDown, Loader2, Plus, Swords } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -250,6 +251,8 @@ export function MatchHistory({
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     let stop = false;
@@ -259,16 +262,37 @@ export function MatchHistory({
       body: JSON.stringify({ region, riotId }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: { games: Game[]; summary: Summary | null }) => {
+      .then((d: { games: Game[]; summary: Summary | null; hasMore: boolean }) => {
         if (stop) return;
         setGames(d.games);
         setSummary(d.summary);
+        setHasMore(d.hasMore);
       })
       .catch(() => !stop && setError(true));
     return () => {
       stop = true;
     };
   }, [region, riotId]);
+
+  async function loadMore() {
+    if (!games || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region, riotId, start: games.length, count: 20 }),
+      });
+      if (!res.ok) throw new Error();
+      const d: { games: Game[]; hasMore: boolean } = await res.json();
+      setGames((prev) => [...(prev ?? []), ...d.games]);
+      setHasMore(d.hasMore);
+    } catch {
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const body = (
     <>
@@ -495,6 +519,23 @@ export function MatchHistory({
           );
         })}
       </div>
+
+      {games && games.length > 0 && hasMore && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="mt-2 w-full gap-1.5 text-muted-foreground"
+        >
+          {loadingMore ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Plus className="size-3.5" />
+          )}
+          {loadingMore ? "불러오는 중…" : "20경기 더 보기"}
+        </Button>
+      )}
     </>
   );
 

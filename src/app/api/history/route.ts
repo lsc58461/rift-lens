@@ -3,7 +3,9 @@ import {
   getAccountByRiotId,
   getMatch,
   getRankedMatchIds,
+  riotKeyFp,
 } from "@/lib/riot/client";
+import { currentNamesByPuuid } from "@/lib/store";
 import {
   PLATFORM_LABELS,
   RiotApiError,
@@ -123,7 +125,7 @@ function summarize(games: GameLike[]) {
 
 // 최근 전적 — 최근 경기 ID를 조회해 매치 상세(대부분 캐시)를 반환한다.
 export async function POST(req: NextRequest) {
-  let body: { region?: string; riotId?: string };
+  let body: { region?: string; riotId?: string; start?: number; count?: number };
   try {
     body = await req.json();
   } catch {
@@ -136,6 +138,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid params" }, { status: 400 });
   }
   const platform = region as PlatformRegion;
+  // 더보기 — 매치 ID는 한 번에 start+count만큼 받아 잘라 쓴다(상세는 장기 캐시)
+  const start = Math.min(180, Math.max(0, Math.floor(Number(body.start ?? 0))));
+  const count = Math.min(40, Math.max(1, Math.floor(Number(body.count ?? COUNT))));
 
   try {
     const account = await getAccountByRiotId(
@@ -143,10 +148,24 @@ export async function POST(req: NextRequest) {
       riotId.slice(0, hash),
       riotId.slice(hash + 1),
     );
-    const ids = await getRankedMatchIds(platform, account.puuid, COUNT);
+    // 다음 페이지 존재 여부를 알기 위해 한 개 더 받는다
+    const allIds = await getRankedMatchIds(
+      platform,
+      account.puuid,
+      start + count + 1,
+    );
+    const ids = allIds.slice(start, start + count);
     const matches = await Promise.all(
       ids.map((id) => getMatch(platform, id).catch(() => null)),
     );
+    const hasMore = allIds.length > start + count;
+
+    // 닉변한 참가자는 경기 시점 이름이 박제돼 있어 현재 이름으로 바로잡는다
+    const known = matches.filter((m) => m !== null);
+    const nameMap = await currentNamesByPuuid(
+      riotKeyFp(),
+      [...new Set(known.flatMap((m) => m.participants.map((p) => p.puuid)))],
+    ).catch(() => new Map<string, string>());
 
     const games = matches
       .filter((m): m is NonNullable<typeof m> => m !== null)
@@ -162,7 +181,9 @@ export async function POST(req: NextRequest) {
           ...m.participants.map((p) => p.damage ?? 0),
         );
         const player = (p: (typeof m.participants)[number]) => ({
-          name: `${p.riotIdGameName}#${p.riotIdTagline}`,
+          name:
+            nameMap.get(p.puuid) ??
+            `${p.riotIdGameName}#${p.riotIdTagline}`,
           champ: p.championName,
           position: p.teamPosition,
           kills: p.kills,
@@ -198,7 +219,11 @@ export async function POST(req: NextRequest) {
       })
       .filter(Boolean);
 
-    return NextResponse.json({ games, summary: summarize(games as GameLike[]) });
+    return NextResponse.json({
+      games,
+      hasMore,
+      summary: start === 0 ? summarize(games as GameLike[]) : null,
+    });
   } catch (e) {
     if (e instanceof RiotApiError && e.status === 404) {
       return NextResponse.json({ error: "not found" }, { status: 404 });

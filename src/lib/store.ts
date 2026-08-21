@@ -738,3 +738,25 @@ export async function purgeExpiredCache(limit = 5000): Promise<number> {
     RETURNING 1`;
   return rows.length;
 }
+
+/**
+ * puuid 목록의 "현재 알려진 이름"을 한 번에 조회한다.
+ * 매치에는 경기 시점 이름이 박제돼 있어, 그 뒤 닉변한 참가자는 옛 이름으로
+ * 표시되고 링크도 엉뚱한 곳으로 간다. 우리가 이미 아는 계정은 이 조회로
+ * 현재 이름으로 바로잡는다 (API 호출 없음).
+ */
+export async function currentNamesByPuuid(
+  fp: string,
+  puuids: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (puuids.length === 0) return out;
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT puuid, game_name, tag_line FROM summoners
+    WHERE fp = ${fp} AND puuid = ANY(${puuids})`;
+  for (const r of rows) {
+    out.set(r.puuid as string, `${r.game_name}#${r.tag_line}`);
+  }
+  return out;
+}

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { MigrationCard } from "./migration-card";
+import { RefreshAllCard } from "./refresh-all-card";
 import { PageHeader } from "./ui";
 
 interface Maintenance {
@@ -105,6 +106,8 @@ export function MaintenancePanel() {
         title="점검 모드"
         description="어드민·API는 점검 중에도 접속 가능해요"
       />
+
+      <RefreshAllCard />
 
       <MigrationCard />
 
