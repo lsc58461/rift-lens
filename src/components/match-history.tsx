@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { MatchSummary, type Summary } from "@/components/match-summary";
 import {
   championIconUrl,
   championNameKo,
@@ -237,6 +238,7 @@ export function MatchHistory({
   bare?: boolean;
 }) {
   const [games, setGames] = useState<Game[] | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -248,7 +250,11 @@ export function MatchHistory({
       body: JSON.stringify({ region, riotId }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: { games: Game[] }) => !stop && setGames(d.games))
+      .then((d: { games: Game[]; summary: Summary | null }) => {
+        if (stop) return;
+        setGames(d.games);
+        setSummary(d.summary);
+      })
       .catch(() => !stop && setError(true));
     return () => {
       stop = true;
@@ -280,6 +286,15 @@ export function MatchHistory({
         <p className="py-6 text-center text-sm text-muted-foreground">
           최근 솔로랭크 기록이 없어요
         </p>
+      )}
+
+      {summary && summary.games > 0 && (
+        <MatchSummary
+          summary={summary}
+          version={ddVersion}
+          names={champNames}
+          region={region}
+        />
       )}
 
       <div className="space-y-2">
