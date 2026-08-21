@@ -102,8 +102,9 @@ export function RefreshAllCard() {
         </CardTitle>
         <CardDescription>
           새벽 자동 갱신과 같은 작업을 지금 실행합니다 — 최근 검색된 소환사를
-          순회하며 새 경기가 있으면 다시 분석해요. 라이엇 호출은 저우선순위라
-          유저 검색이 들어오면 자동으로 뒤로 밀립니다.
+          순회하며 새 경기가 있으면 다시 분석해요. 부하를 줄이려고 한 라운드에
+          2명씩, 라운드 사이 20초를 쉬며 천천히 돕니다. 그래도 정밀 분석이
+          함께 돌기 때문에 사이트가 다소 느려질 수 있어요.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

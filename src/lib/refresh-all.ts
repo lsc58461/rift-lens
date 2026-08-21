@@ -13,6 +13,10 @@ import { getSetting, setSetting } from "@/lib/store";
 const STATE_KEY = "refresh-all:state";
 const MAX_ROUNDS = 40; // 폭주 방지 상한
 const ROUND_STALE_MS = 300_000; // 이 시간 넘게 갱신이 없으면 죽은 라운드로 간주
+// 라운드당 처리량과 간격 — 전체 갱신은 정밀 분석을 동반해 부하가 크다.
+// 한 번에 몰아치면 사이트 응답이 느려지므로 조금씩·쉬어가며 돈다.
+const ROUND_LIMIT = 2; // 라운드당 갱신할 소환사 수
+const ROUND_GAP_MS = 20_000; // 라운드 사이 최소 간격
 
 export interface RefreshAllState {
   running: boolean;
@@ -71,6 +75,8 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   if (!state.running) return;
   // 이미 라운드가 도는 중이면(하트비트가 신선하면) 중복 실행하지 않는다
   if (state.roundActive && Date.now() - state.updatedAt < ROUND_STALE_MS) return;
+  // 직전 라운드가 끝난 지 얼마 안 됐으면 잠시 쉰다 (부하 완화)
+  if (!state.roundActive && Date.now() - state.updatedAt < ROUND_GAP_MS) return;
   if (state.rounds >= MAX_ROUNDS) {
     await save({ ...state, running: false, roundActive: false, done: true });
     return;
@@ -91,7 +97,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   await save({ ...state, running: true, roundActive: true });
 
   try {
-    const url = new URL("/api/cron/refresh?limit=5", origin);
+    const url = new URL(`/api/cron/refresh?limit=${ROUND_LIMIT}`, origin);
     const res = await fetch(url, {
       headers: { authorization: `Bearer ${secret}` },
       cache: "no-store",
