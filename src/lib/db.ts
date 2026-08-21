@@ -168,7 +168,18 @@ async function createSql(): Promise<Sql> {
     throw new Error("DATABASE_URL이 설정되지 않았습니다 (.env.local)");
   }
   const postgres = (await import("postgres")).default;
-  const sql = postgres(url, { max: 3, prepare: false, onnotice: () => {} });
+  // 서버리스 전제 설정:
+  // - connect_timeout: 풀 포화 시 무한 대기 대신 빠르게 실패시킨다
+  //   (없으면 함수 제한까지 매달려 "API가 안 옴"으로 보인다)
+  // - idle_timeout: 인스턴스가 놀 때 커넥션을 반납해 풀 고갈을 막는다
+  // - max 2: 인스턴스가 여럿 뜨므로 인스턴스당 점유를 낮게 잡는다
+  const sql = postgres(url, {
+    max: 2,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    prepare: false,
+    onnotice: () => {},
+  });
   await initSchema(sql);
   return sql;
 }

@@ -1,7 +1,4 @@
 {
-  "regions": ["icn1"],
-  "crons": [
-    { "path": "/api/cron/refresh", "schedule": "0 18 * * *" },
-    { "path": "/api/cron/refresh", "schedule": "0 19 * * *" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["icn1"]
 }
