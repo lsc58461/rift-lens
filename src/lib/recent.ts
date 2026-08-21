@@ -21,13 +21,13 @@ export interface RecentEntry {
 }
 
 const MAX_ENTRIES = 50; // 공개 "최근 검색" 페이지 기본 상한
-const ADMIN_MAX_ENTRIES = 1000; // 관리자는 전체를 본다
 
+/** limit에 Infinity를 주면 전량을 가져온다 (크론 전체 갱신용) */
 export async function getRecentSearches(
   limit: number = MAX_ENTRIES,
 ): Promise<RecentEntry[]> {
   try {
-    const rows = await listRecentSearches(Math.min(limit, ADMIN_MAX_ENTRIES));
+    const rows = await listRecentSearches(limit);
     return rows.map((r) => ({
       region: r.platform,
       gameName: r.game_name,

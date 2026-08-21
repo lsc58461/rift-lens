@@ -483,10 +483,17 @@ export async function listRecentSearches(
   limit: number,
 ): Promise<RecentSearchRow[]> {
   const sql = await getSql();
-  const rows = await sql`
-    SELECT platform, game_name, tag_line, current_label, current_tier,
-           estimated_label, estimated_tier, estimated_points, searched_at
-    FROM recent_searches ORDER BY searched_at DESC LIMIT ${limit}`;
+  // Infinity면 전량 — 크론 전체 갱신은 상한이 있으면 그 뒤 소환사가
+  // 자동 갱신에서 영영 빠지므로 제한 없이 순회해야 한다
+  const rows = Number.isFinite(limit)
+    ? await sql`
+        SELECT platform, game_name, tag_line, current_label, current_tier,
+               estimated_label, estimated_tier, estimated_points, searched_at
+        FROM recent_searches ORDER BY searched_at DESC LIMIT ${limit}`
+    : await sql`
+        SELECT platform, game_name, tag_line, current_label, current_tier,
+               estimated_label, estimated_tier, estimated_points, searched_at
+        FROM recent_searches ORDER BY searched_at DESC`;
   return rows as unknown as RecentSearchRow[];
 }
 

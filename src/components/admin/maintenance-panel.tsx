@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CrawlCard } from "./crawl-card";
 import { MigrationCard } from "./migration-card";
 import { RefreshAllCard } from "./refresh-all-card";
 import { PageHeader } from "./ui";
@@ -108,6 +109,8 @@ export function MaintenancePanel() {
       />
 
       <RefreshAllCard />
+
+      <CrawlCard />
 
       <MigrationCard />
 

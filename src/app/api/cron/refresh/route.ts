@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
 
   const started = Date.now();
   const elapsed = () => Date.now() - started;
-  // 기본 상한(50)만 보면 그 뒤 소환사는 영영 갱신되지 않는다 — 전체를 순회한다
-  const recent = await getRecentSearches(1000); // 최근 검색 순
+  // 상한을 두면 그 뒤 소환사는 자동 갱신에서 영영 빠진다 — 전량 순회한다
+  const recent = await getRecentSearches(Infinity); // 최근 검색 순
 
   const quickRefreshed: string[] = [];
   let deepCompleted = 0;
