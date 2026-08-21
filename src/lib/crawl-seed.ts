@@ -72,27 +72,36 @@ interface Candidate {
   tag: string;
 }
 
-/** 저장된 매치의 참가자 중 미기록·미실패 소환사를 뽑는다 */
+/** 저장된 매치의 참가자 중 미기록·미실패 소환사를 뽑는다.
+ * 같은 경기 참가자를 연달아 처리하면 서로의 로비·최근 경기가 겹쳐 랭크 캐시
+ * 적중이 올라간다(=라이엇 호출 절약) — 그래서 무작위 대신 최신 매치 순으로 묶는다. */
 async function findCandidates(limit: number): Promise<Candidate[]> {
   const sql = await getSql();
   const fp = riotKeyFp();
   const rows = await sql`
-    SELECT DISTINCT p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag
-    FROM matches m
-    CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
-    WHERE m.fp = ${fp}
-      AND coalesce(p->>'riotIdGameName', '') <> ''
-      AND coalesce(p->>'riotIdTagline', '') <> ''
-      AND NOT EXISTS (
-        SELECT 1 FROM recent_searches r
-        WHERE r.platform = m.platform
-          AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
-          AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
-      AND NOT EXISTS (
-        SELECT 1 FROM cache_entries c
-        WHERE c.key = 'crawl-skip:' || lower(trim(p->>'riotIdGameName'))
-                      || '#' || lower(trim(p->>'riotIdTagline'))
-          AND c.expires_at > now())
+    SELECT name, tag FROM (
+      SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
+             p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
+             m.match_id AS mid, m.game_creation AS gc
+      FROM matches m
+      CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
+      WHERE m.fp = ${fp}
+        AND coalesce(p->>'riotIdGameName', '') <> ''
+        AND coalesce(p->>'riotIdTagline', '') <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM recent_searches r
+          WHERE r.platform = m.platform
+            AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
+            AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
+        AND NOT EXISTS (
+          SELECT 1 FROM cache_entries c
+          WHERE c.key = 'crawl-skip:' || lower(trim(p->>'riotIdGameName'))
+                        || '#' || lower(trim(p->>'riotIdTagline'))
+            AND c.expires_at > now())
+      ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
+               m.game_creation DESC
+    ) s
+    ORDER BY gc DESC, mid
     LIMIT ${limit}`;
   return rows as unknown as Candidate[];
 }
