@@ -488,250 +488,247 @@ export default async function SummonerPage({
         </div>
       </div>
 
-      {/* 히어로: 매칭 실력대 쇼케이스 + 현재 티어 */}
-      <div className="grid gap-4 lg:grid-cols-5 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards">
-        <Card
-          className="relative overflow-hidden lg:col-span-3"
-          style={
-            estColor
-              ? {
-                  backgroundImage: `radial-gradient(120% 150% at 0% 0%, color-mix(in oklab, ${estColor} 18%, transparent), transparent 60%)`,
-                }
-              : undefined
-          }
-        >
-          <CardHeader>
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 space-y-1.5">
-                <CardDescription className="flex flex-wrap items-center gap-2">
-                  매칭 실력대
-                  <Badge
-                    variant="outline"
-                    className="bg-background/60 font-normal"
-                  >
-                    {CONFIDENCE_LABELS[confidence]}
-                  </Badge>
-                </CardDescription>
-                <CardTitle
-                  className="text-2xl sm:text-3xl"
-                  style={{ color: estColor }}
-                >
-                  {estimatedRank?.label ?? "표본 부족"}
-                </CardTitle>
-                {estimatedPoints !== null && (
-                  <p className="text-sm text-muted-foreground">
-                    {Math.round(estimatedPoints).toLocaleString()}pt
-                    {errorMargin !== null && ` · 오차범위 ±${errorMargin}pt`}
-                  </p>
-                )}
-              </div>
-              {estimatedRank && (
-                <div className="relative size-22 shrink-0 sm:size-30">
-                  <Image
-                    src={tierEmblemUrl(estimatedRank.tier)}
-                    alt=""
-                    fill
-                    unoptimized
-                    className="object-contain drop-shadow-xl"
-                  />
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          {verdict && (
-            <CardContent>
-              <div className="flex items-center gap-2 rounded-lg border bg-background/60 px-3 py-2.5 text-xs backdrop-blur-sm sm:text-sm">
-                {verdict.tone === "up" && (
-                  <ArrowUp className="size-4 shrink-0 text-emerald-500" />
-                )}
-                {verdict.tone === "down" && (
-                  <ArrowDown className="size-4 shrink-0 text-red-500" />
-                )}
-                {verdict.tone === "flat" && (
-                  <Minus className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span>{verdict.text}</span>
-                {gap !== null && (
-                  <span className="ml-auto shrink-0 font-semibold tabular-nums">
-                    {gap > 0 ? "+" : ""}
-                    {gap}pt
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1.5">
-                <CardDescription>현재 티어</CardDescription>
-                <CardTitle
-                  className="text-xl sm:text-2xl"
-                  style={
-                    currentRank
-                      ? { color: TIER_COLORS[currentRank.tier] }
-                      : undefined
+      {/* 본문 2단 — 좌: 실력대 요약 / 우: 추이·전적.
+          넓은 화면에서 스크롤을 줄이려고 정보 카드를 옆으로 세운다. */}
+      <div className="grid items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        {/* 좌측 컬럼 */}
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards">
+          <Card
+            className="relative overflow-hidden"
+            style={
+              estColor
+                ? {
+                    backgroundImage: `radial-gradient(120% 150% at 0% 0%, color-mix(in oklab, ${estColor} 18%, transparent), transparent 60%)`,
                   }
-                >
-                  {currentRank?.label ?? "언랭크"}
-                </CardTitle>
-              </div>
-              {recentWinrate !== null && analyzedCount > 0 && (
-                <WinrateRing pct={recentWinrate} games={analyzedCount} />
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2.5 text-sm">
-            {soloEntry && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <TrendingUp className="size-4" />
-                시즌 {soloEntry.wins}승 {soloEntry.losses}패 (
-                {Math.round(
-                  (soloEntry.wins / (soloEntry.wins + soloEntry.losses)) * 100,
-                )}
-                %)
-              </div>
-            )}
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Users className="size-4" />
-              표본 {sampledPlayers}명의 현재 랭크 분석
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 짧은 카드 둘(LP 흐름·로비 분포)은 데스크톱에서 나란히 —
-          전부 풀폭으로 쌓으면 페이지가 불필요하게 길어진다.
-          한쪽만 표시될 땐 1열로 두어 반쪽짜리 카드가 되지 않게 한다. */}
-      <div
-        className={`grid gap-4 ${
-          lpInsight && hasLpSignal(lpInsight) && showLobbyDist
-            ? "lg:grid-cols-2"
-            : ""
-        }`}
-      >
-        {/* LP 흐름 — 스냅샷이 쌓여야 표시됨 */}
-        {lpInsight && hasLpSignal(lpInsight) && (
-          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150 fill-mode-backwards">
+                : undefined
+            }
+          >
             <CardHeader>
-              <CardTitle className="text-base">LP 흐름</CardTitle>
-              <CardDescription>
-                랭크 스냅샷 관측 {lpInsight.observedWins}승{" "}
-                {lpInsight.observedLosses}패 기준 · LP 득실은 내부 지표를 가장
-                직접 반영하는 신호예요
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border px-4 py-3">
-                  <div className="text-xs text-muted-foreground">
-                    승리당 평균
-                  </div>
-                  <div className="mt-1 text-xl font-bold text-emerald-500 tabular-nums">
-                    {lpInsight.avgGain !== null
-                      ? `+${lpInsight.avgGain.toFixed(1)} LP`
-                      : "수집 중"}
-                  </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0 space-y-1.5">
+                  <CardDescription className="flex flex-wrap items-center gap-2">
+                    매칭 실력대
+                    <Badge
+                      variant="outline"
+                      className="bg-background/60 font-normal"
+                    >
+                      {CONFIDENCE_LABELS[confidence]}
+                    </Badge>
+                  </CardDescription>
+                  <CardTitle
+                    className="text-2xl sm:text-3xl"
+                    style={{ color: estColor }}
+                  >
+                    {estimatedRank?.label ?? "표본 부족"}
+                  </CardTitle>
+                  {estimatedPoints !== null && (
+                    <p className="text-sm text-muted-foreground">
+                      {Math.round(estimatedPoints).toLocaleString()}pt
+                      {errorMargin !== null && ` · 오차범위 ±${errorMargin}pt`}
+                    </p>
+                  )}
                 </div>
-                <div className="rounded-lg border px-4 py-3">
-                  <div className="text-xs text-muted-foreground">
-                    패배당 평균
+                {estimatedRank && (
+                  <div className="relative size-22 shrink-0 sm:size-30">
+                    <Image
+                      src={tierEmblemUrl(estimatedRank.tier)}
+                      alt=""
+                      fill
+                      unoptimized
+                      className="object-contain drop-shadow-xl"
+                    />
                   </div>
-                  <div className="mt-1 text-xl font-bold text-red-500 tabular-nums">
-                    {lpInsight.avgLoss !== null
-                      ? `-${lpInsight.avgLoss.toFixed(1)} LP`
-                      : "수집 중"}
-                  </div>
-                </div>
+                )}
               </div>
-              {(() => {
-                const v = lpVerdict(lpInsight);
-                if (!v) return null;
-                return (
-                  <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-xs sm:text-sm">
-                    {v.tone === "up" && (
-                      <ArrowUp className="size-4 shrink-0 text-emerald-500" />
-                    )}
-                    {v.tone === "down" && (
-                      <ArrowDown className="size-4 shrink-0 text-red-500" />
-                    )}
-                    {v.tone === "flat" && (
-                      <Minus className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <span>{v.text}</span>
-                  </div>
-                );
-              })()}
+            </CardHeader>
+            {verdict && (
+              <CardContent>
+                <div className="flex items-center gap-2 rounded-lg border bg-background/60 px-3 py-2.5 text-xs backdrop-blur-sm sm:text-sm">
+                  {verdict.tone === "up" && (
+                    <ArrowUp className="size-4 shrink-0 text-emerald-500" />
+                  )}
+                  {verdict.tone === "down" && (
+                    <ArrowDown className="size-4 shrink-0 text-red-500" />
+                  )}
+                  {verdict.tone === "flat" && (
+                    <Minus className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span>{verdict.text}</span>
+                  {gap !== null && (
+                    <span className="ml-auto shrink-0 font-semibold tabular-nums">
+                      {gap > 0 ? "+" : ""}
+                      {gap}pt
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1.5">
+                  <CardDescription>현재 티어</CardDescription>
+                  <CardTitle
+                    className="text-xl sm:text-2xl"
+                    style={
+                      currentRank
+                        ? { color: TIER_COLORS[currentRank.tier] }
+                        : undefined
+                    }
+                  >
+                    {currentRank?.label ?? "언랭크"}
+                  </CardTitle>
+                </div>
+                {recentWinrate !== null && analyzedCount > 0 && (
+                  <WinrateRing pct={recentWinrate} games={analyzedCount} />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2.5 text-sm">
+              {soloEntry && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <TrendingUp className="size-4" />
+                  시즌 {soloEntry.wins}승 {soloEntry.losses}패 (
+                  {Math.round(
+                    (soloEntry.wins / (soloEntry.wins + soloEntry.losses)) *
+                      100,
+                  )}
+                  %)
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Users className="size-4" />
+                표본 {sampledPlayers}명의 현재 랭크 분석
+              </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* 로비 티어 분포 */}
-        {showLobbyDist && (
-          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200 fill-mode-backwards">
+          {/* LP 흐름 — 스냅샷이 쌓여야 표시됨 */}
+          {lpInsight && hasLpSignal(lpInsight) && (
+            <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150 fill-mode-backwards">
+              <CardHeader>
+                <CardTitle className="text-base">LP 흐름</CardTitle>
+                <CardDescription>
+                  랭크 스냅샷 관측 {lpInsight.observedWins}승{" "}
+                  {lpInsight.observedLosses}패 기준 · LP 득실은 내부 지표를 가장
+                  직접 반영하는 신호예요
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border px-4 py-3">
+                    <div className="text-xs text-muted-foreground">
+                      승리당 평균
+                    </div>
+                    <div className="mt-1 text-xl font-bold text-emerald-500 tabular-nums">
+                      {lpInsight.avgGain !== null
+                        ? `+${lpInsight.avgGain.toFixed(1)} LP`
+                        : "수집 중"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border px-4 py-3">
+                    <div className="text-xs text-muted-foreground">
+                      패배당 평균
+                    </div>
+                    <div className="mt-1 text-xl font-bold text-red-500 tabular-nums">
+                      {lpInsight.avgLoss !== null
+                        ? `-${lpInsight.avgLoss.toFixed(1)} LP`
+                        : "수집 중"}
+                    </div>
+                  </div>
+                </div>
+                {(() => {
+                  const v = lpVerdict(lpInsight);
+                  if (!v) return null;
+                  return (
+                    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-xs sm:text-sm">
+                      {v.tone === "up" && (
+                        <ArrowUp className="size-4 shrink-0 text-emerald-500" />
+                      )}
+                      {v.tone === "down" && (
+                        <ArrowDown className="size-4 shrink-0 text-red-500" />
+                      )}
+                      {v.tone === "flat" && (
+                        <Minus className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span>{v.text}</span>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 로비 티어 분포 */}
+          {showLobbyDist && (
+            <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200 fill-mode-backwards">
+              <CardHeader>
+                <CardTitle className="text-base">로비 티어 분포</CardTitle>
+                <CardDescription>
+                  최근 경기들의 로비 평균 랭크가 속한 티어
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LobbyDistribution matches={matches} />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* 우측 컬럼 — 추이 차트 · 경기 목록 */}
+        <div className="space-y-4">
+          {/* 추이 차트 */}
+          <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-backwards">
             <CardHeader>
-              <CardTitle className="text-base">로비 티어 분포</CardTitle>
+              <CardTitle className="text-base">경기별 실력대 추이</CardTitle>
               <CardDescription>
-                최근 경기들의 로비 평균 랭크가 속한 티어
+                분석에 사용된 최근 {analyzedCount}경기 기준
+                {duoExcludedCount > 0 &&
+                  ` · 듀오 추정 ${duoExcludedCount}경기는 제외됨`}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LobbyDistribution matches={matches} />
+              {chartData.some((d) => d.lobby !== null) ? (
+                <MmrChart data={chartData} currentPoints={currentPoints} />
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  최근 솔로랭크 경기가 없어 그래프를 그릴 수 없어요.
+                </p>
+              )}
             </CardContent>
           </Card>
-        )}
+
+          {/* 경기 목록 — 최근 전적 / 분석 근거를 탭으로 (세로 길이 절감) */}
+          <MatchTabs
+            region={region}
+            riotId={decoded}
+            ddVersion={ddVersion}
+            champNames={champNames}
+            rows={matches.map((m): MatchRow => {
+              const lobby =
+                m.lobbyPoints !== null
+                  ? pointsToRank(Math.round(m.lobbyPoints))
+                  : null;
+              return {
+                id: m.matchId,
+                win: m.win,
+                iconUrl: m.championName
+                  ? championIconUrl(ddVersion, m.championName)
+                  : null,
+                champName: championNameKo(champNames, m.championName),
+                kda: m.kda,
+                when: timeAgo(m.gameCreation),
+                lobbyLabel: lobby?.label ?? null,
+                lobbyTier: lobby?.tier ?? null,
+                sampleSize: m.sampleSize,
+                suspectedDuo: m.suspectedDuo ?? false,
+              };
+            })}
+          />
+        </div>
       </div>
-
-      {/* 추이 차트 */}
-      <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-backwards">
-        <CardHeader>
-          <CardTitle className="text-base">경기별 실력대 추이</CardTitle>
-          <CardDescription>
-            분석에 사용된 최근 {analyzedCount}경기 기준
-            {duoExcludedCount > 0 &&
-              ` · 듀오 추정 ${duoExcludedCount}경기는 제외됨`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {chartData.some((d) => d.lobby !== null) ? (
-            <MmrChart data={chartData} currentPoints={currentPoints} />
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              최근 솔로랭크 경기가 없어 그래프를 그릴 수 없어요.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 경기 목록 — 최근 전적 / 분석 근거를 탭으로 (세로 길이 절감) */}
-      <MatchTabs
-        region={region}
-        riotId={decoded}
-        ddVersion={ddVersion}
-        champNames={champNames}
-        rows={matches.map((m): MatchRow => {
-          const lobby =
-            m.lobbyPoints !== null
-              ? pointsToRank(Math.round(m.lobbyPoints))
-              : null;
-          return {
-            id: m.matchId,
-            win: m.win,
-            iconUrl: m.championName
-              ? championIconUrl(ddVersion, m.championName)
-              : null,
-            champName: championNameKo(champNames, m.championName),
-            kda: m.kda,
-            when: timeAgo(m.gameCreation),
-            lobbyLabel: lobby?.label ?? null,
-            lobbyTier: lobby?.tier ?? null,
-            sampleSize: m.sampleSize,
-            suspectedDuo: m.suspectedDuo ?? false,
-          };
-        })}
-      />
 
       <p className="text-xs text-muted-foreground">
         * 라이엇은 실제 실력대(내부 MMR)를 공개하지 않으므로 이 수치는 같은

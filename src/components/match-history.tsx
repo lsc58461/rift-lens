@@ -5,6 +5,7 @@
 // 펼치면 10인 스코어보드를 보여준다.
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronDown, Loader2, Swords } from "lucide-react";
 import {
@@ -137,10 +138,12 @@ function TeamColumn({
   version,
   names,
   players,
+  region,
 }: {
   version: string;
   names: Record<string, string>;
   players: Player[];
+  region: string;
 }) {
   return (
     <div className="space-y-[3px]">
@@ -154,13 +157,14 @@ function TeamColumn({
             unoptimized
             className="size-4 shrink-0 rounded-sm"
           />
-          <span
-            className={`truncate text-[11px] leading-tight ${
+          <Link
+            href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
+            className={`truncate text-[11px] leading-tight underline-offset-2 hover:underline ${
               p.self ? "font-semibold text-foreground" : "text-muted-foreground"
             }`}
           >
             {p.name.split("#")[0]}
-          </span>
+          </Link>
         </div>
       ))}
     </div>
@@ -173,12 +177,14 @@ function ScoreboardSide({
   players,
   win,
   label,
+  region,
 }: {
   version: string;
   names: Record<string, string>;
   players: Player[];
   win: boolean;
   label: string;
+  region: string;
 }) {
   return (
     <div className="min-w-0">
@@ -205,11 +211,14 @@ function ScoreboardSide({
               unoptimized
               className="size-5 rounded"
             />
-            <span
-              className={`truncate ${p.self ? "" : "text-muted-foreground"}`}
+            <Link
+              href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
+              className={`truncate underline-offset-2 hover:underline ${
+                p.self ? "" : "text-muted-foreground"
+              }`}
             >
               {p.name.split("#")[0]}
-            </span>
+            </Link>
             <span className="tabular-nums text-muted-foreground">
               {p.kills}/{p.deaths}/{p.assists}
             </span>
@@ -439,11 +448,13 @@ export function MatchHistory({
                     version={ddVersion}
                     names={champNames}
                     players={g.team}
+                    region={region}
                   />
                   <TeamColumn
                     version={ddVersion}
                     names={champNames}
                     players={g.enemy}
+                    region={region}
                   />
                 </div>
 
@@ -468,6 +479,7 @@ export function MatchHistory({
                     players={g.team}
                     win={g.win}
                     label="우리 팀"
+                    region={region}
                   />
                   <ScoreboardSide
                     version={ddVersion}
@@ -475,6 +487,7 @@ export function MatchHistory({
                     players={g.enemy}
                     win={!g.win}
                     label="상대 팀"
+                    region={region}
                   />
                 </div>
               )}
