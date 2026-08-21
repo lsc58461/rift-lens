@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ExternalLink, RefreshCw, Search, Users } from "lucide-react";
+// 기록된 소환사 목록. 목록이 커져도 화면이 무거워지지 않도록 검색·필터·페이징을
+// 모두 서버에서 처리하고, 브라우저로는 한 페이지 분량만 받는다.
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  RefreshCw,
+  Search,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   ANALYSIS_BADGES,
-  fetchAdminStatus,
+  fetchSummonerPage,
   timeAgo,
-  type AdminStatus,
+  type AnalysisState,
+  type SummonerPage,
 } from "./types";
 import { EmptyState, PageHeader } from "./ui";
 
-type Analysis = AdminStatus["summoners"][number]["analysis"];
-
-const FILTERS: { key: "all" | Analysis; label: string }[] = [
+const FILTERS: { key: "all" | AnalysisState; label: string }[] = [
   { key: "all", label: "전체" },
   { key: "deep", label: "정밀 · 최신" },
   { key: "deep-stale", label: "정밀 · 스테일" },
@@ -25,49 +34,53 @@ const FILTERS: { key: "all" | Analysis; label: string }[] = [
   { key: "none", label: "캐시 만료" },
 ];
 
+const PAGE_SIZE = 50;
+
 export function SummonersPanel() {
-  const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [data, setData] = useState<SummonerPage | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | Analysis>("all");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [filter, setFilter] = useState<"all" | AnalysisState>("all");
+  const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(true);
 
-  async function load() {
+  // 검색은 타이핑이 멈춘 뒤에 보낸다
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  // 검색어·필터가 바뀌면 첫 페이지로
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, filter]);
+
+  const load = useCallback(async () => {
     setBusy(true);
     try {
-      const d = await fetchAdminStatus();
-      if (d) setStatus(d);
+      const d = await fetchSummonerPage({
+        page,
+        size: PAGE_SIZE,
+        q: debouncedQ,
+        filter,
+      });
+      if (d) setData(d);
     } catch {
       // 무시 — 새로고침 버튼으로 재시도
     } finally {
       setBusy(false);
     }
-  }
+  }, [page, debouncedQ, filter]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchAdminStatus()
-      .then((d) => {
-        if (!cancelled && d) setStatus(d);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
 
-  const all = status?.summoners ?? [];
-  const counts = all.reduce<Record<string, number>>((acc, s) => {
-    acc[s.analysis] = (acc[s.analysis] ?? 0) + 1;
-    return acc;
-  }, {});
-  const list = all.filter(
-    (s) =>
-      (filter === "all" || s.analysis === filter) &&
-      s.name.toLowerCase().includes(q.toLowerCase()),
-  );
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="space-y-5">
@@ -90,7 +103,7 @@ export function SummonersPanel() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -98,14 +111,17 @@ export function SummonersPanel() {
             className="pl-9"
           />
         </div>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {list.length} / {all.length}명
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {total}명 중 {from}–{to} · 전체 {data?.totalAll ?? 0}명
         </span>
       </div>
 
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {FILTERS.map((f) => {
-          const n = f.key === "all" ? all.length : (counts[f.key] ?? 0);
+          const n =
+            f.key === "all"
+              ? Object.values(data?.counts ?? {}).reduce((a, b) => a + b, 0)
+              : (data?.counts?.[f.key] ?? 0);
           const active = filter === f.key;
           return (
             <button
@@ -127,14 +143,14 @@ export function SummonersPanel() {
 
       <Card className="py-0">
         <CardContent className="px-0">
-          <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:flex">
+          <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
             <span className="flex-1">소환사</span>
             <span className="w-24 shrink-0">상태</span>
             <span className="w-40 shrink-0 text-right">현재 → 추정</span>
             <span className="w-16 shrink-0 text-right">검색</span>
           </div>
           <div className="divide-y divide-border/60">
-            {list.map((r) => (
+            {items.map((r) => (
               <div
                 key={`${r.region}:${r.name}`}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
@@ -166,14 +182,42 @@ export function SummonersPanel() {
                 </span>
               </div>
             ))}
-            {list.length === 0 && (
+            {items.length === 0 && (
               <EmptyState icon={Users}>
-                {status ? "조건에 맞는 소환사가 없어요" : "불러오는 중…"}
+                {busy ? "불러오는 중…" : "조건에 맞는 소환사가 없어요"}
               </EmptyState>
             )}
           </div>
         </CardContent>
       </Card>
+
+      {lastPage > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || busy}
+            className="gap-1"
+          >
+            <ChevronLeft className="size-3.5" />
+            이전
+          </Button>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {page} / {lastPage}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+            disabled={page >= lastPage || busy}
+            className="gap-1"
+          >
+            다음
+            <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

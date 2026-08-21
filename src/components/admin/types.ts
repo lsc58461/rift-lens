@@ -41,6 +41,36 @@ export interface AdminStatus {
     searchedAt: number;
     analysis: "deep" | "deep-stale" | "quick" | "quick-stale" | "none";
   }[];
+  /** 기록된 소환사 전체 수 (목록 자체는 페이지 API로 받는다) */
+  summonerTotal: number;
+  summonerCounts: Record<string, number>;
+}
+
+export type AnalysisState = AdminStatus["summoners"][number]["analysis"];
+
+export interface SummonerPage {
+  items: AdminStatus["summoners"];
+  total: number;
+  totalAll: number;
+  counts: Record<AnalysisState, number>;
+  page: number;
+  size: number;
+}
+
+export async function fetchSummonerPage(params: {
+  page: number;
+  size: number;
+  q: string;
+  filter: AnalysisState | "all";
+}): Promise<SummonerPage | null> {
+  const qs = new URLSearchParams({
+    page: String(params.page),
+    size: String(params.size),
+    q: params.q,
+    filter: params.filter,
+  });
+  const res = await fetch(`/api/admin/summoners?${qs}`);
+  return res.ok ? ((await res.json()) as SummonerPage) : null;
 }
 
 export const RATE_STATES: Record<

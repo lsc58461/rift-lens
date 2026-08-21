@@ -163,9 +163,9 @@ export function DashboardPanel() {
     };
   }, [router]);
 
-  const total = status?.summoners.length ?? 0;
-  const deepFresh =
-    status?.summoners.filter((s) => s.analysis === "deep").length ?? 0;
+  // 목록은 최근 10명만 내려오므로 합계는 서버가 계산한 값을 쓴다
+  const total = status?.summonerTotal ?? 0;
+  const deepFresh = status?.summonerCounts?.deep ?? 0;
   const running = status?.running;
   const waiting = status?.waiting ?? [];
   const rate = status?.rate;
