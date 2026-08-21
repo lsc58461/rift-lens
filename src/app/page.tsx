@@ -14,21 +14,21 @@ import { Badge } from "@/components/ui/badge";
 const FEATURES = [
   {
     icon: Gauge,
-    title: "숨은 실력대 추정",
+    title: "전적 · 매치 히스토리",
     description:
-      "최근 솔로랭크 경기에서 만난 플레이어들의 현재 랭크를 역추적해 실제 매칭 실력대를 계산합니다.",
-  },
-  {
-    icon: Activity,
-    title: "실력대 추이 그래프",
-    description:
-      "경기별 로비 평균 랭크와 매칭 실력대 궤적을 그래프로 보여줘 상승세인지 하락세인지 한눈에 확인할 수 있습니다.",
+      "최근 솔로랭크 경기의 KDA·딜량·CS·아이템·팀 구성을 한 화면에서 확인하고, 참가자 이름을 눌러 바로 이동할 수 있습니다.",
   },
   {
     icon: Users,
-    title: "티어 대비 실력 판독",
+    title: "매칭 로비 분석",
     description:
-      "겉보기 티어와 매칭 실력대의 차이를 계산해 지금이 승급 구간인지 알려줍니다.",
+      "최근 경기에서 만난 플레이어들의 현재 랭크 분포를 모아, 요즘 어떤 구간의 로비에서 게임이 잡히는지 보여줍니다.",
+  },
+  {
+    icon: Activity,
+    title: "랭크 추이 그래프",
+    description:
+      "경기별 로비 평균 랭크와 LP 흐름을 그래프로 담아 상승세인지 하락세인지 한눈에 확인할 수 있습니다.",
   },
 ] as const;
 
@@ -38,7 +38,7 @@ const JSON_LD = {
   name: "Rift Lens",
   url: "https://rift-lens.xyz",
   description:
-    "리그 오브 레전드 솔로랭크의 매칭 실력대를 최근 경기 데이터로 추정하는 사이트",
+    "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기와 매칭 로비의 랭크 분포를 보여주는 사이트",
   potentialAction: {
     "@type": "SearchAction",
     target: {
@@ -54,7 +54,7 @@ const TOOLS = [
   {
     icon: Swords,
     title: "내전 팀 밸런서",
-    description: "매칭 실력대로 가장 공평한 5:5 팀을 자동으로 나눠드려요.",
+    description: "최근 랭크 데이터로 가장 공평한 5:5 팀을 자동으로 나눠드려요.",
     href: "/team",
   },
   {
@@ -87,16 +87,16 @@ export default function Home() {
           라이엇 공식 API 데이터 기반
         </Badge>
         <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-5xl lg:text-6xl">
-          내 진짜{" "}
+          요즘 나는 어떤{" "}
           <span className="bg-linear-to-r from-primary via-primary to-chart-2 bg-clip-text text-transparent">
-            실력대
+            로비
           </span>
-          는
-          <br className="sm:hidden" /> 어디쯤일까?
+          에서
+          <br className="sm:hidden" /> 싸우고 있을까?
         </h1>
         <p className="text-muted-foreground text-pretty sm:text-lg">
-          최근 경기에서 만난 플레이어들의 랭크로 내가 어느 실력대에서 매칭되는지
-          추정해 드립니다.
+          최근 솔로랭크 전적과 함께, 같은 경기에 잡힌 플레이어들의 현재 랭크
+          분포까지 — 전적을 한층 깊게 보여드립니다.
         </p>
       </div>
 

@@ -20,28 +20,28 @@ const geistMono = Geist_Mono({
 });
 
 const DESCRIPTION =
-  "라이엇 공식 API의 공개 랭크 데이터로 리그 오브 레전드 솔로랭크의 매칭 실력대를 추정합니다. 최근 경기 로비의 랭크를 역추적해 내가 어느 실력대에서 매칭되는지 확인해 보세요.";
+  "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기 기록과 함께, 같은 로비에 잡힌 플레이어들의 현재 랭크 분포를 라이엇 공식 API의 공개 데이터로 보여드립니다.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://rift-lens.xyz"),
   title: {
-    default: "Rift Lens — 롤 매칭 실력대 판독기",
+    default: "Rift Lens — 롤 전적 검색 · 매칭 로비 분석",
     template: "%s | Rift Lens",
   },
   description: DESCRIPTION,
   keywords: [
+    "롤 전적 검색",
     "롤 매칭 실력대",
     "롤 티어 분석",
-    "솔로랭크 실력 분석",
     "롤 랭크 조회",
-    "리그오브레전드 실력대",
     "롤 로비 평균 티어",
+    "리그오브레전드 전적",
   ],
   openGraph: {
     type: "website",
     locale: "ko_KR",
     siteName: "Rift Lens",
-    title: "Rift Lens — 롤 매칭 실력대 판독기",
+    title: "Rift Lens — 롤 전적 검색 · 매칭 로비 분석",
     description: DESCRIPTION,
     url: "/",
   },
