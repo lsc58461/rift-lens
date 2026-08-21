@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
 
   const started = Date.now();
   const elapsed = () => Date.now() - started;
-  const recent = await getRecentSearches(); // 최근 검색 순
+  // 기본 상한(50)만 보면 그 뒤 소환사는 영영 갱신되지 않는다 — 전체를 순회한다
+  const recent = await getRecentSearches(1000); // 최근 검색 순
 
   const quickRefreshed: string[] = [];
   let deepCompleted = 0;
@@ -133,6 +134,9 @@ export async function GET(req: NextRequest) {
     quickRefreshed,
     deepCompleted,
     deepBlocked,
+    deepPending,
+    brokeEarly,
+    remaining: brokeEarly || deepPending,
     skipped,
     failed,
     chained,

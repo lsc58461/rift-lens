@@ -23,6 +23,8 @@ export interface RefreshAllState {
   refreshed: number; // 빠른 추정을 새로 돌린 소환사 수
   deepCompleted: number;
   failed: number;
+  /** 연속으로 아무 일도 못 한 라운드 수 — 이게 쌓이면 종료한다 */
+  idleRounds: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -37,6 +39,7 @@ function empty(): RefreshAllState {
     refreshed: 0,
     deepCompleted: 0,
     failed: 0,
+    idleRounds: 0,
     startedAt: Date.now(),
     updatedAt: Date.now(),
     lastError: null,
@@ -98,6 +101,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       quickRefreshed?: string[];
       deepCompleted?: number;
       failed?: number;
+      remaining?: boolean;
     } = await res.json();
 
     const refreshed = d.quickRefreshed?.length ?? 0;
@@ -111,10 +115,19 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       failed: state.failed + (d.failed ?? 0),
       lastError: null,
     };
-    // 이번 라운드에 한 일이 없으면 갱신할 대상이 남지 않은 것
-    if (refreshed === 0 && deep === 0) {
+    // 한 라운드가 놀았다고 곧장 끝내면 안 된다 — 목록 앞쪽이 최신이라 건너뛰었을
+    // 뿐이거나, 러너 락이 잡혀 정밀을 못 돌린 것일 수 있다. 크론이 "남은 작업 없음"을
+    // 알려주고 연속으로 놀았을 때만 종료한다.
+    const didWork = refreshed > 0 || deep > 0;
+    state.idleRounds = didWork ? 0 : state.idleRounds + 1;
+    if (!didWork && !d.remaining && state.idleRounds >= 2) {
       state.running = false;
       state.done = true;
+    } else if (state.idleRounds >= 5) {
+      // 남은 작업이 있다고 하는데도 계속 진전이 없으면(락 점유 등) 멈춘다
+      state.running = false;
+      state.done = true;
+      state.lastError = "진전이 없어 종료했어요 (다른 분석이 실행 중일 수 있음)";
     }
     await save(state);
   } catch (e) {
