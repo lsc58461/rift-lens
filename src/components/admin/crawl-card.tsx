@@ -73,15 +73,18 @@ export function CrawlCard() {
       const qs =
         action === "start" ? `action=start&target=${target}` : "action=stop";
       const res = await fetch(`/api/admin/crawl?${qs}`, { method: "POST" });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error ?? "요청에 실패했어요");
+      }
       toast.success(
         action === "start"
           ? `소환사 ${target}명 수집을 시작했어요`
           : "수집을 중지했어요",
       );
       await load();
-    } catch {
-      toast.error("요청에 실패했어요");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "요청에 실패했어요");
     } finally {
       setBusy(false);
     }

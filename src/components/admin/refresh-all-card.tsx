@@ -75,13 +75,16 @@ export function RefreshAllCard() {
       const res = await fetch(`/api/admin/refresh-all?action=${action}`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error ?? "요청에 실패했어요");
+      }
       toast.success(
         action === "start" ? "전체 갱신을 시작했어요" : "갱신을 중지했어요",
       );
       await load();
-    } catch {
-      toast.error("요청에 실패했어요");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "요청에 실패했어요");
     } finally {
       setBusy(false);
     }
