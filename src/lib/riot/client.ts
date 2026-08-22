@@ -4,6 +4,7 @@ import { currentPriority, riotLimiter } from "./limiter";
 import { recordRateLimitHit, trackRateLimiter } from "./rate-status";
 import { cache, cached } from "@/lib/cache";
 import { getSql as getDbSql } from "@/lib/db";
+import { getCompletedItemIds, getDDragonVersion } from "@/lib/ddragon";
 import { canon } from "@/lib/identity";
 import {
   clearRenameMapping,
@@ -508,30 +509,61 @@ export async function harvestStartItems(
   timeline?: Record<string, TimelinePlayer>,
 ): Promise<void> {
   const fp = keyFp();
-  const marker = `sih:${fp}:${matchId}`;
-  if (await cache.get(marker)) return;
-
-  const [tl, row] = await Promise.all([
+  const [tl, row, completedIds] = await Promise.all([
     timeline ? Promise.resolve(timeline) : getMatchTimeline(platform, matchId),
     getMatchRow(fp, matchId),
+    getDDragonVersion().then(getCompletedItemIds),
   ]);
   if (!row) return;
-
+  const completed = new Set(completedIds);
   const sql = await getDbSql();
-  for (const p of row.participants) {
-    const pl = tl[p.puuid];
-    if (!pl) continue;
-    const starts = pl.items
-      .filter((e) => e.type === "buy" && e.minute * 60_000 <= START_WINDOW_MS)
-      .map((e) => e.itemId)
-      .sort((a, b) => a - b);
-    if (starts.length === 0) continue;
-    await sql`
-      INSERT INTO start_items (fp, champ, items, games, wins)
-      VALUES (${fp}, ${p.championName}, ${starts.join(",")}, 1, ${p.win ? 1 : 0})
-      ON CONFLICT (fp, champ, items) DO UPDATE
-      SET games = start_items.games + 1,
-          wins = start_items.wins + ${p.win ? 1 : 0}`;
+
+  // 시작 아이템 (매치당 1회 마커)
+  const sihMarker = `sih:${fp}:${matchId}`;
+  if (!(await cache.get(sihMarker))) {
+    for (const p of row.participants) {
+      const pl = tl[p.puuid];
+      if (!pl) continue;
+      const starts = pl.items
+        .filter((e) => e.type === "buy" && e.minute * 60_000 <= START_WINDOW_MS)
+        .map((e) => e.itemId)
+        .sort((a, b) => a - b);
+      if (starts.length === 0) continue;
+      await sql`
+        INSERT INTO start_items (fp, champ, items, games, wins)
+        VALUES (${fp}, ${p.championName}, ${starts.join(",")}, 1, ${p.win ? 1 : 0})
+        ON CONFLICT (fp, champ, items) DO UPDATE
+        SET games = start_items.games + 1,
+            wins = start_items.wins + ${p.win ? 1 : 0}`;
+    }
+    await cache.set(sihMarker, 1, 60 * 60 * 24 * 60);
   }
-  await cache.set(marker, 1, 60 * 60 * 24 * 60);
+
+  // 코어 빌드 순서: 완성 아이템의 첫 구매 3개 (판매·중복 제외, 매치당 1회 마커)
+  const bpMarker = `bp:${fp}:${matchId}`;
+  if (!(await cache.get(bpMarker)) && completed.size > 0) {
+    for (const p of row.participants) {
+      const pl = tl[p.puuid];
+      if (!pl) continue;
+      const path: number[] = [];
+      for (const e of pl.items) {
+        if (e.type !== "buy" || !completed.has(e.itemId)) continue;
+        if (path.includes(e.itemId)) continue;
+        path.push(e.itemId);
+        if (path.length >= 3) break;
+      }
+      if (path.length < 2) continue; // 코어 2개도 못 갔으면 표본 제외
+      await sql`
+        INSERT INTO build_paths (fp, champ, path, games, wins)
+        VALUES (${fp}, ${p.championName}, ${path.join(">")}, 1, ${p.win ? 1 : 0})
+        ON CONFLICT (fp, champ, path) DO UPDATE
+        SET games = build_paths.games + 1,
+            wins = build_paths.wins + ${p.win ? 1 : 0}`;
+    }
+    await cache.set(bpMarker, 1, 60 * 60 * 24 * 60);
+  }
+
+  await sql`
+    UPDATE matches SET build_harvested = true
+    WHERE fp = ${fp} AND match_id = ${matchId}`.catch(() => {});
 }

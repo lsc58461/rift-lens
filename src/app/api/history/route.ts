@@ -1,3 +1,4 @@
+import { canon } from "@/lib/identity";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   getAccountByRiotId,
@@ -170,7 +171,13 @@ export async function POST(req: NextRequest) {
     const games = matches
       .filter((m): m is NonNullable<typeof m> => m !== null)
       .map((m) => {
-        const self = m.participants.find((p) => p.puuid === account.puuid);
+        // PUUID는 API 키 단위 암호화라 키가 바뀌면 구키 매치에서 매칭이 깨진다.
+        // 라이엇 ID(이름#태그)로 폴백해 매치를 재수집 없이 계속 쓸 수 있게 한다.
+        const isSelf = (p: (typeof m.participants)[number]) =>
+          p.puuid === account.puuid ||
+          (canon(p.riotIdGameName) === canon(account.gameName) &&
+            canon(p.riotIdTagline) === canon(account.tagLine));
+        const self = m.participants.find(isSelf);
         if (!self) return null;
         const mine = m.participants.filter((p) => p.teamId === self.teamId);
         const theirs = m.participants.filter((p) => p.teamId !== self.teamId);
@@ -196,7 +203,7 @@ export async function POST(req: NextRequest) {
           level: p.champLevel ?? null,
           spells: [p.spell1Id ?? 0, p.spell2Id ?? 0],
           items: p.items ?? [],
-          self: p.puuid === account.puuid,
+          self: isSelf(p),
         });
         return {
           matchId: m.matchId,

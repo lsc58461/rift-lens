@@ -143,6 +143,8 @@ async function initSchema(sql: Sql): Promise<void> {
     CREATE INDEX IF NOT EXISTS visit_log_at_idx ON visit_log (at DESC);
 
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch text;
+    -- 타임라인(빌드 데이터) 수확 완료 표시 — 백필이 남은 작업을 찾는 기준
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS build_harvested boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS matches_fp_patch_idx ON matches (fp, patch);
 
     -- 시작 아이템 집계 — 타임라인(첫 90초 구매)에서 수확. 챔피언 통계용
@@ -153,6 +155,16 @@ async function initSchema(sql: Sql): Promise<void> {
       games int NOT NULL DEFAULT 0,
       wins int NOT NULL DEFAULT 0,
       PRIMARY KEY (fp, champ, items)
+    );
+
+    -- 코어 아이템 빌드 순서 집계 — 타임라인의 완성 아이템 구매 순서 상위 3개
+    CREATE TABLE IF NOT EXISTS build_paths (
+      fp text NOT NULL,
+      champ text NOT NULL,
+      path text NOT NULL, -- 아이템 id를 '>'로 연결 (구매 순서)
+      games int NOT NULL DEFAULT 0,
+      wins int NOT NULL DEFAULT 0,
+      PRIMARY KEY (fp, champ, path)
     );
 
     -- 닉변 이력 — 옛 이름 → 현재 이름 매핑. API 키가 바뀌어도(puuid 재암호화)

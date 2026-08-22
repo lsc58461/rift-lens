@@ -505,6 +505,50 @@ function ChampionModal({
             </div>
           </section>
 
+          {/* 코어 빌드 순서 */}
+          <section>
+            <SectionLabel>코어 아이템 순서</SectionLabel>
+            {c.buildPaths.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                빌드 순서 데이터는 수집 중이에요
+              </p>
+            )}
+            <div className="space-y-1.5">
+              {c.buildPaths.map((bp, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-xs">
+                  {bp.items.map((id, j) => {
+                    const url = itemIconUrl(version, id);
+                    return (
+                      <span key={j} className="flex items-center gap-1.5">
+                        {url ? (
+                          <Image
+                            src={url}
+                            alt=""
+                            width={26}
+                            height={26}
+                            unoptimized
+                            className="size-6.5 rounded"
+                          />
+                        ) : (
+                          <span className="size-6.5 rounded bg-foreground/8" />
+                        )}
+                        {j < bp.items.length - 1 && (
+                          <span className="text-muted-foreground/50">›</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                  <span className="ml-1 tabular-nums text-muted-foreground">
+                    {bp.games}판
+                  </span>
+                  <span className="ml-auto font-medium">
+                    <WinrateText wins={bp.wins} games={bp.games} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
           {/* 아이템 */}
           <section>
             <SectionLabel>자주 나온 아이템</SectionLabel>

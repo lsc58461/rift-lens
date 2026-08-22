@@ -50,6 +50,12 @@ export interface StartItemStat {
   wins: number;
 }
 
+export interface BuildPathStat {
+  items: number[]; // 구매 순서대로
+  games: number;
+  wins: number;
+}
+
 export interface ChampionStat {
   champ: string;
   games: number;
@@ -63,6 +69,7 @@ export interface ChampionStat {
   spells: SpellCombo[];
   items: ItemStat[];
   startItems: StartItemStat[];
+  buildPaths: BuildPathStat[];
   runes: RuneStat[];
 }
 
@@ -77,7 +84,7 @@ export interface ChampionStatsPayload {
 export function getChampionStats(
   patch: string | null = null,
 ): Promise<ChampionStatsPayload> {
-  return cached(`champstats:v5:${patch ?? "all"}`, TTL_SECONDS, () =>
+  return cached(`champstats:v6:${patch ?? "all"}`, TTL_SECONDS, () =>
     buildStats(patch),
   );
 }
@@ -126,7 +133,7 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
     WHERE m.fp = '${fp.replace(/'/g, "")}'
       ${patch ? `AND m.patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`;
 
-  const [meta, base, positions, spells, items, runes, startItems] = await Promise.all([
+  const [meta, base, positions, spells, items, runes, startItems, buildPaths] = await Promise.all([
     sql.unsafe(
       `SELECT count(*)::int AS games FROM matches
        WHERE fp = $1 ${patch ? `AND patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`,
@@ -166,6 +173,10 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
       `SELECT champ, items, games, wins FROM start_items WHERE fp = $1`,
       [fp],
     ),
+    sql.unsafe(
+      `SELECT champ, path, games, wins FROM build_paths WHERE fp = $1`,
+      [fp],
+    ),
   ]);
 
   const map = new Map<string, ChampionStat>();
@@ -184,6 +195,7 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
       spells: [],
       items: [],
       startItems: [],
+      buildPaths: [],
       runes: [],
     });
   }
@@ -227,6 +239,17 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
     });
   }
 
+  // 코어 빌드 순서 — 시작 아이템과 마찬가지로 패치 구분 없는 누적 집계
+  for (const r of buildPaths as unknown as { champ: string; path: string; games: number; wins: number }[]) {
+    const c = map.get(r.champ);
+    if (c && r.games >= 2)
+      c.buildPaths.push({
+        items: r.path.split(">").map(Number),
+        games: r.games,
+        wins: r.wins,
+      });
+  }
+
   // 시작 아이템은 패치 구분 없이 누적 집계된 값을 쓴다 (표본이 아직 적음)
   for (const r of startItems as unknown as { champ: string; items: string; games: number; wins: number }[]) {
     const c = map.get(r.champ);
@@ -243,6 +266,7 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
       ...c,
       spells: c.spells.sort((a, b) => b.games - a.games).slice(0, 3),
       startItems: c.startItems.sort((a, b) => b.games - a.games).slice(0, 3),
+      buildPaths: c.buildPaths.sort((a, b) => b.games - a.games).slice(0, 3),
       items: c.items.sort((a, b) => b.games - a.games).slice(0, 12),
       runes: c.runes.sort((a, b) => b.games - a.games).slice(0, 3),
     }))

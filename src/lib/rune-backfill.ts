@@ -41,7 +41,8 @@ export async function countMissingRunes(): Promise<number> {
   const r = await sql`
     SELECT count(*)::int AS n FROM matches
     WHERE fp = ${riotKeyFp()}
-      AND (NOT (participants->0 ? 'keystone') OR patch IS NULL)`;
+      AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
+           OR NOT build_harvested)`;
   return (r[0]?.n as number) ?? 0;
 }
 
@@ -78,9 +79,12 @@ export async function runRunefillRound(): Promise<void> {
     const sql = await getSql();
     const fp = riotKeyFp();
     const rows = await sql`
-      SELECT match_id, platform FROM matches
+      SELECT match_id, platform,
+             ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok
+      FROM matches
       WHERE fp = ${fp}
-        AND (NOT (participants->0 ? 'keystone') OR patch IS NULL)
+        AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
+             OR NOT build_harvested)
       ORDER BY game_creation DESC LIMIT ${PER_ROUND}`;
 
     if (rows.length === 0) {
@@ -90,9 +94,12 @@ export async function runRunefillRound(): Promise<void> {
 
     let filled = 0;
     let failed = 0;
-    for (const r of rows as unknown as { match_id: string; platform: PlatformRegion }[]) {
+    for (const r of rows as unknown as { match_id: string; platform: PlatformRegion; body_ok: boolean }[]) {
       try {
-        await withLowPriority(() => getMatch(r.platform, r.match_id, true));
+        // 본문(룬·패치)이 이미 채워진 매치는 타임라인만 받는다 — 호출 절약
+        if (!r.body_ok) {
+          await withLowPriority(() => getMatch(r.platform, r.match_id, true));
+        }
         // 같은 매치의 타임라인으로 시작 아이템도 수확 (매치당 1회 마커로 중복 방지).
         // 수확 후 타임라인 캐시는 지운다 — 수천 매치 분량이 KV에 쌓이는 것 방지
         await withLowPriority(() =>
@@ -100,13 +107,20 @@ export async function runRunefillRound(): Promise<void> {
             await harvestStartItems(r.platform, r.match_id, tl);
             await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
           }),
-        ).catch(() => {});
+        ).catch(async () => {
+          // 타임라인을 받을 수 없는 매치도 완료 표시 — 무한 재시도 방지
+          await sql`
+            UPDATE matches SET build_harvested = true
+            WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+        });
         filled++;
       } catch {
         failed++;
-        // 다시 받을 수 없는 매치(만료 등)는 키를 null로 박아 재시도 대상에서 제외
+        // 다시 받을 수 없는 매치(만료 등)는 재시도 대상에서 제외
         await sql`
-          UPDATE matches SET participants = jsonb_set(participants, '{0,keystone}', 'null')
+          UPDATE matches
+          SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
+              build_harvested = true
           WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
       }
     }
