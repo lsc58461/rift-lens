@@ -13,6 +13,7 @@ import {
   championNameKo,
   itemIconUrl,
   spellIconUrl,
+  STAT_MODS,
 } from "@/lib/ddragon-assets";
 import type {
   ChampionStat,
@@ -34,6 +35,19 @@ type Lane = (typeof LANES)[number] | "all";
 
 function wr(wins: number, games: number): number {
   return games > 0 ? Math.round((wins / games) * 100) : 0;
+}
+
+/** 표본 보정 승률(윌슨 하한) — 판수가 적은 항목이 높은 승률만으로
+ * 추천되는 것을 막는다. 130판 52%보다 1368판 47%가 위에 올 수 있다. */
+function adjustedRate(wins: number, games: number): number {
+  if (games === 0) return 0;
+  const z = 1.96;
+  const p = wins / games;
+  return (
+    (p + (z * z) / (2 * games) -
+      z * Math.sqrt((p * (1 - p) + (z * z) / (4 * games)) / games)) /
+    (1 + (z * z) / games)
+  );
 }
 
 /** 라인 필터가 걸려 있으면 그 라인 기준 판수·승수를 쓴다 */
@@ -273,7 +287,7 @@ function ChampionModal({
     (a, b) => b[1].games - a[1].games,
   );
   const bestSpell = [...c.spells].sort(
-    (a, b) => wr(b.wins, b.games) - wr(a.wins, a.games),
+    (a, b) => adjustedRate(b.wins, b.games) - adjustedRate(a.wins, a.games),
   )[0];
 
   return (
@@ -453,53 +467,89 @@ function ChampionModal({
                 룬 데이터는 수집 중이에요 — 새 경기가 쌓이면 표시됩니다
               </p>
             )}
-            <div className="space-y-1.5">
-              {c.runes.map((r) => {
-                const key = runeMap[r.keystone];
-                const sub = runeMap[r.subStyle];
-                return (
-                  <div
-                    key={`${r.keystone}-${r.subStyle}`}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <span className="flex items-center gap-1">
-                      {key && (
-                        <Image
-                          src={`https://ddragon.leagueoflegends.com/cdn/img/${key.icon}`}
-                          alt={key.name}
-                          width={26}
-                          height={26}
-                          unoptimized
-                          className="size-6.5"
-                        />
-                      )}
-                      {sub && (
-                        <Image
-                          src={`https://ddragon.leagueoflegends.com/cdn/img/${sub.icon}`}
-                          alt={sub.name}
-                          width={16}
-                          height={16}
-                          unoptimized
-                          className="size-4 opacity-80"
-                        />
-                      )}
-                    </span>
-                    <span className="truncate text-muted-foreground">
-                      {key?.name ?? r.keystone}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {r.games}판
-                    </span>
-                    <span className="ml-auto shrink-0 font-medium">
-                      <WinrateText wins={r.wins} games={r.games} />
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="space-y-2">
+              {c.runes.map((r, i) => (
+                <RunePage key={i} r={r} runeMap={runeMap} />
+              ))}
             </div>
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** op.gg식 풀 룬 페이지 — 주 트리 4 · 보조 2 · 능력치 파편 3 */
+function RunePage({
+  r,
+  runeMap,
+}: {
+  r: ChampionStat["runes"][number];
+  runeMap: Record<number, RuneInfo>;
+}) {
+  const runeImg = (id: number, size: string, dim = false) => {
+    const info = runeMap[id];
+    return info ? (
+      <Image
+        src={`https://ddragon.leagueoflegends.com/cdn/img/${info.icon}`}
+        alt={info.name}
+        title={info.name}
+        width={28}
+        height={28}
+        unoptimized
+        className={`${size} ${dim ? "opacity-90" : ""}`}
+      />
+    ) : (
+      <span className={`${size} rounded-full bg-foreground/8`} />
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-background/50 p-2.5">
+      {/* 주 트리: 핵심룬 크게 + 나머지 3개 */}
+      <div className="flex items-center gap-1">
+        {runeImg(r.keystone, "size-8 shrink-0")}
+        {r.perks.slice(1).map((id, i) => (
+          <span key={i}>{runeImg(id, "size-5 shrink-0", true)}</span>
+        ))}
+      </div>
+      <span className="h-6 w-px shrink-0 bg-border" />
+      {/* 보조 트리 + 2개 */}
+      <div className="flex items-center gap-1">
+        {runeImg(r.subStyle, "size-4 shrink-0", true)}
+        {r.subPerks.map((id, i) => (
+          <span key={i}>{runeImg(id, "size-5 shrink-0", true)}</span>
+        ))}
+      </div>
+      <span className="h-6 w-px shrink-0 bg-border" />
+      {/* 능력치 파편 */}
+      <div className="flex items-center gap-1">
+        {r.statPerks.map((id, i) => {
+          const mod = STAT_MODS[id];
+          return mod ? (
+            <Image
+              key={i}
+              src={`https://ddragon.leagueoflegends.com/cdn/img/${mod.icon}`}
+              alt={mod.name}
+              title={mod.name}
+              width={16}
+              height={16}
+              unoptimized
+              className="size-4 rounded-full bg-foreground/10 p-0.5"
+            />
+          ) : (
+            <span key={i} className="size-4 rounded-full bg-foreground/8" />
+          );
+        })}
+      </div>
+      <span className="ml-auto shrink-0 text-right text-xs">
+        <span className="mr-1.5 tabular-nums text-muted-foreground">
+          {r.games}판
+        </span>
+        <span className="font-medium">
+          <WinrateText wins={r.wins} games={r.games} />
+        </span>
+      </span>
     </div>
   );
 }

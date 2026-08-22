@@ -15,6 +15,7 @@ import { AnnouncementCard } from "./announcement-card";
 import { CrawlCard } from "./crawl-card";
 import { MigrationCard } from "./migration-card";
 import { RefreshAllCard } from "./refresh-all-card";
+import { RuneBackfillCard } from "./rune-backfill-card";
 import { PageHeader } from "./ui";
 
 interface Maintenance {
@@ -114,6 +115,8 @@ export function MaintenancePanel() {
       <RefreshAllCard />
 
       <CrawlCard />
+
+      <RuneBackfillCard />
 
       <MigrationCard />
 

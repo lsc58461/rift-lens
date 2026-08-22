@@ -30,6 +30,10 @@ export interface ItemStat {
 export interface RuneStat {
   keystone: number;
   subStyle: number;
+  /** 주 트리 4개 · 보조 2개 · 파편 3개 — 풀 페이지가 저장된 경기만 집계 */
+  perks: number[];
+  subPerks: number[];
+  statPerks: number[];
   games: number;
   wins: number;
 }
@@ -62,7 +66,7 @@ export interface ChampionStatsPayload {
 }
 
 export function getChampionStats(): Promise<ChampionStatsPayload> {
-  return cached("champstats:v2", TTL_SECONDS, buildStats);
+  return cached("champstats:v3", TTL_SECONDS, buildStats);
 }
 
 async function buildStats(): Promise<ChampionStatsPayload> {
@@ -77,6 +81,9 @@ async function buildStats(): Promise<ChampionStatsPayload> {
            (pp->>'spell2Id')::int AS s2,
            (pp->>'keystone')::int AS keystone,
            (pp->>'subStyle')::int AS substyle,
+           pp->'perks' AS perks,
+           pp->'subPerks' AS subperks,
+           pp->'statPerks' AS statperks,
            pp->>'teamPosition' AS pos,
            (pp->>'kills')::int AS kills,
            (pp->>'deaths')::int AS deaths,
@@ -115,9 +122,11 @@ async function buildStats(): Promise<ChampionStatsPayload> {
       GROUP BY champ, (it.val #>> '{}')::int`),
     sql.unsafe(`
       SELECT champ, keystone, substyle,
+             perks::text AS perks, subperks::text AS subperks, statperks::text AS statperks,
              count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
-      FROM (${P}) p WHERE keystone IS NOT NULL AND substyle IS NOT NULL
-      GROUP BY champ, keystone, substyle`),
+      FROM (${P}) p
+      WHERE keystone IS NOT NULL AND substyle IS NOT NULL AND perks IS NOT NULL
+      GROUP BY champ, keystone, substyle, perks::text, subperks::text, statperks::text`),
   ]);
 
   const map = new Map<string, ChampionStat>();
@@ -151,10 +160,26 @@ async function buildStats(): Promise<ChampionStatsPayload> {
     if (c && r.games >= 5 && !NON_BUILD_ITEMS.has(r.id))
       c.items.push({ id: r.id, games: r.games, wins: r.wins });
   }
-  for (const r of runes as unknown as { champ: string; keystone: number; substyle: number; games: number; wins: number }[]) {
+  for (const r of runes as unknown as { champ: string; keystone: number; substyle: number; perks: string; subperks: string; statperks: string; games: number; wins: number }[]) {
     const c = map.get(r.champ);
-    if (c && r.games >= 3)
-      c.runes.push({ keystone: r.keystone, subStyle: r.substyle, games: r.games, wins: r.wins });
+    if (!c || r.games < 2) continue;
+    const parse = (t: string | null): number[] => {
+      try {
+        const v = JSON.parse(t ?? "[]");
+        return Array.isArray(v) ? v.map(Number) : [];
+      } catch {
+        return [];
+      }
+    };
+    c.runes.push({
+      keystone: r.keystone,
+      subStyle: r.substyle,
+      perks: parse(r.perks),
+      subPerks: parse(r.subperks),
+      statPerks: parse(r.statperks),
+      games: r.games,
+      wins: r.wins,
+    });
   }
 
   const champions = [...map.values()]

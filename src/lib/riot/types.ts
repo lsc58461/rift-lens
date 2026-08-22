@@ -54,6 +54,9 @@ export interface MatchParticipant {
   items?: number[]; // item0~6 (0은 빈 칸)
   keystone?: number; // 핵심룬 perk id — 룬 저장 도입(2026-08-22) 이전 매치엔 없음
   subStyle?: number; // 보조 룬 트리 style id
+  perks?: number[]; // 주 트리 선택 4개 (핵심룬 포함, 순서대로)
+  subPerks?: number[]; // 보조 트리 선택 2개
+  statPerks?: number[]; // 능력치 파편 3개 (공격/유연/방어)
 }
 
 export interface MatchInfo {

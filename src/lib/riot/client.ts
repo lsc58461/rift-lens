@@ -319,8 +319,10 @@ export async function getRankedMatchIds(
 export async function getMatch(
   platform: PlatformRegion,
   matchId: string,
+  /** true면 저장분을 무시하고 다시 받아 덮어쓴다 (룬 백필용) */
+  force = false,
 ): Promise<MatchInfo> {
-  const row = await getMatchRow(keyFp(), matchId);
+  const row = force ? null : await getMatchRow(keyFp(), matchId);
   // 확장 필드(cs)가 있으면 저장분 사용, 없으면(구버전 저장) 재조회해 채운다
   if (row && row.participants[0]?.cs !== undefined) return row;
 
@@ -345,6 +347,7 @@ export async function getMatch(
     summoner1Id: number;
     summoner2Id: number;
     perks?: {
+      statPerks?: { offense?: number; flex?: number; defense?: number };
       styles?: {
         description?: string;
         style?: number;
@@ -395,6 +398,19 @@ export async function getMatch(
         ?.selections?.[0]?.perk,
       subStyle: p.perks?.styles?.find((s) => s.description === "subStyle")
         ?.style,
+      perks: p.perks?.styles
+        ?.find((s) => s.description === "primaryStyle")
+        ?.selections?.map((sel) => sel.perk ?? 0),
+      subPerks: p.perks?.styles
+        ?.find((s) => s.description === "subStyle")
+        ?.selections?.map((sel) => sel.perk ?? 0),
+      statPerks: p.perks?.statPerks
+        ? [
+            p.perks.statPerks.offense ?? 0,
+            p.perks.statPerks.flex ?? 0,
+            p.perks.statPerks.defense ?? 0,
+          ]
+        : undefined,
       items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6],
     })),
   };

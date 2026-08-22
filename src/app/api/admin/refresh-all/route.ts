@@ -7,6 +7,7 @@ import {
   stopRefreshAll,
 } from "@/lib/refresh-all";
 import { getCrawlState } from "@/lib/crawl-seed";
+import { getRunefillState } from "@/lib/rune-backfill";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -40,7 +41,8 @@ export async function POST(req: NextRequest) {
   if (action === "start") {
     // 대량 백그라운드 작업은 한 번에 하나만
     const crawl = await getCrawlState();
-    if (crawl?.running) {
+    const runefill = await getRunefillState();
+    if (crawl?.running || runefill?.running) {
       return NextResponse.json(
         { error: "소환사 시드 수집이 진행 중이에요 — 끝난 뒤 시작해 주세요" },
         { status: 409 },

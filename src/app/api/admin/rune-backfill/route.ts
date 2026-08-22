@@ -1,0 +1,49 @@
+import { NextResponse, after, type NextRequest } from "next/server";
+import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
+import { getCrawlState } from "@/lib/crawl-seed";
+import { getRefreshAllState } from "@/lib/refresh-all";
+import {
+  beginRunefill,
+  countMissingRunes,
+  getRunefillState,
+  runRunefillRound,
+  stopRunefill,
+} from "@/lib/rune-backfill";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+export async function GET(req: NextRequest) {
+  if (!(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const [state, missing] = await Promise.all([
+    getRunefillState(),
+    countMissingRunes().catch(() => null),
+  ]);
+  return NextResponse.json({ state, missing });
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const action = req.nextUrl.searchParams.get("action") ?? "start";
+  if (action === "stop") {
+    await stopRunefill();
+    return NextResponse.json({ state: await getRunefillState() });
+  }
+  if (action === "start") {
+    // 대량 백그라운드 작업은 한 번에 하나만
+    const [ra, cr] = await Promise.all([getRefreshAllState(), getCrawlState()]);
+    if (ra?.running || cr?.running) {
+      return NextResponse.json(
+        { error: "다른 백그라운드 작업이 진행 중이에요 — 끝난 뒤 시작해 주세요" },
+        { status: 409 },
+      );
+    }
+    await beginRunefill();
+  }
+  after(() => runRunefillRound().catch(() => {}));
+  return NextResponse.json({ state: await getRunefillState() });
+}

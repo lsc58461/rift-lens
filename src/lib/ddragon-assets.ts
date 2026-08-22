@@ -53,3 +53,16 @@ export function championNameKo(
 ): string {
   return names[NAME_QUIRKS[championName] ?? championName] ?? championName;
 }
+
+/** 능력치 파편(StatMods) — runesReforged.json에 없어 정적 매핑 */
+export const STAT_MODS: Record<number, { name: string; icon: string }> = {
+  5001: { name: "체력 (성장)", icon: "perk-images/StatMods/StatModsHealthScalingIcon.png" },
+  5002: { name: "방어력", icon: "perk-images/StatMods/StatModsArmorIcon.png" },
+  5003: { name: "마법 저항력", icon: "perk-images/StatMods/StatModsMagicResIcon.MagicResist_Fix.png" },
+  5005: { name: "공격 속도", icon: "perk-images/StatMods/StatModsAttackSpeedIcon.png" },
+  5007: { name: "스킬 가속", icon: "perk-images/StatMods/StatModsCDRScalingIcon.png" },
+  5008: { name: "적응형 능력치", icon: "perk-images/StatMods/StatModsAdaptiveForceIcon.png" },
+  5010: { name: "이동 속도", icon: "perk-images/StatMods/StatModsMovementSpeedIcon.png" },
+  5011: { name: "체력", icon: "perk-images/StatMods/StatModsHealthPlusIcon.png" },
+  5013: { name: "강인함과 회복력", icon: "perk-images/StatMods/StatModsTenacityIcon.png" },
+};
