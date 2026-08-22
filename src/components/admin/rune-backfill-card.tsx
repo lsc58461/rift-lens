@@ -4,7 +4,7 @@
 // 다른 대량 작업 카드와 같은 폴링·라운드 이어달리기 방식.
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Play, Sparkle, Square } from "lucide-react";
+import { Eraser, Loader2, Play, Sparkle, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -147,7 +147,26 @@ export function RuneBackfillCard() {
         {state?.lastError && (
           <p className="text-sm text-destructive">{state.lastError}</p>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={async () => {
+              const res = await fetch("/api/admin/clear-stats-cache", {
+                method: "POST",
+              });
+              if (res.ok) {
+                const d = await res.json();
+                toast.success(
+                  `통계 캐시 ${d.cleared}건을 비웠어요 — 다음 조회부터 현재 데이터로 집계됩니다`,
+                );
+              } else toast.error("요청에 실패했어요");
+            }}
+          >
+            <Eraser className="size-3.5" />
+            통계 캐시 초기화
+          </Button>
           {state?.running ? (
             <Button
               size="sm"
