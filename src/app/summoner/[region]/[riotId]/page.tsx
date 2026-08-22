@@ -509,7 +509,7 @@ export default async function SummonerPage({
       <HistorySummaryProvider>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌측 컬럼 — xl에선 스크롤을 따라오도록 고정(헤더 높이만큼 내려서) */}
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards xl:sticky xl:top-[4.25rem] xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto xl:pb-1">
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards xl:sticky xl:top-[4.25rem] xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto xl:pb-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden">
           <Card
             className="relative overflow-hidden"
             style={
