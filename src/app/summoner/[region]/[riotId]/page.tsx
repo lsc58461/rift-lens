@@ -693,12 +693,6 @@ export default async function SummonerPage({
             </Card>
           )}
 
-          {/* 최근 경기 요약 — 데이터는 전적 목록의 응답에서 공유받는다 */}
-          <MatchSummaryCard
-            version={ddVersion}
-            names={champNames}
-            region={region}
-          />
         </div>
 
         {/* 우측 컬럼 — 추이 차트 · 경기 목록 */}
@@ -723,6 +717,13 @@ export default async function SummonerPage({
               )}
             </CardContent>
           </Card>
+
+          {/* 최근 경기 요약 — 데이터는 전적 목록의 응답에서 공유받는다 */}
+          <MatchSummaryCard
+            version={ddVersion}
+            names={champNames}
+            region={region}
+          />
 
           {/* 경기 목록 — 최근 전적 / 분석 근거를 탭으로 (세로 길이 절감) */}
           <MatchTabs
