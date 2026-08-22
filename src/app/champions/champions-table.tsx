@@ -6,7 +6,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Search, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -138,25 +144,38 @@ export function ChampionsTable({
           />
         </div>
         {patches.length > 0 && (
-          <select
-            value={currentPatch ?? "all"}
-            onChange={(e) =>
-              router.push(
-                e.target.value === "all"
-                  ? "/champions"
-                  : `/champions?patch=${e.target.value}`,
-              )
-            }
-            className="h-9 self-end rounded-md border bg-background px-2.5 text-xs font-medium text-foreground sm:self-auto"
-            aria-label="패치 선택"
-          >
-            <option value="all">전체 패치</option>
-            {patches.map((p) => (
-              <option key={p.patch} value={p.patch}>
-                패치 {p.patch} ({p.games.toLocaleString()}경기)
-              </option>
-            ))}
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 self-end rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent data-popup-open:bg-accent sm:self-auto">
+              {currentPatch ? `패치 ${currentPatch}` : "전체 패치"}
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem
+                onClick={() => router.push("/champions")}
+                className="justify-between text-xs"
+              >
+                전체 패치
+                {!currentPatch && <Check className="size-3.5 text-primary" />}
+              </DropdownMenuItem>
+              {patches.map((p) => (
+                <DropdownMenuItem
+                  key={p.patch}
+                  onClick={() => router.push(`/champions?patch=${p.patch}`)}
+                  className="justify-between text-xs"
+                >
+                  <span>
+                    패치 {p.patch}
+                    <span className="ml-1.5 text-muted-foreground">
+                      {p.games.toLocaleString()}경기
+                    </span>
+                  </span>
+                  {currentPatch === p.patch && (
+                    <Check className="size-3.5 text-primary" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         <div className="flex items-center gap-1 self-end rounded-md border p-0.5 sm:self-auto">
           {(
