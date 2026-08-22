@@ -1,10 +1,11 @@
 "use client";
 
-// 챔피언 통계 테이블 — 행을 누르면 스펠 조합·아이템·룬 승률이 펼쳐진다.
+// 챔피언 통계 — 목록은 간단하게(승률·판수·주 포지션), 챔피언을 누르면
+// 모달에서 평균 지표·포지션별 성적·추천 스펠/아이템/룬을 자세히 보여준다.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,11 +27,20 @@ const POSITION_LABEL: Record<string, string> = {
   BOTTOM: "원딜",
   UTILITY: "서폿",
 };
+const LANES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 
 type SortKey = "games" | "winrate";
+type Lane = (typeof LANES)[number] | "all";
 
 function wr(wins: number, games: number): number {
   return games > 0 ? Math.round((wins / games) * 100) : 0;
+}
+
+/** 라인 필터가 걸려 있으면 그 라인 기준 판수·승수를 쓴다 */
+function laneStats(c: ChampionStat, lane: Lane): { games: number; wins: number } {
+  if (lane === "all") return { games: c.games, wins: c.wins };
+  const p = c.positions[lane];
+  return { games: p?.games ?? 0, wins: p?.wins ?? 0 };
 }
 
 function WinrateText({ wins, games }: { wins: number; games: number }) {
@@ -59,7 +69,8 @@ export function ChampionsTable({
 }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("games");
-  const [open, setOpen] = useState<string | null>(null);
+  const [lane, setLane] = useState<Lane>("all");
+  const [selected, setSelected] = useState<ChampionStat | null>(null);
 
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -71,14 +82,24 @@ export function ChampionsTable({
           championNameKo(names, c.champ).toLowerCase().includes(query),
       );
     }
-    return [...list].sort((a, b) =>
-      sort === "games"
-        ? b.games - a.games
-        : wr(b.wins, b.games) - wr(a.wins, a.games) || b.games - a.games,
-    );
-  }, [stats.champions, q, sort, names]);
+    if (lane !== "all") {
+      // 그 라인에서 의미 있는 표본(5판+)이 있는 챔피언만
+      list = list.filter((c) => (c.positions[lane]?.games ?? 0) >= 5);
+    }
+    return [...list].sort((a, b) => {
+      const sa = laneStats(a, lane);
+      const sb = laneStats(b, lane);
+      return sort === "games"
+        ? sb.games - sa.games
+        : wr(sb.wins, sb.games) - wr(sa.wins, sa.games) ||
+            sb.games - sa.games;
+    });
+  }, [stats.champions, q, sort, lane, names]);
 
-  const maxGames = Math.max(1, ...stats.champions.map((c) => c.games));
+  const maxGames = Math.max(
+    1,
+    ...rows.map((c) => laneStats(c, lane).games),
+  );
 
   return (
     <div className="space-y-3">
@@ -115,28 +136,83 @@ export function ChampionsTable({
         </div>
       </div>
 
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        {(["all", ...LANES] as Lane[]).map((l) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setLane(l)}
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              lane === l
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            }`}
+          >
+            {l === "all" ? "전체 라인" : POSITION_LABEL[l]}
+          </button>
+        ))}
+      </div>
+
       <Card className="py-0">
         <CardContent className="px-0">
           <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
             <span className="flex-1">챔피언</span>
-            <span className="w-24 shrink-0 text-right">판수</span>
+            <span className="w-24 shrink-0 text-right">
+              판수{lane !== "all" && ` (${POSITION_LABEL[lane]})`}
+            </span>
             <span className="w-16 shrink-0 text-right">승률</span>
             <span className="w-20 shrink-0 text-right">주 포지션</span>
             <span className="w-6 shrink-0" />
           </div>
           <div className="divide-y divide-border/60">
-            {rows.map((c) => (
-              <ChampionRow
-                key={c.champ}
-                c={c}
-                version={version}
-                names={names}
-                runeMap={runeMap}
-                maxGames={maxGames}
-                open={open === c.champ}
-                onToggle={() => setOpen(open === c.champ ? null : c.champ)}
-              />
-            ))}
+            {rows.map((c) => {
+              const s = laneStats(c, lane);
+              const mainPos = Object.entries(c.positions).sort(
+                (a, b) => b[1].games - a[1].games,
+              )[0];
+              return (
+                <button
+                  key={c.champ}
+                  type="button"
+                  onClick={() => setSelected(c)}
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5 font-medium">
+                    <Image
+                      src={championIconUrl(version, c.champ)}
+                      alt=""
+                      width={32}
+                      height={32}
+                      unoptimized
+                      className="size-8 rounded-lg"
+                    />
+                    <span className="truncate">
+                      {championNameKo(names, c.champ)}
+                    </span>
+                  </span>
+                  <span className="flex w-24 shrink-0 items-center justify-end gap-2">
+                    <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-foreground/10 sm:block">
+                      <span
+                        className="block h-full rounded-full bg-primary/70"
+                        style={{ width: `${(s.games / maxGames) * 100}%` }}
+                      />
+                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {s.games}판
+                    </span>
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-xs font-medium">
+                    <WinrateText wins={s.wins} games={s.games} />
+                  </span>
+                  <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
+                    {mainPos
+                      ? (POSITION_LABEL[mainPos[0]] ?? mainPos[0])
+                      : "—"}
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              );
+            })}
             {rows.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 조건에 맞는 챔피언이 없어요
@@ -150,113 +226,196 @@ export function ChampionsTable({
         이 사이트에서 분석된 소환사들의 경기에서 집계한 표본이라 전체 서버
         통계와 다를 수 있어요. 표본 10판 미만 챔피언은 표시하지 않습니다.
       </p>
+
+      {selected && (
+        <ChampionModal
+          c={selected}
+          version={version}
+          names={names}
+          runeMap={runeMap}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ChampionRow({
+// ── 상세 모달 ────────────────────────────────────────────
+
+function ChampionModal({
   c,
   version,
   names,
   runeMap,
-  maxGames,
-  open,
-  onToggle,
+  onClose,
 }: {
   c: ChampionStat;
   version: string;
   names: Record<string, string>;
   runeMap: Record<number, RuneInfo>;
-  maxGames: number;
-  open: boolean;
-  onToggle: () => void;
+  onClose: () => void;
 }) {
-  const mainPos = Object.entries(c.positions).sort((a, b) => b[1] - a[1])[0];
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const kda =
+    c.avgDeaths > 0
+      ? ((c.avgKills + c.avgAssists) / c.avgDeaths).toFixed(2)
+      : "Perfect";
+  const posEntries = Object.entries(c.positions).sort(
+    (a, b) => b[1].games - a[1].games,
+  );
+  const bestSpell = [...c.spells].sort(
+    (a, b) => wr(b.wins, b.games) - wr(a.wins, a.games),
+  )[0];
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
-        aria-expanded={open}
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      onClick={onClose}
+      role="dialog"
+      aria-modal
+    >
+      <div
+        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border bg-card shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2.5 font-medium">
+        {/* 헤더 */}
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-card/95 px-5 py-4 backdrop-blur-sm">
           <Image
             src={championIconUrl(version, c.champ)}
             alt=""
-            width={32}
-            height={32}
+            width={44}
+            height={44}
             unoptimized
-            className="size-8 rounded-lg"
+            className="size-11 rounded-xl"
           />
-          <span className="truncate">{championNameKo(names, c.champ)}</span>
-        </span>
-        <span className="flex w-24 shrink-0 items-center justify-end gap-2">
-          <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-foreground/10 sm:block">
-            <span
-              className="block h-full rounded-full bg-primary/70"
-              style={{ width: `${(c.games / maxGames) * 100}%` }}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-base font-semibold">
+              {championNameKo(names, c.champ)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {c.games}판 · 승률 <WinrateText wins={c.wins} games={c.games} />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="닫기"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-5 px-5 py-4">
+          {/* 평균 지표 */}
+          <section className="grid grid-cols-3 gap-2">
+            <MetricTile
+              label="평균 KDA"
+              value={kda}
+              sub={`${c.avgKills.toFixed(1)} / ${c.avgDeaths.toFixed(1)} / ${c.avgAssists.toFixed(1)}`}
             />
-          </span>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {c.games}판
-          </span>
-        </span>
-        <span className="w-16 shrink-0 text-right text-xs font-medium">
-          <WinrateText wins={c.wins} games={c.games} />
-        </span>
-        <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
-          {mainPos ? (POSITION_LABEL[mainPos[0]] ?? mainPos[0]) : "—"}
-        </span>
-        <ChevronDown
-          className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
+            <MetricTile
+              label="평균 CS"
+              value={c.avgCs.toFixed(0)}
+              sub="경기당"
+            />
+            <MetricTile
+              label="평균 딜량"
+              value={
+                c.avgDamage >= 1000
+                  ? `${(c.avgDamage / 1000).toFixed(1)}k`
+                  : c.avgDamage.toFixed(0)
+              }
+              sub="챔피언 대상"
+            />
+          </section>
 
-      {open && (
-        <div className="grid gap-4 border-t bg-muted/20 px-4 py-4 sm:grid-cols-3">
-          <StatBlock title="스펠 조합">
+          {/* 포지션별 성적 */}
+          <section>
+            <SectionLabel>포지션별 성적</SectionLabel>
+            <div className="space-y-1.5">
+              {posEntries.map(([pos, p]) => (
+                <div
+                  key={pos}
+                  className="grid grid-cols-[3rem_1fr_5.5rem] items-center gap-2 text-xs"
+                >
+                  <span className="text-muted-foreground">
+                    {POSITION_LABEL[pos] ?? pos}
+                  </span>
+                  <span className="h-2 overflow-hidden rounded-full bg-foreground/8">
+                    <span
+                      className="block h-full rounded-full bg-primary/70"
+                      style={{
+                        width: `${(p.games / c.games) * 100}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="text-right tabular-nums text-muted-foreground">
+                    {p.games}판 · <WinrateText wins={p.wins} games={p.games} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 스펠 조합 */}
+          <section>
+            <SectionLabel>스펠 조합</SectionLabel>
             {c.spells.length === 0 && <Empty />}
-            {c.spells.map((s) => (
-              <div
-                key={`${s.s1}-${s.s2}`}
-                className="flex items-center gap-2 text-xs"
-              >
-                <span className="flex gap-1">
-                  {[s.s1, s.s2].map((id, i) => {
-                    const url = spellIconUrl(version, id);
-                    return url ? (
-                      <Image
-                        key={i}
-                        src={url}
-                        alt=""
-                        width={22}
-                        height={22}
-                        unoptimized
-                        className="size-[22px] rounded"
-                      />
-                    ) : (
-                      <span
-                        key={i}
-                        className="size-[22px] rounded bg-foreground/8"
-                      />
-                    );
-                  })}
-                </span>
-                <span className="text-muted-foreground tabular-nums">
-                  {s.games}판
-                </span>
-                <span className="ml-auto font-medium">
-                  <WinrateText wins={s.wins} games={s.games} />
-                </span>
-              </div>
-            ))}
-          </StatBlock>
+            <div className="space-y-1.5">
+              {c.spells.map((s) => (
+                <div
+                  key={`${s.s1}-${s.s2}`}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <span className="flex gap-1">
+                    {[s.s1, s.s2].map((id, i) => {
+                      const url = spellIconUrl(version, id);
+                      return url ? (
+                        <Image
+                          key={i}
+                          src={url}
+                          alt=""
+                          width={24}
+                          height={24}
+                          unoptimized
+                          className="size-6 rounded"
+                        />
+                      ) : (
+                        <span key={i} className="size-6 rounded bg-foreground/8" />
+                      );
+                    })}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {s.games}판
+                  </span>
+                  {bestSpell === s && c.spells.length > 1 && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      추천
+                    </span>
+                  )}
+                  <span className="ml-auto font-medium">
+                    <WinrateText wins={s.wins} games={s.games} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
 
-          <StatBlock title="자주 나온 아이템">
+          {/* 아이템 */}
+          <section>
+            <SectionLabel>자주 나온 아이템</SectionLabel>
             {c.items.length === 0 && <Empty />}
-            <div className="grid grid-cols-4 gap-x-2 gap-y-2">
+            <div className="grid grid-cols-6 gap-x-2 gap-y-2.5">
               {c.items.map((it) => {
                 const url = itemIconUrl(version, it.id);
                 return (
@@ -269,13 +428,13 @@ function ChampionRow({
                       <Image
                         src={url}
                         alt=""
-                        width={28}
-                        height={28}
+                        width={32}
+                        height={32}
                         unoptimized
-                        className="size-7 rounded"
+                        className="size-8 rounded"
                       />
                     ) : (
-                      <span className="size-7 rounded bg-foreground/8" />
+                      <span className="size-8 rounded bg-foreground/8" />
                     )}
                     <span className="text-[10px]">
                       <WinrateText wins={it.wins} games={it.games} />
@@ -284,72 +443,90 @@ function ChampionRow({
                 );
               })}
             </div>
-          </StatBlock>
+          </section>
 
-          <StatBlock title="룬">
+          {/* 룬 */}
+          <section>
+            <SectionLabel>룬</SectionLabel>
             {c.runes.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 룬 데이터는 수집 중이에요 — 새 경기가 쌓이면 표시됩니다
               </p>
             )}
-            {c.runes.map((r) => {
-              const key = runeMap[r.keystone];
-              const sub = runeMap[r.subStyle];
-              return (
-                <div
-                  key={`${r.keystone}-${r.subStyle}`}
-                  className="flex items-center gap-2 text-xs"
-                >
-                  <span className="flex items-center gap-1">
-                    {key && (
-                      <Image
-                        src={`https://ddragon.leagueoflegends.com/cdn/img/${key.icon}`}
-                        alt={key.name}
-                        width={24}
-                        height={24}
-                        unoptimized
-                        className="size-6"
-                      />
-                    )}
-                    {sub && (
-                      <Image
-                        src={`https://ddragon.leagueoflegends.com/cdn/img/${sub.icon}`}
-                        alt={sub.name}
-                        width={16}
-                        height={16}
-                        unoptimized
-                        className="size-4 opacity-80"
-                      />
-                    )}
-                  </span>
-                  <span className="truncate text-muted-foreground">
-                    {key?.name ?? r.keystone}
-                  </span>
-                  <span className="ml-auto shrink-0 font-medium">
-                    <WinrateText wins={r.wins} games={r.games} />
-                  </span>
-                </div>
-              );
-            })}
-          </StatBlock>
+            <div className="space-y-1.5">
+              {c.runes.map((r) => {
+                const key = runeMap[r.keystone];
+                const sub = runeMap[r.subStyle];
+                return (
+                  <div
+                    key={`${r.keystone}-${r.subStyle}`}
+                    className="flex items-center gap-2 text-xs"
+                  >
+                    <span className="flex items-center gap-1">
+                      {key && (
+                        <Image
+                          src={`https://ddragon.leagueoflegends.com/cdn/img/${key.icon}`}
+                          alt={key.name}
+                          width={26}
+                          height={26}
+                          unoptimized
+                          className="size-6.5"
+                        />
+                      )}
+                      {sub && (
+                        <Image
+                          src={`https://ddragon.leagueoflegends.com/cdn/img/${sub.icon}`}
+                          alt={sub.name}
+                          width={16}
+                          height={16}
+                          unoptimized
+                          className="size-4 opacity-80"
+                        />
+                      )}
+                    </span>
+                    <span className="truncate text-muted-foreground">
+                      {key?.name ?? r.keystone}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {r.games}판
+                    </span>
+                    <span className="ml-auto shrink-0 font-medium">
+                      <WinrateText wins={r.wins} games={r.games} />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function StatBlock({
-  title,
-  children,
+function MetricTile({
+  label,
+  value,
+  sub,
 }: {
-  title: string;
-  children: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        {title}
+    <div className="rounded-lg border p-2.5 text-center">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-semibold tabular-nums">{value}</div>
+      <div className="text-[10px] tabular-nums text-muted-foreground">
+        {sub}
       </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
       {children}
     </div>
   );

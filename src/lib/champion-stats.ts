@@ -34,11 +34,21 @@ export interface RuneStat {
   wins: number;
 }
 
+export interface PositionStat {
+  games: number;
+  wins: number;
+}
+
 export interface ChampionStat {
   champ: string;
   games: number;
   wins: number;
-  positions: Record<string, number>;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgCs: number;
+  avgDamage: number;
+  positions: Record<string, PositionStat>;
   spells: SpellCombo[];
   items: ItemStat[];
   runes: RuneStat[];
@@ -52,7 +62,7 @@ export interface ChampionStatsPayload {
 }
 
 export function getChampionStats(): Promise<ChampionStatsPayload> {
-  return cached("champstats:v1", TTL_SECONDS, buildStats);
+  return cached("champstats:v2", TTL_SECONDS, buildStats);
 }
 
 async function buildStats(): Promise<ChampionStatsPayload> {
@@ -68,6 +78,11 @@ async function buildStats(): Promise<ChampionStatsPayload> {
            (pp->>'keystone')::int AS keystone,
            (pp->>'subStyle')::int AS substyle,
            pp->>'teamPosition' AS pos,
+           (pp->>'kills')::int AS kills,
+           (pp->>'deaths')::int AS deaths,
+           (pp->>'assists')::int AS assists,
+           (pp->>'cs')::int AS cs,
+           (pp->>'damage')::int AS damage,
            pp->'items' AS items
     FROM matches m
     CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
@@ -76,10 +91,15 @@ async function buildStats(): Promise<ChampionStatsPayload> {
   const [meta, base, positions, spells, items, runes] = await Promise.all([
     sql.unsafe(`SELECT count(*)::int AS games FROM matches WHERE fp = $1`, [fp]),
     sql.unsafe(`
-      SELECT champ, count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
+      SELECT champ, count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins,
+             coalesce(avg(kills), 0)::float AS ak,
+             coalesce(avg(deaths), 0)::float AS ad,
+             coalesce(avg(assists), 0)::float AS aa,
+             coalesce(avg(cs), 0)::float AS acs,
+             coalesce(avg(damage), 0)::float AS admg
       FROM (${P}) p GROUP BY champ`),
     sql.unsafe(`
-      SELECT champ, pos, count(*)::int AS n
+      SELECT champ, pos, count(*)::int AS n, count(*) FILTER (WHERE win)::int AS w
       FROM (${P}) p WHERE coalesce(pos, '') <> '' GROUP BY champ, pos`),
     sql.unsafe(`
       SELECT champ, least(s1, s2) AS s1, greatest(s1, s2) AS s2,
@@ -101,21 +121,26 @@ async function buildStats(): Promise<ChampionStatsPayload> {
   ]);
 
   const map = new Map<string, ChampionStat>();
-  for (const r of base as unknown as { champ: string; games: number; wins: number }[]) {
+  for (const r of base as unknown as { champ: string; games: number; wins: number; ak: number; ad: number; aa: number; acs: number; admg: number }[]) {
     if (!r.champ || r.games < MIN_CHAMP_GAMES) continue;
     map.set(r.champ, {
       champ: r.champ,
       games: r.games,
       wins: r.wins,
+      avgKills: r.ak,
+      avgDeaths: r.ad,
+      avgAssists: r.aa,
+      avgCs: r.acs,
+      avgDamage: r.admg,
       positions: {},
       spells: [],
       items: [],
       runes: [],
     });
   }
-  for (const r of positions as unknown as { champ: string; pos: string; n: number }[]) {
-    map.get(r.champ)?.positions &&
-      (map.get(r.champ)!.positions[r.pos] = r.n);
+  for (const r of positions as unknown as { champ: string; pos: string; n: number; w: number }[]) {
+    const c = map.get(r.champ);
+    if (c) c.positions[r.pos] = { games: r.n, wins: r.w };
   }
   for (const r of spells as unknown as { champ: string; s1: number; s2: number; games: number; wins: number }[]) {
     const c = map.get(r.champ);
@@ -136,7 +161,7 @@ async function buildStats(): Promise<ChampionStatsPayload> {
     .map((c) => ({
       ...c,
       spells: c.spells.sort((a, b) => b.games - a.games).slice(0, 3),
-      items: c.items.sort((a, b) => b.games - a.games).slice(0, 8),
+      items: c.items.sort((a, b) => b.games - a.games).slice(0, 12),
       runes: c.runes.sort((a, b) => b.games - a.games).slice(0, 3),
     }))
     .sort((a, b) => b.games - a.games);
