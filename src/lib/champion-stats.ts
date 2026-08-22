@@ -84,7 +84,7 @@ export interface ChampionStatsPayload {
 export function getChampionStats(
   patch: string | null = null,
 ): Promise<ChampionStatsPayload> {
-  return cached(`champstats:v8:${patch ?? "recent2"}`, TTL_SECONDS, () =>
+  return cached(`champstats:v7:${patch ?? "recent2"}`, TTL_SECONDS, () =>
     buildStats(patch),
   );
 }
@@ -145,7 +145,7 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
            pp->'items' AS items
     FROM matches m
     CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
-    WHERE m.fp = '${fp.replace(/'/g, "")}' AND m.queue_id = 420 ${patchFilter}`;
+    WHERE m.fp = '${fp.replace(/'/g, "")}' ${patchFilter}`;
 
   const [meta, base, positions, spells, items, runes, startItems, buildPaths] = await Promise.all([
     sql.unsafe(
