@@ -100,6 +100,23 @@ const TIER_LADDER = [
   "CHALLENGER",
 ] as const;
 
+// 티어별 수집 가중치 — 균등하게 맞추면 래더에서 극소수인 상위 티어가
+// 일반 티어와 같은 인원까지 수집돼 표본이 왜곡된다(챌린저 폭증 문제).
+// 수집량은 (수집 수 / 가중치)가 가장 작은 티어부터 채워지므로,
+// 가중치 0.1이면 일반 티어의 10% 수준에서 수렴한다.
+const TIER_WEIGHT: Record<string, number> = {
+  IRON: 1,
+  BRONZE: 1,
+  SILVER: 1,
+  GOLD: 1,
+  PLATINUM: 1,
+  EMERALD: 1,
+  DIAMOND: 1,
+  MASTER: 0.4,
+  GRANDMASTER: 0.1,
+  CHALLENGER: 0.1,
+};
+
 /** 표본이 가장 부족한 티어를 고른다 — 후보 풀(스냅샷)에 미수집 인원이
  * 있는 티어 중에서 수집된 소환사 수가 가장 적은 티어. */
 async function pickTargetTier(): Promise<string | null> {
@@ -122,13 +139,14 @@ async function pickTargetTier(): Promise<string | null> {
     (available as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
   );
   let best: string | null = null;
-  let bestCount = Infinity;
+  let bestScore = Infinity;
   for (const tier of TIER_LADDER) {
     if ((pool.get(tier) ?? 0) < 1) continue; // 후보가 없는 티어는 건너뜀
-    const n = have.get(tier) ?? 0;
-    if (n < bestCount) {
+    // 가중치 보정 점수 — 상위 티어는 낮은 목표로 수렴
+    const score = (have.get(tier) ?? 0) / (TIER_WEIGHT[tier] ?? 1);
+    if (score < bestScore) {
       best = tier;
-      bestCount = n;
+      bestScore = score;
     }
   }
   return best;
