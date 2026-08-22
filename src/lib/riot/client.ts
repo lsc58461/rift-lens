@@ -374,6 +374,11 @@ export async function getMatch(
     };
   }>(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`);
   // 전적 표시에 필요한 필드만 남긴다 (풀 응답은 매우 큼)
+  // 라이엇이 유실된 매치를 404가 아닌 '모든 필드 0 + 참가자 빈 배열'의
+  // 정상 응답으로 주는 경우가 있다 — 저장하면 손상 행이 되므로 걸러낸다
+  if (!raw.info.participants?.length || !raw.info.gameCreation) {
+    throw new RiotApiError(404, `empty match husk: ${matchId}`);
+  }
   const match: MatchInfo = {
     matchId,
     gameCreation: raw.info.gameCreation,
