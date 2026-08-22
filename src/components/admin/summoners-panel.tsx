@@ -86,7 +86,7 @@ export function SummonersPanel() {
     <div className="space-y-5">
       <PageHeader
         title="기록된 소환사"
-        description="스테일 = 매치 기준 불일치, 구버전 알고리즘 또는 분석 후 72시간 경과"
+        description="스테일 = 매치 기준 불일치, 구버전 알고리즘 또는 분석 후 72시간 경과 · '최신'이어도 분석 이후 새 경기가 있으면 전체 갱신이 다시 분석해요 (새 경기 여부는 라이엇 조회가 필요해 이 목록에선 판정하지 않음)"
         actions={
           <Button
             size="sm"
