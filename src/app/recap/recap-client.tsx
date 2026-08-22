@@ -1,5 +1,8 @@
 "use client";
 
+import Image from "next/image";
+import { championIconUrl, championNameKo } from "@/lib/ddragon-assets";
+
 import { useState } from "react";
 import { ImageDown, Loader2, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -24,7 +27,13 @@ interface Recap {
   currentRank: { tier: string; label: string } | null;
 }
 
-export function RecapClient() {
+export function RecapClient({
+  version,
+  names,
+}: {
+  version: string;
+  names: Record<string, string>;
+}) {
   const [riotId, setRiotId] = useState("");
   const [loading, setLoading] = useState(false);
   const [recap, setRecap] = useState<Recap | null>(null);
@@ -164,8 +173,18 @@ export function RecapClient() {
                   return (
                     <div key={c.championName}>
                       <div className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="truncate font-medium">
-                          {c.championName}
+                        <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                          <Image
+                            src={championIconUrl(version, c.championName)}
+                            alt=""
+                            width={20}
+                            height={20}
+                            unoptimized
+                            className="size-5 rounded"
+                          />
+                          <span className="truncate">
+                            {championNameKo(names, c.championName)}
+                          </span>
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                           {c.games}판 ·{" "}

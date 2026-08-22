@@ -52,6 +52,8 @@ export interface MatchParticipant {
   spell1Id?: number;
   spell2Id?: number;
   items?: number[]; // item0~6 (0은 빈 칸)
+  keystone?: number; // 핵심룬 perk id — 룬 저장 도입(2026-08-22) 이전 매치엔 없음
+  subStyle?: number; // 보조 룬 트리 style id
 }
 
 export interface MatchInfo {

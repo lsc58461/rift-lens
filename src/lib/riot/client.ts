@@ -344,6 +344,13 @@ export async function getMatch(
     visionScore: number;
     summoner1Id: number;
     summoner2Id: number;
+    perks?: {
+      styles?: {
+        description?: string;
+        style?: number;
+        selections?: { perk?: number }[];
+      }[];
+    };
     item0: number;
     item1: number;
     item2: number;
@@ -384,6 +391,10 @@ export async function getMatch(
       visionScore: p.visionScore,
       spell1Id: p.summoner1Id,
       spell2Id: p.summoner2Id,
+      keystone: p.perks?.styles?.find((s) => s.description === "primaryStyle")
+        ?.selections?.[0]?.perk,
+      subStyle: p.perks?.styles?.find((s) => s.description === "subStyle")
+        ?.style,
       items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6],
     })),
   };
