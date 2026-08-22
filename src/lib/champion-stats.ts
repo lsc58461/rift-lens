@@ -112,7 +112,8 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
     patchFilter = `AND m.patch = '${patch.replace(/[^0-9.]/g, "")}'`;
   } else {
     const recent = await sql`
-      SELECT DISTINCT patch FROM matches WHERE fp = ${fp} AND patch IS NOT NULL
+      SELECT patch FROM matches WHERE fp = ${fp} AND patch IS NOT NULL
+      GROUP BY patch
       ORDER BY string_to_array(patch, '.')::int[] DESC LIMIT 2`;
     const list = (recent as unknown as { patch: string }[])
       .map((r) => `'${r.patch.replace(/[^0-9.]/g, "")}'`)
