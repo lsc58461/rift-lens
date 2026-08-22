@@ -1,3 +1,7 @@
+import {
+  getMaintenanceInfo,
+  isMaintenanceActive,
+} from "@/lib/maintenance";
 import { createPublicKey, verify as cryptoVerify } from "crypto";
 import { NextResponse, after, type NextRequest } from "next/server";
 import { getStoredResult, runQuickAnalysis } from "@/lib/mmr/deep-jobs";
@@ -249,6 +253,22 @@ export async function POST(req: NextRequest) {
     const opts: Option[] = body.data?.options ?? [];
     const get = (k: string) => opts.find((o) => o.name === k)?.value ?? "";
     const token: string = body.token;
+
+    // 점검 중엔 분석을 돌리지 않는다 — 웹과 동일한 정책
+    const maint = await getMaintenanceInfo().catch(() => null);
+    if (isMaintenanceActive(maint)) {
+      const until = maint?.endsAt
+        ? ` (예상 종료: ${new Date(maint.endsAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })})`
+        : "";
+      return NextResponse.json({
+        type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+        data: {
+          content: `🔧 지금은 점검 중이에요${until} — 점검이 끝나면 다시 시도해 주세요.${maint?.reason ? `
+> ${maint.reason}` : ""}`,
+          flags: 64, // EPHEMERAL
+        },
+      });
+    }
 
     // 3초 룰 — 즉시 defer하고 백그라운드에서 결과 전송
     after(async () => {
