@@ -88,7 +88,7 @@ export function ChampionsTable({
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("games");
+  const [sort, setSort] = useState<SortKey>("winrate");
   const [lane, setLane] = useState<Lane>("all");
   const [selected, setSelected] = useState<ChampionStat | null>(null);
 
