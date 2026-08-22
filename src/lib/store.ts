@@ -823,14 +823,6 @@ export async function tierDistribution(): Promise<TierCount[]> {
   return rows as unknown as TierCount[];
 }
 
-/** 오래된 방문 로그 정리 (크론에서 호출) */
-export async function purgeOldVisits(days = 60): Promise<number> {
-  const sql = await getSql();
-  const rows = await sql`
-    DELETE FROM visit_log WHERE at < now() - ${`${days} days`}::interval
-    RETURNING 1`;
-  return rows.length;
-}
 
 // ── 관리자 소환사 목록 (SQL 집계) ────────────────────────
 // 전체 행을 앱으로 끌어와 JS에서 계산하면 목록이 커질수록 어드민이 느려진다.

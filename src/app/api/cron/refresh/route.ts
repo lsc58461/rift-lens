@@ -9,7 +9,7 @@ import {
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
 import { getRecentSearches } from "@/lib/recent";
-import { purgeExpiredCache, purgeOldVisits } from "@/lib/store";
+import { purgeExpiredCache } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -126,8 +126,9 @@ export async function GET(req: NextRequest) {
   }
 
   // 만료된 캐시 행 정리 (누적 방지 — API 호출 없음)
+  // 방문 로그는 지우지 않는다 — 데이터는 영구 보관이 원칙 (2026-08-22).
+  // 만료 캐시는 데이터가 아니라 재계산 가능한 잔여물이라 청소 유지.
   const cachePurged = await purgeExpiredCache().catch(() => 0);
-  await purgeOldVisits().catch(() => 0);
 
   return NextResponse.json({
     cachePurged,
