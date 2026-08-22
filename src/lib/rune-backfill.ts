@@ -42,6 +42,7 @@ export async function countMissingRunes(): Promise<number> {
   const r = await sql`
     SELECT count(*)::int AS n FROM matches
     WHERE fp = ${riotKeyFp()}
+      AND jsonb_array_length(participants) > 0
       AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
            OR NOT build_harvested)`;
   return (r[0]?.n as number) ?? 0;
@@ -84,6 +85,7 @@ export async function runRunefillRound(origin?: string): Promise<void> {
              ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok
       FROM matches
       WHERE fp = ${fp}
+        AND jsonb_array_length(participants) > 0
         AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
              OR NOT build_harvested)
       ORDER BY game_creation DESC LIMIT ${PER_ROUND}`;
