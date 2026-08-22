@@ -3,14 +3,15 @@
 // 저우선순위라 유저 검색이 먼저다.
 
 import "server-only";
+import { cache } from "@/lib/cache";
 import { getSql } from "@/lib/db";
-import { getMatch, riotKeyFp } from "@/lib/riot/client";
+import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
 import { getSetting, setSetting } from "@/lib/store";
 import type { PlatformRegion } from "@/lib/riot/types";
 
 const STATE_KEY = "runefill:state";
-const PER_ROUND = 40; // 라운드당 매치 수 (호출 1회/매치)
+const PER_ROUND = 25; // 라운드당 매치 수 (호출 2회/매치: 본문+타임라인)
 const ROUND_STALE_MS = 300_000;
 
 export interface RunefillState {
@@ -39,7 +40,8 @@ export async function countMissingRunes(): Promise<number> {
   const sql = await getSql();
   const r = await sql`
     SELECT count(*)::int AS n FROM matches
-    WHERE fp = ${riotKeyFp()} AND NOT (participants->0 ? 'keystone')`;
+    WHERE fp = ${riotKeyFp()}
+      AND (NOT (participants->0 ? 'keystone') OR patch IS NULL)`;
   return (r[0]?.n as number) ?? 0;
 }
 
@@ -77,7 +79,8 @@ export async function runRunefillRound(): Promise<void> {
     const fp = riotKeyFp();
     const rows = await sql`
       SELECT match_id, platform FROM matches
-      WHERE fp = ${fp} AND NOT (participants->0 ? 'keystone')
+      WHERE fp = ${fp}
+        AND (NOT (participants->0 ? 'keystone') OR patch IS NULL)
       ORDER BY game_creation DESC LIMIT ${PER_ROUND}`;
 
     if (rows.length === 0) {
@@ -90,6 +93,14 @@ export async function runRunefillRound(): Promise<void> {
     for (const r of rows as unknown as { match_id: string; platform: PlatformRegion }[]) {
       try {
         await withLowPriority(() => getMatch(r.platform, r.match_id, true));
+        // 같은 매치의 타임라인으로 시작 아이템도 수확 (매치당 1회 마커로 중복 방지).
+        // 수확 후 타임라인 캐시는 지운다 — 수천 매치 분량이 KV에 쌓이는 것 방지
+        await withLowPriority(() =>
+          getMatchTimeline(r.platform, r.match_id).then(async (tl) => {
+            await harvestStartItems(r.platform, r.match_id, tl);
+            await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
+          }),
+        ).catch(() => {});
         filled++;
       } catch {
         failed++;

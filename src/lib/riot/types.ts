@@ -64,6 +64,8 @@ export interface MatchInfo {
   gameCreation: number;
   gameDuration: number;
   queueId: number;
+  /** 패치 버전 앞 두 자리 (예: "15.16") — 저장 도입 전 매치엔 없음 */
+  patch?: string;
   participants: MatchParticipant[];
 }
 

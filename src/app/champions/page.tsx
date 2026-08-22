@@ -1,6 +1,6 @@
 import { BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
-import { getChampionStats } from "@/lib/champion-stats";
+import { getChampionStats, listPatches } from "@/lib/champion-stats";
 import {
   getChampionNamesKo,
   getDDragonVersion,
@@ -17,9 +17,18 @@ export const metadata = {
     "수집된 솔로랭크 경기 기준 챔피언별 승률과 스펠·아이템·룬 통계",
 };
 
-export default async function ChampionsPage() {
+export default async function ChampionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ patch?: string }>;
+}) {
+  const { patch: rawPatch } = await searchParams;
+  const patches = await listPatches();
+  // 목록에 있는 패치만 허용 — 임의 입력이 캐시 키를 오염시키지 않게
+  const patch =
+    rawPatch && patches.some((p) => p.patch === rawPatch) ? rawPatch : null;
   const [stats, version] = await Promise.all([
-    getChampionStats(),
+    getChampionStats(patch),
     getDDragonVersion(),
   ]);
   const [names, runes] = await Promise.all([
@@ -32,13 +41,15 @@ export default async function ChampionsPage() {
       <PageHeader
         icon={BarChart3}
         title="챔피언 통계"
-        description={`수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 스펠·아이템·룬 승률이 열려요`}
+        description={`${patch ? `패치 ${patch}` : "전체 패치"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
       />
       <ChampionsTable
         stats={stats}
         version={version}
         names={names}
         runeMap={runes}
+        patches={patches}
+        currentPatch={patch}
       />
     </div>
   );

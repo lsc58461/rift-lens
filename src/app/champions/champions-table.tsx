@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { ChevronRight, Search, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,12 +76,17 @@ export function ChampionsTable({
   version,
   names,
   runeMap,
+  patches,
+  currentPatch,
 }: {
   stats: ChampionStatsPayload;
   version: string;
   names: Record<string, string>;
   runeMap: Record<number, RuneInfo>;
+  patches: { patch: string; games: number }[];
+  currentPatch: string | null;
 }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("games");
   const [lane, setLane] = useState<Lane>("all");
@@ -127,6 +133,27 @@ export function ChampionsTable({
             className="pl-9"
           />
         </div>
+        {patches.length > 0 && (
+          <select
+            value={currentPatch ?? "all"}
+            onChange={(e) =>
+              router.push(
+                e.target.value === "all"
+                  ? "/champions"
+                  : `/champions?patch=${e.target.value}`,
+              )
+            }
+            className="h-9 self-end rounded-md border bg-background px-2.5 text-xs font-medium text-foreground sm:self-auto"
+            aria-label="패치 선택"
+          >
+            <option value="all">전체 패치</option>
+            {patches.map((p) => (
+              <option key={p.patch} value={p.patch}>
+                패치 {p.patch} ({p.games.toLocaleString()}경기)
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-1 self-end rounded-md border p-0.5 sm:self-auto">
           {(
             [
@@ -375,6 +402,59 @@ function ChampionModal({
                   </span>
                   <span className="text-right tabular-nums text-muted-foreground">
                     {p.games}판 · <WinrateText wins={p.wins} games={p.games} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 시작 아이템 */}
+          <section>
+            <SectionLabel>시작 아이템</SectionLabel>
+            {c.startItems.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                시작 아이템 데이터는 수집 중이에요
+              </p>
+            )}
+            <div className="space-y-1.5">
+              {c.startItems.map((si, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="flex gap-1">
+                    {Object.entries(
+                      si.items.reduce<Record<number, number>>((acc, id) => {
+                        acc[id] = (acc[id] ?? 0) + 1;
+                        return acc;
+                      }, {}),
+                    ).map(([id, count]) => {
+                      const url = itemIconUrl(version, Number(id));
+                      return (
+                        <span key={id} className="relative">
+                          {url ? (
+                            <Image
+                              src={url}
+                              alt=""
+                              width={24}
+                              height={24}
+                              unoptimized
+                              className="size-6 rounded"
+                            />
+                          ) : (
+                            <span className="size-6 rounded bg-foreground/8" />
+                          )}
+                          {count > 1 && (
+                            <span className="absolute -right-1 -bottom-1 rounded bg-background px-0.5 text-[9px] font-bold tabular-nums ring-1 ring-foreground/10">
+                              {count}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {si.games}판
+                  </span>
+                  <span className="ml-auto font-medium">
+                    <WinrateText wins={si.wins} games={si.games} />
                   </span>
                 </div>
               ))}

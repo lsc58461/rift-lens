@@ -3,6 +3,7 @@
 
 import "server-only";
 import { cached } from "@/lib/cache";
+import { getCompletedItemIds, getDDragonVersion } from "@/lib/ddragon";
 import { getSql } from "@/lib/db";
 import { riotKeyFp } from "@/lib/riot/client";
 
@@ -43,6 +44,12 @@ export interface PositionStat {
   wins: number;
 }
 
+export interface StartItemStat {
+  items: number[];
+  games: number;
+  wins: number;
+}
+
 export interface ChampionStat {
   champ: string;
   games: number;
@@ -55,23 +62,46 @@ export interface ChampionStat {
   positions: Record<string, PositionStat>;
   spells: SpellCombo[];
   items: ItemStat[];
+  startItems: StartItemStat[];
   runes: RuneStat[];
 }
 
 export interface ChampionStatsPayload {
   totalGames: number; // 집계에 쓰인 매치 수
   totalParticipants: number;
+  patch: string | null; // null = 전체 패치
   champions: ChampionStat[];
   builtAt: number;
 }
 
-export function getChampionStats(): Promise<ChampionStatsPayload> {
-  return cached("champstats:v3", TTL_SECONDS, buildStats);
+export function getChampionStats(
+  patch: string | null = null,
+): Promise<ChampionStatsPayload> {
+  return cached(`champstats:v5:${patch ?? "all"}`, TTL_SECONDS, () =>
+    buildStats(patch),
+  );
 }
 
-async function buildStats(): Promise<ChampionStatsPayload> {
+/** 표본이 충분한 패치 목록 (최신순) */
+export async function listPatches(): Promise<{ patch: string; games: number }[]> {
+  return cached("champstats:patches:v1", 60 * 60, async () => {
+    const sql = await getSql();
+    const rows = await sql`
+      SELECT patch, count(*)::int AS games FROM matches
+      WHERE fp = ${riotKeyFp()} AND patch IS NOT NULL
+      GROUP BY patch HAVING count(*) >= 50
+      ORDER BY string_to_array(patch, '.')::int[] DESC`;
+    return rows as unknown as { patch: string; games: number }[];
+  });
+}
+
+async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
   const sql = await getSql();
   const fp = riotKeyFp();
+  // 아이템 통계는 완성 아이템만 — 컴포넌트·소모품이 섞이면 목록이 지저분하다
+  const completed = new Set(
+    await getCompletedItemIds(await getDDragonVersion()),
+  );
 
   // 공통 서브쿼리 — 참가자 한 명이 한 행
   const P = `
@@ -93,10 +123,15 @@ async function buildStats(): Promise<ChampionStatsPayload> {
            pp->'items' AS items
     FROM matches m
     CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
-    WHERE m.fp = '${fp.replace(/'/g, "")}'`;
+    WHERE m.fp = '${fp.replace(/'/g, "")}'
+      ${patch ? `AND m.patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`;
 
-  const [meta, base, positions, spells, items, runes] = await Promise.all([
-    sql.unsafe(`SELECT count(*)::int AS games FROM matches WHERE fp = $1`, [fp]),
+  const [meta, base, positions, spells, items, runes, startItems] = await Promise.all([
+    sql.unsafe(
+      `SELECT count(*)::int AS games FROM matches
+       WHERE fp = $1 ${patch ? `AND patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`,
+      [fp],
+    ),
     sql.unsafe(`
       SELECT champ, count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins,
              coalesce(avg(kills), 0)::float AS ak,
@@ -127,6 +162,10 @@ async function buildStats(): Promise<ChampionStatsPayload> {
       FROM (${P}) p
       WHERE keystone IS NOT NULL AND substyle IS NOT NULL AND perks IS NOT NULL
       GROUP BY champ, keystone, substyle, perks::text, subperks::text, statperks::text`),
+    sql.unsafe(
+      `SELECT champ, items, games, wins FROM start_items WHERE fp = $1`,
+      [fp],
+    ),
   ]);
 
   const map = new Map<string, ChampionStat>();
@@ -144,6 +183,7 @@ async function buildStats(): Promise<ChampionStatsPayload> {
       positions: {},
       spells: [],
       items: [],
+      startItems: [],
       runes: [],
     });
   }
@@ -157,7 +197,12 @@ async function buildStats(): Promise<ChampionStatsPayload> {
   }
   for (const r of items as unknown as { champ: string; id: number; games: number; wins: number }[]) {
     const c = map.get(r.champ);
-    if (c && r.games >= 5 && !NON_BUILD_ITEMS.has(r.id))
+    if (
+      c &&
+      r.games >= 5 &&
+      !NON_BUILD_ITEMS.has(r.id) &&
+      (completed.size === 0 || completed.has(r.id))
+    )
       c.items.push({ id: r.id, games: r.games, wins: r.wins });
   }
   for (const r of runes as unknown as { champ: string; keystone: number; substyle: number; perks: string; subperks: string; statperks: string; games: number; wins: number }[]) {
@@ -182,10 +227,22 @@ async function buildStats(): Promise<ChampionStatsPayload> {
     });
   }
 
+  // 시작 아이템은 패치 구분 없이 누적 집계된 값을 쓴다 (표본이 아직 적음)
+  for (const r of startItems as unknown as { champ: string; items: string; games: number; wins: number }[]) {
+    const c = map.get(r.champ);
+    if (c && r.games >= 2)
+      c.startItems.push({
+        items: r.items.split(",").map(Number),
+        games: r.games,
+        wins: r.wins,
+      });
+  }
+
   const champions = [...map.values()]
     .map((c) => ({
       ...c,
       spells: c.spells.sort((a, b) => b.games - a.games).slice(0, 3),
+      startItems: c.startItems.sort((a, b) => b.games - a.games).slice(0, 3),
       items: c.items.sort((a, b) => b.games - a.games).slice(0, 12),
       runes: c.runes.sort((a, b) => b.games - a.games).slice(0, 3),
     }))
@@ -194,6 +251,7 @@ async function buildStats(): Promise<ChampionStatsPayload> {
   return {
     totalGames: (meta as unknown as { games: number }[])[0]?.games ?? 0,
     totalParticipants: champions.reduce((a, c) => a + c.games, 0),
+    patch,
     champions,
     builtAt: Date.now(),
   };

@@ -108,10 +108,13 @@ export async function saveMatchRow(
 ): Promise<void> {
   const sql = await getSql();
   await sql`
-    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, participants)
+    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, participants, patch)
     VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},
-            ${match.gameDuration}, ${match.queueId}, ${sql.json(match.participants as never)})
-    ON CONFLICT (fp, match_id) DO UPDATE SET participants = EXCLUDED.participants`;
+            ${match.gameDuration}, ${match.queueId}, ${sql.json(match.participants as never)},
+            ${match.patch ?? null})
+    ON CONFLICT (fp, match_id) DO UPDATE
+    SET participants = EXCLUDED.participants,
+        patch = coalesce(EXCLUDED.patch, matches.patch)`;
 }
 
 // ── 랭크 스냅샷 (히스토리 적재) ─────────────────────────

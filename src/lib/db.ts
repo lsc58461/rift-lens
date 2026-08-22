@@ -142,6 +142,19 @@ async function initSchema(sql: Sql): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS visit_log_at_idx ON visit_log (at DESC);
 
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch text;
+    CREATE INDEX IF NOT EXISTS matches_fp_patch_idx ON matches (fp, patch);
+
+    -- 시작 아이템 집계 — 타임라인(첫 90초 구매)에서 수확. 챔피언 통계용
+    CREATE TABLE IF NOT EXISTS start_items (
+      fp text NOT NULL,
+      champ text NOT NULL,
+      items text NOT NULL, -- 정렬된 아이템 id를 쉼표로 연결
+      games int NOT NULL DEFAULT 0,
+      wins int NOT NULL DEFAULT 0,
+      PRIMARY KEY (fp, champ, items)
+    );
+
     -- 닉변 이력 — 옛 이름 → 현재 이름 매핑. API 키가 바뀌어도(puuid 재암호화)
     -- 이름 매핑은 살아남아 옛 링크 리다이렉트가 계속 동작한다.
     CREATE TABLE IF NOT EXISTS name_history (

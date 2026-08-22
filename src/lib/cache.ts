@@ -10,6 +10,7 @@ interface CacheStore {
   keys(prefix: string): Promise<string[]>;
   /** 프리픽스로 시작하는 살아있는 항목들 (어드민 조회용) */
   entries<T>(prefix: string): Promise<{ key: string; value: T }[]>;
+  delete(key: string): Promise<void>;
 }
 
 class MemoryStore implements CacheStore {
@@ -42,6 +43,10 @@ class MemoryStore implements CacheStore {
     return [...this.map.entries()]
       .filter(([k, v]) => k.startsWith(prefix) && v.expiresAt > now)
       .map(([k, v]) => ({ key: k, value: v.value as T }));
+  }
+
+  async delete(key: string): Promise<void> {
+    this.map.delete(key);
   }
 }
 
@@ -86,6 +91,11 @@ class PostgresStore implements CacheStore {
       SELECT key, value FROM cache_entries
       WHERE key LIKE ${prefix + "%"} AND expires_at > now()`;
     return rows.map((r) => ({ key: r.key as string, value: r.value as T }));
+  }
+
+  async delete(key: string): Promise<void> {
+    const { sql } = await this.db;
+    await sql`DELETE FROM cache_entries WHERE key = ${key}`;
   }
 }
 

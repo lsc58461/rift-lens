@@ -92,3 +92,42 @@ export async function getRuneMapKo(
     return {};
   }
 }
+
+/** 완성 아이템 id 목록 — 상위 조합(into)이 없고 조합식(from)이 있는 구매
+ * 가능한 아이템. 소모품·컴포넌트·장신구를 챔피언 통계에서 거르는 데 쓴다. */
+export async function getCompletedItemIds(version: string): Promise<number[]> {
+  try {
+    return await cached(`ddragon:completed-items:${version}`, 60 * 60 * 24, async () => {
+      const res = await fetch(
+        `https://ddragon.leagueoflegends.com/cdn/${version}/data/ko_KR/item.json`,
+        { cache: "no-store", signal: AbortSignal.timeout(8_000) },
+      );
+      if (!res.ok) throw new Error(`item.json ${res.status}`);
+      const data: {
+        data: Record<
+          string,
+          {
+            from?: string[];
+            into?: string[];
+            gold?: { purchasable?: boolean };
+            maps?: Record<string, boolean>;
+          }
+        >;
+      } = await res.json();
+      const out: number[] = [];
+      for (const [id, it] of Object.entries(data.data)) {
+        if (
+          !it.into?.length &&
+          (it.from?.length ?? 0) > 0 &&
+          it.gold?.purchasable !== false &&
+          it.maps?.["11"] !== false
+        ) {
+          out.push(Number(id));
+        }
+      }
+      return out;
+    });
+  } catch {
+    return [];
+  }
+}

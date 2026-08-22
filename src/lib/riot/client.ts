@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { currentPriority, riotLimiter } from "./limiter";
 import { recordRateLimitHit, trackRateLimiter } from "./rate-status";
 import { cache, cached } from "@/lib/cache";
+import { getSql as getDbSql } from "@/lib/db";
 import { canon } from "@/lib/identity";
 import {
   clearRenameMapping,
@@ -366,6 +367,7 @@ export async function getMatch(
     info: {
       gameCreation: number;
       gameDuration: number;
+      gameVersion?: string;
       queueId: number;
       participants: RawParticipant[];
     };
@@ -376,6 +378,7 @@ export async function getMatch(
     gameCreation: raw.info.gameCreation,
     gameDuration: raw.info.gameDuration,
     queueId: raw.info.queueId,
+    patch: raw.info.gameVersion?.split(".").slice(0, 2).join("."),
     participants: raw.info.participants.map((p) => ({
       puuid: p.puuid,
       riotIdGameName: p.riotIdGameName,
@@ -489,4 +492,46 @@ export async function getMatchTimeline(
     });
     return out;
   });
+}
+
+// ── 시작 아이템 수확 ─────────────────────────────────────
+// 타임라인의 첫 90초 구매를 챔피언별로 집계한다. 최종 인벤토리(매치 저장분)
+// 에는 시작 아이템이 남지 않으므로 타임라인이 유일한 출처다.
+// 매치당 1회만 집계되도록 마커를 남긴다 (백필 재시도·빌드탭 중복 방지).
+
+const START_WINDOW_MS = 90_000;
+
+export async function harvestStartItems(
+  platform: PlatformRegion,
+  matchId: string,
+  /** 이미 받아둔 타임라인이 있으면 재사용 (없으면 새로 호출) */
+  timeline?: Record<string, TimelinePlayer>,
+): Promise<void> {
+  const fp = keyFp();
+  const marker = `sih:${fp}:${matchId}`;
+  if (await cache.get(marker)) return;
+
+  const [tl, row] = await Promise.all([
+    timeline ? Promise.resolve(timeline) : getMatchTimeline(platform, matchId),
+    getMatchRow(fp, matchId),
+  ]);
+  if (!row) return;
+
+  const sql = await getDbSql();
+  for (const p of row.participants) {
+    const pl = tl[p.puuid];
+    if (!pl) continue;
+    const starts = pl.items
+      .filter((e) => e.type === "buy" && e.minute * 60_000 <= START_WINDOW_MS)
+      .map((e) => e.itemId)
+      .sort((a, b) => a - b);
+    if (starts.length === 0) continue;
+    await sql`
+      INSERT INTO start_items (fp, champ, items, games, wins)
+      VALUES (${fp}, ${p.championName}, ${starts.join(",")}, 1, ${p.win ? 1 : 0})
+      ON CONFLICT (fp, champ, items) DO UPDATE
+      SET games = start_items.games + 1,
+          wins = start_items.wins + ${p.win ? 1 : 0}`;
+  }
+  await cache.set(marker, 1, 60 * 60 * 24 * 60);
 }
