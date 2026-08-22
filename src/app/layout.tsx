@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { BarChart3, CircleHelp, History } from "lucide-react";
 import Link from "next/link";
 import "./globals.css";
+import { AnnouncementBanner } from "@/components/announcement-banner";
 import { LogoMark } from "@/components/logo-mark";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -74,6 +75,7 @@ export default function RootLayout({
             <div className="absolute left-1/2 -top-56 size-144 -translate-x-1/2 rounded-full bg-primary/12 blur-3xl dark:bg-primary/10" />
           </div>
 
+          <AnnouncementBanner />
           <header className="sticky top-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
             <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4">
               <Link href="/" className="group flex items-center gap-2">

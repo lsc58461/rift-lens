@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AnnouncementCard } from "./announcement-card";
 import { CrawlCard } from "./crawl-card";
 import { MigrationCard } from "./migration-card";
 import { RefreshAllCard } from "./refresh-all-card";
@@ -107,6 +108,8 @@ export function MaintenancePanel() {
         title="점검 모드"
         description="어드민·API는 점검 중에도 접속 가능해요"
       />
+
+      <AnnouncementCard />
 
       <RefreshAllCard />
 
