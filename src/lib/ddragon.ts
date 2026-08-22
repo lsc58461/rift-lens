@@ -56,3 +56,39 @@ export async function getChampionNamesKo(
     return {};
   }
 }
+
+/** 룬 id → 한글 이름·아이콘 (핵심룬과 트리 모두 포함) */
+export interface RuneInfo {
+  name: string;
+  icon: string; // https://ddragon.leagueoflegends.com/cdn/img/ 뒤에 붙는 경로
+}
+
+export async function getRuneMapKo(
+  version: string,
+): Promise<Record<number, RuneInfo>> {
+  try {
+    return await cached(`ddragon:runes:ko:${version}`, 60 * 60 * 24, async () => {
+      const res = await fetch(
+        `https://ddragon.leagueoflegends.com/cdn/${version}/data/ko_KR/runesReforged.json`,
+        { cache: "no-store", signal: AbortSignal.timeout(5_000) },
+      );
+      if (!res.ok) throw new Error(`runesReforged ${res.status}`);
+      const styles: {
+        id: number;
+        name: string;
+        icon: string;
+        slots: { runes: { id: number; name: string; icon: string }[] }[];
+      }[] = await res.json();
+      const map: Record<number, RuneInfo> = {};
+      for (const st of styles) {
+        map[st.id] = { name: st.name, icon: st.icon };
+        for (const slot of st.slots) {
+          for (const r of slot.runes) map[r.id] = { name: r.name, icon: r.icon };
+        }
+      }
+      return map;
+    });
+  } catch {
+    return {};
+  }
+}
