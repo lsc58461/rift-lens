@@ -502,7 +502,7 @@ export default async function SummonerPage({
 
       {/* 본문 2단 — 좌: 실력대 요약 / 우: 추이·전적.
           넓은 화면에서 스크롤을 줄이려고 정보 카드를 옆으로 세운다. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌측 컬럼 */}
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards">
           <Card
