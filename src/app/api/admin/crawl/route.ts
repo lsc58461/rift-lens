@@ -56,7 +56,9 @@ export async function POST(req: NextRequest) {
       );
     }
     const target = Number(req.nextUrl.searchParams.get("target") ?? 30);
-    await beginCrawl(Number.isFinite(target) ? target : 30);
+    const mode =
+      req.nextUrl.searchParams.get("mode") === "recent" ? "recent" : "balanced";
+    await beginCrawl(Number.isFinite(target) ? target : 30, mode);
   }
   // continue는 상태를 초기화하지 않고 라운드만 잇는다
   const origin = publicOrigin(req);

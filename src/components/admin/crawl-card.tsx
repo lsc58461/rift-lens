@@ -21,6 +21,8 @@ interface State {
   roundActive: boolean;
   done: boolean;
   target: number;
+  mode?: "balanced" | "recent";
+  lastTier?: string | null;
   rounds: number;
   analyzed: number;
   failed: number;
@@ -28,12 +30,26 @@ interface State {
   lastError: string | null;
 }
 
+const TIER_KO: Record<string, string> = {
+  IRON: "아이언",
+  BRONZE: "브론즈",
+  SILVER: "실버",
+  GOLD: "골드",
+  PLATINUM: "플래티넘",
+  EMERALD: "에메랄드",
+  DIAMOND: "다이아",
+  MASTER: "마스터",
+  GRANDMASTER: "그마",
+  CHALLENGER: "챌린저",
+};
+
 const STALE_MS = 300_000;
 const TARGETS = [10, 30, 50] as const;
 
 export function CrawlCard() {
   const [state, setState] = useState<State | null>(null);
   const [target, setTarget] = useState<number>(30);
+  const [mode, setMode] = useState<"balanced" | "recent">("balanced");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -71,7 +87,9 @@ export function CrawlCard() {
     setBusy(true);
     try {
       const qs =
-        action === "start" ? `action=start&target=${target}` : "action=stop";
+        action === "start"
+          ? `action=start&target=${target}&mode=${mode}`
+          : "action=stop";
       const res = await fetch(`/api/admin/crawl?${qs}`, { method: "POST" });
       if (!res.ok) {
         const d = await res.json().catch(() => null);
@@ -100,13 +118,17 @@ export function CrawlCard() {
             <Badge variant="secondary" className="gap-1 font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
+              {state.mode === "balanced" && state.lastTier && (
+                <> · {TIER_KO[state.lastTier] ?? state.lastTier} 수집</>
+              )}
             </Badge>
           )}
         </CardTitle>
         <CardDescription>
           저장된 경기의 참가자 중 아직 기록되지 않은 소환사를 찾아 빠른 분석으로
-          등록합니다. 라이엇 호출은 저우선순위라 유저 검색이 먼저 처리되고, 시작해두면 탭을 닫아도 서버가 알아서 완주해요.
-          정밀 분석은 새벽 자동 갱신이 이어받습니다.
+          등록합니다. 균형 모드는 랭크 스냅샷을 참고해 표본이 부족한 티어부터
+          채워요. 라이엇 호출은 저우선순위라 유저 검색이 먼저 처리되고,
+          시작해두면 탭을 닫아도 서버가 알아서 완주합니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -148,6 +170,29 @@ export function CrawlCard() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
+          {!state?.running && (
+            <div className="flex items-center gap-1 rounded-md border p-0.5">
+              {(
+                [
+                  ["balanced", "티어 균형"],
+                  ["recent", "최신 경기"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMode(key)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    mode === key
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {!state?.running && (
             <div className="flex items-center gap-1 rounded-md border p-0.5">
               {TARGETS.map((t) => (

@@ -21,11 +21,15 @@ const MAX_ROUNDS = 100;
 const ROUND_STALE_MS = 300_000;
 const SKIP_TTL = "7 days"; // 실패한 후보를 다시 시도하기까지의 유예
 
+export type CrawlMode = "balanced" | "recent";
+
 export interface CrawlState {
   running: boolean;
   roundActive: boolean;
   done: boolean;
   target: number; // 이번 실행에서 수집할 소환사 수
+  mode: CrawlMode; // balanced = 표본이 부족한 티어 우선
+  lastTier: string | null; // 직전 라운드가 타깃한 티어 (balanced 전용)
   rounds: number;
   analyzed: number;
   failed: number;
@@ -34,12 +38,14 @@ export interface CrawlState {
   lastError: string | null;
 }
 
-function empty(target: number): CrawlState {
+function empty(target: number, mode: CrawlMode): CrawlState {
   return {
     running: false,
     roundActive: false,
     done: false,
     target,
+    mode,
+    lastTier: null,
     rounds: 0,
     analyzed: 0,
     failed: 0,
@@ -57,8 +63,14 @@ async function save(s: CrawlState): Promise<void> {
   await setSetting(STATE_KEY, { ...s, updatedAt: Date.now() });
 }
 
-export async function beginCrawl(target: number): Promise<CrawlState> {
-  const next = { ...empty(Math.min(100, Math.max(5, target))), running: true };
+export async function beginCrawl(
+  target: number,
+  mode: CrawlMode = "balanced",
+): Promise<CrawlState> {
+  const next = {
+    ...empty(Math.min(100, Math.max(5, target)), mode),
+    running: true,
+  };
   await save(next);
   return next;
 }
@@ -71,6 +83,92 @@ export async function stopCrawl(): Promise<void> {
 interface Candidate {
   name: string;
   tag: string;
+}
+
+const TIER_LADDER = [
+  "IRON",
+  "BRONZE",
+  "SILVER",
+  "GOLD",
+  "PLATINUM",
+  "EMERALD",
+  "DIAMOND",
+  "MASTER",
+  "GRANDMASTER",
+  "CHALLENGER",
+] as const;
+
+/** 표본이 가장 부족한 티어를 고른다 — 후보 풀(스냅샷)에 미수집 인원이
+ * 있는 티어 중에서 수집된 소환사 수가 가장 적은 티어. */
+async function pickTargetTier(): Promise<string | null> {
+  const sql = await getSql();
+  const fp = riotKeyFp();
+  const [collected, available] = await Promise.all([
+    sql`SELECT current_tier AS tier, count(*)::int AS n
+        FROM recent_searches WHERE current_tier IS NOT NULL GROUP BY 1`,
+    sql`SELECT ls.solo_tier AS tier, count(DISTINCT ls.puuid)::int AS n
+        FROM league_snapshots ls
+        WHERE ls.fp = ${fp} AND ls.solo_tier IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM recent_searches r WHERE r.puuid = ls.puuid)
+        GROUP BY 1`,
+  ]);
+  const have = new Map(
+    (collected as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
+  );
+  const pool = new Map(
+    (available as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
+  );
+  let best: string | null = null;
+  let bestCount = Infinity;
+  for (const tier of TIER_LADDER) {
+    if ((pool.get(tier) ?? 0) < 1) continue; // 후보가 없는 티어는 건너뜀
+    const n = have.get(tier) ?? 0;
+    if (n < bestCount) {
+      best = tier;
+      bestCount = n;
+    }
+  }
+  return best;
+}
+
+/** 특정 티어(스냅샷 기준)의 미수집 소환사를 매치 묶음 순서로 뽑는다 */
+async function findTierCandidates(
+  tier: string,
+  limit: number,
+): Promise<Candidate[]> {
+  const sql = await getSql();
+  const fp = riotKeyFp();
+  const rows = await sql`
+    SELECT name, tag FROM (
+      SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
+             p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
+             m.match_id AS mid, m.game_creation AS gc
+      FROM matches m
+      CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
+      WHERE m.fp = ${fp}
+        AND coalesce(p->>'riotIdGameName', '') <> ''
+        AND coalesce(p->>'riotIdTagline', '') <> ''
+        AND EXISTS (
+          SELECT 1 FROM league_snapshots ls
+          WHERE ls.fp = m.fp AND ls.puuid = p->>'puuid'
+            AND ls.solo_tier = ${tier})
+        AND NOT EXISTS (
+          SELECT 1 FROM recent_searches r
+          WHERE r.platform = m.platform
+            AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
+            AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
+        AND NOT EXISTS (
+          SELECT 1 FROM cache_entries c
+          WHERE c.key = 'crawl-skip:' || lower(trim(p->>'riotIdGameName'))
+                        || '#' || lower(trim(p->>'riotIdTagline'))
+            AND c.expires_at > now())
+      ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
+               m.game_creation DESC
+    ) s
+    ORDER BY gc DESC, mid
+    LIMIT ${limit}`;
+  return rows as unknown as Candidate[];
 }
 
 /** 저장된 매치의 참가자 중 미기록·미실패 소환사를 뽑는다.
@@ -132,7 +230,18 @@ export async function runCrawlRound(origin?: string): Promise<void> {
 
   try {
     const want = Math.min(PER_ROUND, state.target - state.analyzed);
-    const candidates = await findCandidates(want);
+    let candidates: Candidate[] = [];
+    let pickedTier: string | null = null;
+    if (state.mode === "balanced") {
+      pickedTier = await pickTargetTier();
+      if (pickedTier) {
+        candidates = await findTierCandidates(pickedTier, want);
+      }
+    }
+    if (candidates.length === 0) {
+      pickedTier = null;
+      candidates = await findCandidates(want);
+    }
     if (candidates.length === 0) {
       await save({ ...state, running: false, roundActive: false, done: true });
       return;
@@ -170,6 +279,7 @@ export async function runCrawlRound(origin?: string): Promise<void> {
       rounds: state.rounds + 1,
       analyzed: state.analyzed + analyzed,
       failed: state.failed + failed,
+      lastTier: pickedTier,
       lastError: null,
     });
     // 아직 할 일이 남았으면 탭 폴링 없이도 다음 라운드를 잇는다
