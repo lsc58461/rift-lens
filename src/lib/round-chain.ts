@@ -14,9 +14,9 @@ export async function chainNextRound(
     // continue 라우트는 after()로 라운드를 예약하고 즉시 응답하므로 짧게 끝난다
     await fetch(`${origin}${path}?action=continue`, {
       method: "POST",
-      // x-vercel-id를 비워 호출 사슬 추적이 이어지지 않게 한다 — 남겨두면
-      // 라운드가 이어질수록 깊이가 쌓여 루프 감지(508)로 차단된다
-      headers: { authorization: `Bearer ${secret}`, "x-vercel-id": "" },
+      // 주의: 이 사슬은 Vercel이 깊이 ~5에서 끊는다. 그 뒤는 공개 트래픽
+      // 펌프(job-pump.ts)와 관리자 탭 폴링이 이어준다.
+      headers: { authorization: `Bearer ${secret}` },
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
