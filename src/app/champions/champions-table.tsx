@@ -146,7 +146,7 @@ export function ChampionsTable({
         {patches.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 self-end rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent data-popup-open:bg-accent sm:self-auto">
-              {currentPatch ? `패치 ${currentPatch}` : "전체 패치"}
+              {currentPatch ? `패치 ${currentPatch}` : "최근 2패치"}
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
@@ -154,7 +154,7 @@ export function ChampionsTable({
                 onClick={() => router.push("/champions")}
                 className="justify-between text-xs"
               >
-                전체 패치
+                최근 2패치 합산
                 {!currentPatch && <Check className="size-3.5 text-primary" />}
               </DropdownMenuItem>
               {patches.map((p) => (

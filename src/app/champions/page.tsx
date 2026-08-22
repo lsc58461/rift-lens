@@ -43,7 +43,7 @@ export default async function ChampionsPage({
       <PageHeader
         icon={BarChart3}
         title="챔피언 통계"
-        description={`${patch ? `패치 ${patch}` : "전체 패치"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
+        description={`${patch ? `패치 ${patch}` : "최근 2패치 합산"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
       />
       <ChampionsTable
         stats={stats}

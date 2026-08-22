@@ -84,7 +84,7 @@ export interface ChampionStatsPayload {
 export function getChampionStats(
   patch: string | null = null,
 ): Promise<ChampionStatsPayload> {
-  return cached(`champstats:v6:${patch ?? "all"}`, TTL_SECONDS, () =>
+  return cached(`champstats:v7:${patch ?? "recent2"}`, TTL_SECONDS, () =>
     buildStats(patch),
   );
 }
@@ -105,6 +105,20 @@ export async function listPatches(): Promise<{ patch: string; games: number }[]>
 async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
   const sql = await getSql();
   const fp = riotKeyFp();
+  // 기본 보기(patch=null)는 '최근 2개 패치 합산' — 옛 패치 매치는 집계에서만
+  // 제외되고 데이터는 계속 보존된다. 특정 패치를 고르면 그 패치만.
+  let patchFilter = "";
+  if (patch) {
+    patchFilter = `AND m.patch = '${patch.replace(/[^0-9.]/g, "")}'`;
+  } else {
+    const recent = await sql`
+      SELECT DISTINCT patch FROM matches WHERE fp = ${fp} AND patch IS NOT NULL
+      ORDER BY string_to_array(patch, '.')::int[] DESC LIMIT 2`;
+    const list = (recent as unknown as { patch: string }[])
+      .map((r) => `'${r.patch.replace(/[^0-9.]/g, "")}'`)
+      .join(",");
+    if (list) patchFilter = `AND m.patch IN (${list})`;
+  }
   // 아이템 통계는 완성 아이템만 — 컴포넌트·소모품이 섞이면 목록이 지저분하다
   const completed = new Set(
     await getCompletedItemIds(await getDDragonVersion()),
@@ -130,13 +144,12 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
            pp->'items' AS items
     FROM matches m
     CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
-    WHERE m.fp = '${fp.replace(/'/g, "")}'
-      ${patch ? `AND m.patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`;
+    WHERE m.fp = '${fp.replace(/'/g, "")}' ${patchFilter}`;
 
   const [meta, base, positions, spells, items, runes, startItems, buildPaths] = await Promise.all([
     sql.unsafe(
-      `SELECT count(*)::int AS games FROM matches
-       WHERE fp = $1 ${patch ? `AND patch = '${patch.replace(/[^0-9.]/g, "")}'` : ""}`,
+      `SELECT count(*)::int AS games FROM matches m
+       WHERE m.fp = $1 ${patchFilter}`,
       [fp],
     ),
     sql.unsafe(`
