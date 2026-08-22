@@ -6,6 +6,7 @@
 
 import { ListChecks, Swords } from "lucide-react";
 import { MatchHistory } from "@/components/match-history";
+import type { RuneInfo } from "@/lib/ddragon";
 import { MatchList, type MatchRow } from "@/components/match-list";
 import {
   Card,
@@ -21,12 +22,14 @@ export function MatchTabs({
   riotId,
   ddVersion,
   champNames,
+  runeMap,
   rows,
 }: {
   region: string;
   riotId: string;
   ddVersion: string;
   champNames: Record<string, string>;
+  runeMap?: Record<number, RuneInfo>;
   rows: MatchRow[];
 }) {
   return (
@@ -57,6 +60,7 @@ export function MatchTabs({
         <CardContent>
           <TabsContent value="history">
             <MatchHistory
+              runeMap={runeMap}
               region={region}
               riotId={riotId}
               ddVersion={ddVersion}

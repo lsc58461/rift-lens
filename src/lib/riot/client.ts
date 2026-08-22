@@ -401,3 +401,76 @@ export async function getMatch(
   await saveMatchRow(keyFp(), platform, match).catch(() => {});
   return match;
 }
+
+// ── 매치 타임라인 (아이템 빌드·스킬 순서) ────────────────
+// 풀 타임라인 응답은 수백 KB라 참가자별 필요한 이벤트만 파싱해 30일 캐시한다.
+// 매치는 불변이므로 한 번 파싱하면 다시 부를 일이 없다.
+
+export interface TimelineItemEvent {
+  minute: number;
+  itemId: number;
+  type: "buy" | "sell";
+}
+
+export interface TimelinePlayer {
+  items: TimelineItemEvent[];
+  /** 스킬 슬롯 순서 (1=Q 2=W 3=E 4=R) */
+  skills: number[];
+}
+
+export async function getMatchTimeline(
+  platform: PlatformRegion,
+  matchId: string,
+): Promise<Record<string, TimelinePlayer>> {
+  const routing = PLATFORM_TO_ROUTING[platform];
+  return cached(`timeline:${keyFp()}:${matchId}`, 60 * 60 * 24 * 30, async () => {
+    const raw = await riotFetch<{
+      metadata: { participants: string[] };
+      info: {
+        frames: {
+          events: {
+            type: string;
+            timestamp: number;
+            participantId?: number;
+            itemId?: number;
+            beforeId?: number;
+            skillSlot?: number;
+          }[];
+        }[];
+      };
+    }>(
+      `https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline`,
+    );
+
+    const byId = new Map<number, TimelinePlayer>();
+    for (let i = 1; i <= raw.metadata.participants.length; i++) {
+      byId.set(i, { items: [], skills: [] });
+    }
+    for (const frame of raw.info.frames) {
+      for (const ev of frame.events) {
+        const pl = ev.participantId ? byId.get(ev.participantId) : undefined;
+        if (!pl) continue;
+        const minute = Math.floor(ev.timestamp / 60_000);
+        if (ev.type === "ITEM_PURCHASED" && ev.itemId) {
+          pl.items.push({ minute, itemId: ev.itemId, type: "buy" });
+        } else if (ev.type === "ITEM_SOLD" && ev.itemId) {
+          pl.items.push({ minute, itemId: ev.itemId, type: "sell" });
+        } else if (ev.type === "ITEM_UNDO") {
+          // 마지막 구매/판매를 되돌린다
+          const idx = pl.items.findLastIndex(
+            (e) => e.itemId === (ev.beforeId || ev.itemId),
+          );
+          if (idx >= 0) pl.items.splice(idx, 1);
+        } else if (ev.type === "SKILL_LEVEL_UP" && ev.skillSlot) {
+          pl.skills.push(ev.skillSlot);
+        }
+      }
+    }
+
+    const out: Record<string, TimelinePlayer> = {};
+    raw.metadata.participants.forEach((puuid, i) => {
+      out[puuid] = byId.get(i + 1)!;
+    });
+    return out;
+  });
+}

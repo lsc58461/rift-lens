@@ -17,6 +17,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useHistorySummary } from "@/components/history-summary";
+import { MatchDetail, type DetailPlayer } from "@/components/match-detail";
+import type { RuneInfo } from "@/lib/ddragon";
 import { MatchSummary, type Summary } from "@/components/match-summary";
 import {
   championIconUrl,
@@ -25,18 +27,7 @@ import {
   spellIconUrl,
 } from "@/lib/ddragon-assets";
 
-interface Player {
-  name: string;
-  champ: string;
-  position: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  cs: number | null;
-  damage: number | null;
-  items: number[];
-  self?: boolean;
-}
+type Player = DetailPlayer;
 
 interface Game {
   matchId: string;
@@ -54,6 +45,8 @@ interface Game {
   vision: number | null;
   position: string;
   spells: number[];
+  keystone: number | null;
+  subStyle: number | null;
   items: number[];
   teamKills: number;
   maxDamage: number;
@@ -173,78 +166,19 @@ function TeamColumn({
   );
 }
 
-function ScoreboardSide({
-  version,
-  names,
-  players,
-  win,
-  label,
-  region,
-}: {
-  version: string;
-  names: Record<string, string>;
-  players: Player[];
-  win: boolean;
-  label: string;
-  region: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <div
-        className={`mb-1.5 text-[11px] font-semibold ${
-          win ? "text-chart-1" : "text-destructive"
-        }`}
-      >
-        {label} · {win ? "승리" : "패배"}
-      </div>
-      <div className="space-y-1">
-        {[...players].sort(byPosition).map((p, i) => (
-          <div
-            key={i}
-            className={`grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 rounded px-1.5 py-1 text-[11px] ${
-              p.self ? "bg-foreground/8 font-medium" : ""
-            }`}
-          >
-            <Image
-              src={championIconUrl(version, p.champ)}
-              alt={championNameKo(names, p.champ)}
-              width={20}
-              height={20}
-              unoptimized
-              className="size-5 rounded"
-            />
-            <Link
-              href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
-              className={`truncate underline-offset-2 hover:underline ${
-                p.self ? "" : "text-muted-foreground"
-              }`}
-            >
-              {p.name.split("#")[0]}
-            </Link>
-            <span className="tabular-nums text-muted-foreground">
-              {p.kills}/{p.deaths}/{p.assists}
-            </span>
-            <span className="w-12 text-right tabular-nums text-muted-foreground">
-              {p.cs !== null ? `${p.cs} CS` : ""}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function MatchHistory({
   region,
   riotId,
   ddVersion,
   champNames = {},
+  runeMap = {},
   bare = false,
 }: {
   region: string;
   riotId: string;
   ddVersion: string;
   champNames?: Record<string, string>;
+  runeMap?: Record<number, RuneInfo>;
   /** 탭 안에 넣을 때처럼 바깥에서 Card를 감쌀 경우 자체 Card·헤더를 생략한다 */
   bare?: boolean;
 }) {
@@ -500,24 +434,19 @@ export function MatchHistory({
               </div>
 
               {open && (
-                <div className="grid gap-4 border-t bg-background/50 px-3 py-3 sm:grid-cols-2">
-                  <ScoreboardSide
-                    version={ddVersion}
-                    names={champNames}
-                    players={g.team}
-                    win={g.win}
-                    label="우리 팀"
-                    region={region}
-                  />
-                  <ScoreboardSide
-                    version={ddVersion}
-                    names={champNames}
-                    players={g.enemy}
-                    win={!g.win}
-                    label="상대 팀"
-                    region={region}
-                  />
-                </div>
+                <MatchDetail
+                  matchId={g.matchId}
+                  team={g.team}
+                  enemy={g.enemy}
+                  win={g.win}
+                  region={region}
+                  riotId={riotId}
+                  version={ddVersion}
+                  names={champNames}
+                  keystone={g.keystone ?? null}
+                  subStyle={g.subStyle ?? null}
+                  runeMap={runeMap}
+                />
               )}
             </div>
           );

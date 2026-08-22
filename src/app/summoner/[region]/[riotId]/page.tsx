@@ -33,6 +33,7 @@ import {
   championIconUrl,
   championNameKo,
   getChampionNamesKo,
+  getRuneMapKo,
   getDDragonVersion,
   profileIconUrl,
   tierEmblemUrl,
@@ -358,6 +359,7 @@ export default async function SummonerPage({
 
   const ddVersion = await getDDragonVersion();
   const champNames = await getChampionNamesKo(ddVersion);
+  const runeMap = await getRuneMapKo(ddVersion);
 
   // 저장된 이전 분석에는 프로필 정보가 없을 수 있어 보충 조회 (둘 다 캐시됨)
   let selfPuuid: string | null = null; // 닉변 승계용 — 아래 조회에서 확보
@@ -727,6 +729,7 @@ export default async function SummonerPage({
 
           {/* 경기 목록 — 최근 전적 / 분석 근거를 탭으로 (세로 길이 절감) */}
           <MatchTabs
+            runeMap={runeMap}
             region={region}
             riotId={decoded}
             ddVersion={ddVersion}
