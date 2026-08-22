@@ -7,6 +7,7 @@ import { cache } from "@/lib/cache";
 import { getSql } from "@/lib/db";
 import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
+import { chainNextRound } from "@/lib/round-chain";
 import { getSetting, setSetting } from "@/lib/store";
 import type { PlatformRegion } from "@/lib/riot/types";
 
@@ -69,7 +70,7 @@ export async function stopRunefill(): Promise<void> {
   if (s) await save({ ...s, running: false, roundActive: false });
 }
 
-export async function runRunefillRound(): Promise<void> {
+export async function runRunefillRound(origin?: string): Promise<void> {
   let state = await getRunefillState();
   if (!state?.running) return;
   if (state.roundActive && Date.now() - state.updatedAt < ROUND_STALE_MS) return;
@@ -134,6 +135,10 @@ export async function runRunefillRound(): Promise<void> {
       failed: state.failed + failed,
       lastError: null,
     });
+    const next = await getRunefillState();
+    if (origin && next?.running && !next.done) {
+      await chainNextRound(origin, "/api/admin/rune-backfill");
+    }
   } catch (e) {
     const s = await getRunefillState();
     if (s) {

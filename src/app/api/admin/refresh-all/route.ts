@@ -8,6 +8,7 @@ import {
 } from "@/lib/refresh-all";
 import { getCrawlState } from "@/lib/crawl-seed";
 import { getRunefillState } from "@/lib/rune-backfill";
+import { isCronSecretAuth } from "@/lib/round-chain";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -28,10 +29,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))) {
+  const cronAuth = isCronSecretAuth(req.headers.get("authorization"));
+  if (
+    !cronAuth &&
+    !(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))
+  ) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const action = req.nextUrl.searchParams.get("action") ?? "start";
+  if (cronAuth && action !== "continue") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   if (action === "stop") {
     await stopRefreshAll();
     return NextResponse.json({ state: await getRefreshAllState() });

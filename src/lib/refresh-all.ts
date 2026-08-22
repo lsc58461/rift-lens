@@ -8,6 +8,7 @@
 // 폴링하며 다음 라운드를 이어서 요청한다(데이터 이관 카드와 같은 방식).
 
 import "server-only";
+import { chainNextRound } from "@/lib/round-chain";
 import { getSetting, setSetting } from "@/lib/store";
 
 const STATE_KEY = "refresh-all:state";
@@ -137,6 +138,10 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       state.lastError = "진전이 없어 종료했어요 (다른 분석이 실행 중일 수 있음)";
     }
     await save(state);
+    // 아직 할 일이 남았으면 탭 폴링 없이도 다음 라운드를 잇는다
+    if (state.running && !state.done) {
+      await chainNextRound(origin, "/api/admin/refresh-all");
+    }
   } catch (e) {
     await save({
       ...state,

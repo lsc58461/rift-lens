@@ -105,7 +105,7 @@ export function CrawlCard() {
         </CardTitle>
         <CardDescription>
           저장된 경기의 참가자 중 아직 기록되지 않은 소환사를 찾아 빠른 분석으로
-          등록합니다. 라이엇 호출은 저우선순위라 유저 검색이 먼저 처리돼요.
+          등록합니다. 라이엇 호출은 저우선순위라 유저 검색이 먼저 처리되고, 시작해두면 탭을 닫아도 서버가 알아서 완주해요.
           정밀 분석은 새벽 자동 갱신이 이어받습니다.
         </CardDescription>
       </CardHeader>

@@ -7,10 +7,19 @@ import {
   stopCrawl,
 } from "@/lib/crawl-seed";
 import { getRefreshAllState } from "@/lib/refresh-all";
+import { isCronSecretAuth } from "@/lib/round-chain";
 import { getRunefillState } from "@/lib/rune-backfill";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+// 자기 자신을 호출할 공개 주소 — 배포 환경의 해시 URL은 Vercel 인증에 막힌다
+function publicOrigin(req: NextRequest): string {
+  return req.nextUrl.hostname === "localhost"
+    ? req.nextUrl.origin
+    : "https://rift-lens.xyz";
+}
+
 
 export async function GET(req: NextRequest) {
   if (!(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))) {
@@ -20,10 +29,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))) {
+  const cronAuth = isCronSecretAuth(req.headers.get("authorization"));
+  if (
+    !cronAuth &&
+    !(await isValidAdminSession(req.cookies.get(ADMIN_COOKIE)?.value))
+  ) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const action = req.nextUrl.searchParams.get("action") ?? "start";
+  // 서버 self-chain은 continue만 허용 (start/stop은 관리자 전용)
+  if (cronAuth && action !== "continue") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   if (action === "stop") {
     await stopCrawl();
     return NextResponse.json({ state: await getCrawlState() });
@@ -42,6 +59,7 @@ export async function POST(req: NextRequest) {
     await beginCrawl(Number.isFinite(target) ? target : 30);
   }
   // continue는 상태를 초기화하지 않고 라운드만 잇는다
-  after(() => runCrawlRound().catch(() => {}));
+  const origin = publicOrigin(req);
+  after(() => runCrawlRound(origin).catch(() => {}));
   return NextResponse.json({ state: await getCrawlState() });
 }

@@ -11,6 +11,7 @@ import { recordSearch } from "@/lib/recent";
 import { riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
 import { getSql } from "@/lib/db";
+import { chainNextRound } from "@/lib/round-chain";
 import { getSetting, setSetting } from "@/lib/store";
 import { canon } from "@/lib/identity";
 
@@ -116,8 +117,9 @@ async function markSkip(c: Candidate): Promise<void> {
     ON CONFLICT (key) DO UPDATE SET expires_at = EXCLUDED.expires_at`;
 }
 
-/** 한 라운드: 후보 몇 명을 빠른 분석하고 최근 검색에 등록한다 */
-export async function runCrawlRound(): Promise<void> {
+/** 한 라운드: 후보 몇 명을 빠른 분석하고 최근 검색에 등록한다.
+ * origin이 있으면 라운드 후 서버가 스스로 다음 라운드를 잇는다. */
+export async function runCrawlRound(origin?: string): Promise<void> {
   let state = await getCrawlState();
   if (!state?.running) return;
   if (state.roundActive && Date.now() - state.updatedAt < ROUND_STALE_MS) return;
@@ -170,6 +172,11 @@ export async function runCrawlRound(): Promise<void> {
       failed: state.failed + failed,
       lastError: null,
     });
+    // 아직 할 일이 남았으면 탭 폴링 없이도 다음 라운드를 잇는다
+    const next = await getCrawlState();
+    if (origin && next?.running && !next.done) {
+      await chainNextRound(origin, "/api/admin/crawl");
+    }
   } catch (e) {
     const s = await getCrawlState();
     if (s) {

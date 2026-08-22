@@ -111,7 +111,7 @@ export function RuneBackfillCard() {
         </CardTitle>
         <CardDescription>
           룬 저장 도입 전에 기록된 매치를 라이엇에서 다시 받아 룬을 채웁니다.
-          매치당 호출 1회, 전부 저우선순위라 유저 검색이 먼저 처리돼요.
+          전부 저우선순위라 유저 검색이 먼저 처리되고, 시작해두면 탭을 닫아도 서버가 알아서 완주해요.
           {missing !== null && (
             <>
               {" "}
