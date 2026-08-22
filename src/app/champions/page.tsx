@@ -23,7 +23,9 @@ export default async function ChampionsPage({
   searchParams: Promise<{ patch?: string }>;
 }) {
   const { patch: rawPatch } = await searchParams;
-  const patches = await listPatches();
+  // 선택지는 현재·직전 패치 둘만 — 옛 패치 데이터는 삭제하지 않고
+  // '전체 패치' 집계에 계속 포함된다 (표본이 얇은 옛 패치 노출 방지)
+  const patches = (await listPatches()).slice(0, 2);
   // 목록에 있는 패치만 허용 — 임의 입력이 캐시 키를 오염시키지 않게
   const patch =
     rawPatch && patches.some((p) => p.patch === rawPatch) ? rawPatch : null;
