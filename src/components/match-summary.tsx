@@ -104,11 +104,14 @@ export function MatchSummary({
   version,
   names,
   region,
+  bare = false,
 }: {
   summary: Summary;
   version: string;
   names: Record<string, string>;
   region: string;
+  /** 바깥에서 Card로 감쌀 때 자체 테두리 상자를 생략한다 */
+  bare?: boolean;
 }) {
   const posEntries = POSITION_ORDER.filter((p) => summary.positions[p]).map(
     (p) => ({ pos: p, n: summary.positions[p] }),
@@ -116,7 +119,7 @@ export function MatchSummary({
   const posTotal = posEntries.reduce((a, p) => a + p.n, 0);
 
   return (
-    <div className="mb-3 rounded-xl border bg-card/60 p-3 sm:p-4">
+    <div className={bare ? "" : "mb-3 rounded-xl border bg-card/60 p-3 sm:p-4"}>
       {/* 승률 + 핵심 지표 */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <WinRateDonut wins={summary.wins} losses={summary.losses} />

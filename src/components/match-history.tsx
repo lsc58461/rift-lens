@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useHistorySummary } from "@/components/history-summary";
 import { MatchSummary, type Summary } from "@/components/match-summary";
 import {
   championIconUrl,
@@ -247,6 +248,7 @@ export function MatchHistory({
   /** 탭 안에 넣을 때처럼 바깥에서 Card를 감쌀 경우 자체 Card·헤더를 생략한다 */
   bare?: boolean;
 }) {
+  const summaryCtx = useHistorySummary();
   const [games, setGames] = useState<Game[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState(false);
@@ -266,6 +268,7 @@ export function MatchHistory({
         if (stop) return;
         setGames(d.games);
         setSummary(d.summary);
+        summaryCtx?.setSummary(d.summary);
         setHasMore(d.hasMore);
       })
       .catch(() => !stop && setError(true));
@@ -321,7 +324,8 @@ export function MatchHistory({
         </p>
       )}
 
-      {summary && summary.games > 0 && (
+      {/* 요약은 페이지 왼쪽 컬럼 카드가 담당한다 — 프로바이더가 없는 곳에서만 직접 표시 */}
+      {!summaryCtx && summary && summary.games > 0 && (
         <MatchSummary
           summary={summary}
           version={ddVersion}

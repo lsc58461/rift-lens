@@ -11,6 +11,10 @@ import {
   Users,
 } from "lucide-react";
 import { DeepRefine } from "@/components/deep-refine";
+import {
+  HistorySummaryProvider,
+  MatchSummaryCard,
+} from "@/components/history-summary";
 import { LobbyDistribution } from "@/components/lobby-distribution";
 import { type MatchRow } from "@/components/match-list";
 import { MatchTabs } from "@/components/match-tabs";
@@ -502,6 +506,7 @@ export default async function SummonerPage({
 
       {/* 본문 2단 — 좌: 실력대 요약 / 우: 추이·전적.
           넓은 화면에서 스크롤을 줄이려고 정보 카드를 옆으로 세운다. */}
+      <HistorySummaryProvider>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         {/* 좌측 컬럼 */}
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards">
@@ -687,6 +692,13 @@ export default async function SummonerPage({
               </CardContent>
             </Card>
           )}
+
+          {/* 최근 경기 요약 — 데이터는 전적 목록의 응답에서 공유받는다 */}
+          <MatchSummaryCard
+            version={ddVersion}
+            names={champNames}
+            region={region}
+          />
         </div>
 
         {/* 우측 컬럼 — 추이 차트 · 경기 목록 */}
@@ -741,6 +753,7 @@ export default async function SummonerPage({
           />
         </div>
       </div>
+      </HistorySummaryProvider>
 
       <p className="text-xs text-muted-foreground">
         * 라이엇은 실제 실력대(내부 MMR)를 공개하지 않으므로 이 수치는 같은
