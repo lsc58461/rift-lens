@@ -319,13 +319,13 @@ function ChampionModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal
     >
       <div
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border bg-card shadow-2xl sm:rounded-2xl"
+        className="h-dvh w-full overflow-y-auto bg-card shadow-2xl sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl sm:border"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
