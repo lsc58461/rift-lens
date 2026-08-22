@@ -44,7 +44,8 @@ const TIER_KO: Record<string, string> = {
 };
 
 const STALE_MS = 300_000;
-const TARGETS = [10, 30, 50] as const;
+const TARGETS = [10, 30, 50, 100, 300] as const;
+const TARGET_MAX = 1000;
 
 export function CrawlCard() {
   const [state, setState] = useState<State | null>(null);
@@ -206,9 +207,25 @@ export function CrawlCard() {
                       : "text-muted-foreground hover:bg-accent"
                   }`}
                 >
-                  {t}명
+                  {t}
                 </button>
               ))}
+              <input
+                type="number"
+                min={5}
+                max={TARGET_MAX}
+                value={target}
+                onChange={(e) => {
+                  const v = Math.floor(Number(e.target.value));
+                  if (Number.isFinite(v)) {
+                    setTarget(Math.min(TARGET_MAX, Math.max(1, v)));
+                  }
+                }}
+                onBlur={() => setTarget((t) => Math.max(5, t))}
+                aria-label="수집 목표 인원"
+                className="h-7 w-20 rounded border-0 bg-transparent px-2 text-right text-xs font-medium tabular-nums outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="pr-2 text-xs text-muted-foreground">명</span>
             </div>
           )}
           {state?.running ? (

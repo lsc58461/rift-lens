@@ -17,7 +17,9 @@ import { canon } from "@/lib/identity";
 
 const STATE_KEY = "crawl:state";
 const PER_ROUND = 3; // 라운드당 분석할 후보 수
-const MAX_ROUNDS = 100;
+// 라운드 상한은 목표를 채우는 데 필요한 만큼 + 여유 — 폭주 방지용일 뿐
+// 목표 상한(1000명) 기준으로 넉넉히 잡는다
+const MAX_ROUNDS = 400;
 const ROUND_STALE_MS = 300_000;
 const SKIP_TTL = "7 days"; // 실패한 후보를 다시 시도하기까지의 유예
 
@@ -68,7 +70,7 @@ export async function beginCrawl(
   mode: CrawlMode = "balanced",
 ): Promise<CrawlState> {
   const next = {
-    ...empty(Math.min(100, Math.max(5, target)), mode),
+    ...empty(Math.min(1000, Math.max(5, Math.floor(target))), mode),
     running: true,
   };
   await save(next);
