@@ -103,8 +103,12 @@ export function ChampionsTable({
       );
     }
     if (lane !== "all") {
-      // 그 라인에서 의미 있는 표본(5판+)이 있는 챔피언만
-      list = list.filter((c) => (c.positions[lane]?.games ?? 0) >= 5);
+      // 그 라인이 실제 포지션인 챔피언만 — 절대 판수(5+)에 더해 점유율(15%+)을
+      // 요구한다. 900판 챔피언이 미드 6판 갔다고 미드 필터에 뜨면 안 된다.
+      list = list.filter((c) => {
+        const g = c.positions[lane]?.games ?? 0;
+        return g >= 5 && g / c.games >= 0.15;
+      });
     }
     return [...list].sort((a, b) => {
       const sa = laneStats(a, lane);
@@ -202,7 +206,9 @@ export function ChampionsTable({
               판수{lane !== "all" && ` (${POSITION_LABEL[lane]})`}
             </span>
             <span className="w-16 shrink-0 text-right">승률</span>
-            <span className="w-20 shrink-0 text-right">주 포지션</span>
+            <span className="w-20 shrink-0 text-right">
+              {lane === "all" ? "주 포지션" : "라인 점유"}
+            </span>
             <span className="w-6 shrink-0" />
           </div>
           <div className="divide-y divide-border/60">
@@ -245,10 +251,12 @@ export function ChampionsTable({
                   <span className="w-16 shrink-0 text-right text-xs font-medium">
                     <WinrateText wins={s.wins} games={s.games} />
                   </span>
-                  <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
-                    {mainPos
-                      ? (POSITION_LABEL[mainPos[0]] ?? mainPos[0])
-                      : "—"}
+                  <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {lane === "all"
+                      ? mainPos
+                        ? (POSITION_LABEL[mainPos[0]] ?? mainPos[0])
+                        : "—"
+                      : `${Math.round((s.games / c.games) * 100)}%`}
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </button>
