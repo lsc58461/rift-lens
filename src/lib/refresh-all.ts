@@ -8,11 +8,12 @@
 // 폴링하며 다음 라운드를 이어서 요청한다(데이터 이관 카드와 같은 방식).
 
 import "server-only";
+import { runRefreshSweep } from "@/lib/refresh-sweep";
 import { chainNextRound } from "@/lib/round-chain";
 import { getSetting, setSetting } from "@/lib/store";
 
 const STATE_KEY = "refresh-all:state";
-const MAX_ROUNDS = 40; // 폭주 방지 상한
+const MAX_ROUNDS = 400; // 폭주 방지 상한 (소환사 수백 명 규모 대응)
 const ROUND_STALE_MS = 300_000; // 이 시간 넘게 갱신이 없으면 죽은 라운드로 간주
 // 라운드당 처리량 — 한때 응답 지연의 범인으로 보고 2로 줄였으나, 실제 원인은
 // 동결된 인스턴스의 죽은 DB 소켓 재사용이었다(db.ts 헬스체크로 해결). 라이엇
@@ -84,43 +85,27 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     return;
   }
 
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    await save({
-      ...state,
-      running: false,
-      roundActive: false,
-      lastError: "CRON_SECRET이 설정되지 않았습니다",
-    });
-    return;
-  }
-
   // 라운드 시작 표시 (하트비트 겸용)
   await save({ ...state, running: true, roundActive: true });
 
   try {
-    const url = new URL(`/api/cron/refresh?limit=${ROUND_LIMIT}`, origin);
-    const res = await fetch(url, {
-      headers: { authorization: `Bearer ${secret}` },
-      cache: "no-store",
+    // 크론을 HTTP로 부르면 함수가 자기 자신을 호출하는 사슬이 생겨
+    // Vercel 루프 감지(508)에 걸린다 — 같은 로직을 직접 실행한다
+    const d = await runRefreshSweep({
+      limit: ROUND_LIMIT,
+      budgetMs: 220_000,
+      deepDeadlineMs: 180_000,
     });
-    if (!res.ok) throw new Error(`크론 응답 ${res.status}`);
-    const d: {
-      quickRefreshed?: string[];
-      deepCompleted?: number;
-      failed?: number;
-      remaining?: boolean;
-    } = await res.json();
 
-    const refreshed = d.quickRefreshed?.length ?? 0;
-    const deep = d.deepCompleted ?? 0;
+    const refreshed = d.quickRefreshed.length;
+    const deep = d.deepCompleted;
     state = {
       ...state,
       roundActive: false,
       rounds: state.rounds + 1,
       refreshed: state.refreshed + refreshed,
       deepCompleted: state.deepCompleted + deep,
-      failed: state.failed + (d.failed ?? 0),
+      failed: state.failed + d.failed,
       lastError: null,
     };
     // 한 라운드가 놀았다고 곧장 끝내면 안 된다 — 목록 앞쪽이 최신이라 건너뛰었을
