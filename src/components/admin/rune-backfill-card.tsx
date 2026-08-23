@@ -81,7 +81,7 @@ export function RuneBackfillCard() {
         throw new Error(d?.error ?? "요청에 실패했어요");
       }
       toast.success(
-        action === "start" ? "룬 백필을 시작했어요" : "백필을 중지했어요",
+        action === "start" ? "백필을 시작했어요" : "백필을 중지했어요",
       );
       await load();
     } catch (e) {
@@ -101,7 +101,7 @@ export function RuneBackfillCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Sparkle className="size-4 text-chart-2" />
-          룬 데이터 백필
+          매치 데이터 백필
           {state?.running && (
             <Badge variant="secondary" className="gap-1 font-normal">
               <Loader2 className="size-3 animate-spin" />
@@ -110,12 +110,14 @@ export function RuneBackfillCard() {
           )}
         </CardTitle>
         <CardDescription>
-          룬 저장 도입 전에 기록된 매치를 라이엇에서 다시 받아 룬을 채웁니다.
-          전부 저우선순위라 유저 검색이 먼저 처리되고, 시작해두면 탭을 닫아도 서버가 알아서 완주해요.
+          룬·패치·시작 아이템·코어 빌드 순서가 비어 있는 지난 매치를 다시
+          받아 채웁니다 (새 매치는 정밀 분석이 자동으로 채워요). 전부
+          저우선순위라 유저 검색이 먼저 처리되고, 시작해두면 탭을 닫아도
+          서버가 알아서 완주합니다.
           {missing !== null && (
             <>
               {" "}
-              현재 룬 없는 매치 <b>{missing.toLocaleString()}</b>개.
+              현재 채울 매치 <b>{missing.toLocaleString()}</b>개.
             </>
           )}
         </CardDescription>
