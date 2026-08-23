@@ -9,9 +9,10 @@ ENV PORT=3000
 WORKDIR /app
 
 # standalone: server.js + 최소 node_modules / static·public은 별도 복사 필요
-COPY .next/standalone ./
-COPY .next/static ./.next/static
-COPY public ./public
+# --chown 필수: USER node가 ISR 캐시(.next/server/app/*.html)를 다시 써야 한다
+COPY --chown=node:node .next/standalone ./
+COPY --chown=node:node .next/static ./.next/static
+COPY --chown=node:node public ./public
 
 USER node
 EXPOSE 3000
