@@ -69,6 +69,11 @@ jobs:
           EOF
           docker save rift-lens:latest rift-lens-bot:latest | gzip | ssh oracle 'gunzip | sudo docker load'
 
-      - name: Restart app
+      - name: Rolling restart (무중단)
         run: |
-          ssh oracle 'cd /srv/stack && sudo docker compose up -d app discord-bot && sudo docker image prune -f'
+          # 한 대씩 갈아끼운다 — Caddy 헬스체크가 재시작 중인 쪽을 자동 제외.
+          # app-a가 새 이미지로 healthy 되기 전엔 app-b(구버전)가 트래픽을 다 받고,
+          # healthy 실패 시 여기서 워크플로가 죽어 app-b는 구버전으로 계속 서빙된다.
+          ssh oracle 'cd /srv/stack && sudo docker compose up -d --no-deps --wait app-a'
+          ssh oracle 'cd /srv/stack && sudo docker compose up -d --no-deps --wait app-b'
+          ssh oracle 'cd /srv/stack && sudo docker compose up -d --no-deps discord-bot && sudo docker image prune -f'
