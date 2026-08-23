@@ -27,8 +27,8 @@ import { EmptyState, LiveDot, PageHeader, StatTile } from "./ui";
  * 만들고 폴링(2초) 사이에는 클라이언트에서 직접 카운트다운한다.
  */
 function RateCard({
-  rate,
-  receivedAt,
+  rate: rateFromStatus,
+  receivedAt: receivedAtFromStatus,
 }: {
   rate: AdminStatus["rate"];
   receivedAt: number;
@@ -39,6 +39,31 @@ function RateCard({
     return () => clearInterval(id);
   }, []);
 
+  // 한도 현황만 전용 엔드포인트로 1초 폴링 — 인메모리 스냅샷이라 부담 없음.
+  // 실패하면 대시보드 공용 폴링(2초) 값으로 폴백한다.
+  const [fast, setFast] = useState<{ rate: AdminStatus["rate"]; at: number } | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    async function poll() {
+      try {
+        const res = await fetch("/api/admin/rate", { cache: "no-store" });
+        if (res.ok) {
+          const data = (await res.json()) as { rate: AdminStatus["rate"] };
+          if (!stopped) setFast({ rate: data.rate, at: Date.now() });
+        }
+      } catch {
+        // 다음 폴링에서 재시도
+      }
+      if (!stopped) setTimeout(poll, 1000);
+    }
+    poll();
+    return () => {
+      stopped = true;
+    };
+  }, []);
+
+  const rate = fast?.rate ?? rateFromStatus;
+  const receivedAt = fast?.at ?? receivedAtFromStatus;
   const s = RATE_STATES[rate.state];
   const remaining = Math.max(0, receivedAt + rate.resumeInMs - now);
   const waiting = rate.waitingHigh + rate.waitingLow;

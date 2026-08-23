@@ -119,7 +119,10 @@ export async function getRateLimitStatus(): Promise<RateLimitStatus> {
   ]);
   const live = entries
     .map((e) => e.value)
-    .filter((v) => v && now - v.at < NODE_TTL_SEC * 1000);
+    .filter((v) => v && now - v.at < NODE_TTL_SEC * 1000 && v.node !== nodeId);
+  // 이 인스턴스의 상태는 발행 주기(3초)를 기다리지 않고 라이브 스냅샷을 쓴다.
+  // 단일 서버에선 이게 곧 전체 진실이라 어드민 표시가 실시간이 된다.
+  live.push({ ...riotLimiter.snapshot(), node: nodeId, at: now });
 
   const cooldown = cd && cd.until > now ? cd : null;
   if (live.length === 0 && !cooldown) return IDLE;
