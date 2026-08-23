@@ -85,7 +85,12 @@ async function healthLoop() {
 // ── 라이프사이클 ────────────────────────────────────────
 client.once("clientReady", () => {
   console.log(`[bot] 로그인: ${client.user.tag}, 길드 ${client.guilds.cache.size}개`);
-  client.user.setActivity({ name: "rift-lens.xyz", type: ActivityType.Watching });
+  // 상태에 링크는 클릭이 안 되므로 커맨드 안내를 띄운다 (주소는 봇 프로필 소개에)
+  client.user.setActivity({
+    type: ActivityType.Custom,
+    name: "custom",
+    state: "🔍 /rift 로 매칭 실력대 분석",
+  });
   setInterval(healthLoop, CHECK_INTERVAL_MS);
 });
 

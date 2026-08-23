@@ -1,26 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { after } from "next/server";
-import { runRefreshSweep } from "@/lib/refresh-sweep";
+import { runRefreshSweep, type SweepResult } from "@/lib/refresh-sweep";
 import { purgeExpiredCache } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
 // 새벽(트래픽 없는 시간) 크론 — 기록된 소환사 중 스테일한 결과를
 // 실제 검색 흐름과 동일하게(빠른 추정 → 이어서 정밀 분석) 미리 갱신한다.
 //
-// Hobby 플랜은 크론 2개 한도라, 새벽 창(3~7시 KST)은 셀프 체이닝으로 커버한다:
-// 작업이 남아 있으면 응답 후 자기 자신을 다시 호출해 릴레이를 잇고,
-// 창이 끝나거나(22시 UTC) 할 일이 없으면 스스로 멈춘다.
-// vercel.json crons: 18:00/19:00 UTC = 새벽 3시/4시 KST (19시는 체인 사망 대비 재시동)
-const TIME_BUDGET_MS = 240_000; // maxDuration(300s)에서 여유를 둔 작업 예산
-const DEEP_START_DEADLINE_MS = 45_000; // 이 시점 이후엔 정밀을 새로 시작하지 않음(시간 초과 방지)
-const MAX_REFRESH = 10;
-const CHAIN_WINDOW_UTC = { start: 18, end: 22 }; // KST 새벽 3시~7시
+// 자체 서버라 실행 시간 제한이 없으므로, 서버리스 시절의 셀프 체이닝
+// (300초 한도 + 크론 2개 한도 우회용 HTTP 릴레이) 대신 핸들러 안에서
+// 작업이 끝나거나 새벽 창이 닫힐 때까지 스윕을 반복한다.
+// 호출: /etc/cron.d/riftlens → 18:00 UTC(새벽 3시 KST), 넉넉한 타임아웃으로 curl
+const SWEEP_BUDGET_MS = 240_000; // 스윕 한 사이클 예산 (내부 페이싱 단위)
+const DEEP_START_DEADLINE_MS = 45_000; // 사이클 시작 후 이 시점부턴 정밀을 새로 안 잡음
+const MAX_REFRESH = 10; // 사이클당 갱신 상한
+const WINDOW_UTC = { start: 18, end: 22 }; // KST 새벽 3시~7시 — 이 창 안에서만 반복
 
-function inChainWindow(): boolean {
+function inWindow(): boolean {
   const h = new Date().getUTCHours();
-  return h >= CHAIN_WINDOW_UTC.start && h < CHAIN_WINDOW_UTC.end;
+  return h >= WINDOW_UTC.start && h < WINDOW_UTC.end;
 }
 
 export async function GET(req: NextRequest) {
@@ -37,33 +35,31 @@ export async function GET(req: NextRequest) {
   );
 
   const started = Date.now();
-  const sweep = await runRefreshSweep({
-    limit,
-    budgetMs: TIME_BUDGET_MS,
-    deepDeadlineMs: DEEP_START_DEADLINE_MS,
-  });
-  const { quickRefreshed, deepCompleted, deepBlocked, deepPending, brokeEarly, skipped, failed } = sweep;
+  const quickRefreshed: string[] = [];
+  let deepCompleted = 0;
+  let skipped = 0;
+  let failed = 0;
+  let cycles = 0;
+  let last: SweepResult | null = null;
 
-  // 셀프 체이닝: 실제로 일을 했고(무한 스핀 방지), 작업이 남았고, 새벽 창 안이면
-  // 응답을 보낸 뒤 자기 자신을 다시 호출해 릴레이를 잇는다.
-  const didWork = quickRefreshed.length > 0 || deepCompleted > 0;
-  const workRemaining = brokeEarly || deepPending;
-  const chained = didWork && workRemaining && inChainWindow();
-  if (chained) {
-    // 주의: req origin은 해시 붙은 배포 URL이라 Vercel 인증 보호에 막힌다 —
-    // 반드시 공개 도메인으로 재호출해야 체인이 이어진다 (로컬 테스트만 예외)
-    const origin =
-      req.nextUrl.hostname === "localhost"
-        ? req.nextUrl.origin
-        : "https://rift-lens.xyz";
-    const url = new URL("/api/cron/refresh", origin);
-    const secret = process.env.CRON_SECRET;
-    after(() =>
-      fetch(url, {
-        headers: { authorization: `Bearer ${secret}` },
-      }).catch(() => {}),
-    );
-  }
+  // 새벽 창 안에서 작업이 남아 있는 동안 반복. 창 밖(수동 호출)에선 1회만.
+  do {
+    last = await runRefreshSweep({
+      limit,
+      budgetMs: SWEEP_BUDGET_MS,
+      deepDeadlineMs: DEEP_START_DEADLINE_MS,
+    });
+    quickRefreshed.push(...last.quickRefreshed);
+    deepCompleted += last.deepCompleted;
+    skipped += last.skipped;
+    failed += last.failed;
+    cycles++;
+  } while (
+    // 실제로 일을 했고(무한 스핀 방지) 작업이 남았고 창 안일 때만 계속
+    (last.quickRefreshed.length > 0 || last.deepCompleted > 0) &&
+    (last.brokeEarly || last.deepPending) &&
+    inWindow()
+  );
 
   // 만료된 캐시 행 정리 (누적 방지 — API 호출 없음)
   // 방문 로그는 지우지 않는다 — 데이터는 영구 보관이 원칙 (2026-08-22).
@@ -77,13 +73,13 @@ export async function GET(req: NextRequest) {
     cachePurged,
     quickRefreshed,
     deepCompleted,
-    deepBlocked,
-    deepPending,
-    brokeEarly,
-    remaining: brokeEarly || deepPending,
+    deepBlocked: last?.deepBlocked ?? false,
+    deepPending: last?.deepPending ?? false,
+    brokeEarly: last?.brokeEarly ?? false,
+    remaining: (last?.brokeEarly || last?.deepPending) ?? false,
     skipped,
     failed,
-    chained,
+    cycles,
     tookMs: Date.now() - started,
   });
 }
