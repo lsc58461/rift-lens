@@ -48,7 +48,7 @@ const commands = [
       {
         type: 1, // SUB_COMMAND
         name: "설정",
-        description: "알림을 받을 채널 지정",
+        description: "알림 받을 채널 지정 (서버 관리 권한자에게만 보이는 명령)",
         options: [
           {
             type: 7, // CHANNEL
@@ -59,7 +59,7 @@ const commands = [
           },
         ],
       },
-      { type: 1, name: "해제", description: "이 서버의 알림 끄기" },
+      { type: 1, name: "해제", description: "이 서버의 알림 끄기 (서버 관리 권한자에게만 보이는 명령)" },
     ],
   },
 ];
