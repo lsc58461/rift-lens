@@ -1,0 +1,72 @@
+# 오라클 ARM 서버(nix-server) 배포 — 레지스트리 없이 SSH로 이미지 직송.
+# 빌드는 무료 ARM 러너에서 네이티브로 수행 (QEMU 불필요, 서버에서 빌드 금지: OOM).
+name: Deploy to Oracle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm
+    # 프리렌더 워커가 빌드 중 DDL/쿼리를 날리므로 임시 Postgres가 필요하다
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (standalone)
+        env:
+          NEXT_STANDALONE: "1"
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Docker image
+        run: docker build -t rift-lens:latest .
+
+      - name: Ship image over SSH
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat >> ~/.ssh/config <<'EOF'
+          Host oracle
+            HostName 168.110.48.230
+            User ubuntu
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+          EOF
+          docker save rift-lens:latest | gzip | ssh oracle 'gunzip | sudo docker load'
+
+      - name: Restart app
+        run: |
+          ssh oracle 'cd /srv/stack && sudo docker compose up -d app && sudo docker image prune -f'
