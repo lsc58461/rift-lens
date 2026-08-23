@@ -22,6 +22,8 @@ interface State {
   done: boolean;
   target: number;
   mode?: "balanced" | "recent";
+  withDeep?: boolean;
+  deepDone?: number;
   lastTier?: string | null;
   rounds: number;
   analyzed: number;
@@ -51,6 +53,7 @@ export function CrawlCard() {
   const [state, setState] = useState<State | null>(null);
   const [target, setTarget] = useState<number>(30);
   const [mode, setMode] = useState<"balanced" | "recent">("balanced");
+  const [withDeep, setWithDeep] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -89,7 +92,7 @@ export function CrawlCard() {
     try {
       const qs =
         action === "start"
-          ? `action=start&target=${target}&mode=${mode}`
+          ? `action=start&target=${target}&mode=${mode}&deep=${withDeep ? 1 : 0}`
           : "action=stop";
       const res = await fetch(`/api/admin/crawl?${qs}`, { method: "POST" });
       if (!res.ok) {
@@ -142,6 +145,7 @@ export function CrawlCard() {
                 <span className="text-xs font-normal text-muted-foreground">
                   {" "}
                   / {state.target}
+                  {state.withDeep && ` · 정밀 ${state.deepDone ?? 0}`}
                 </span>
               </div>
             </div>
@@ -171,6 +175,20 @@ export function CrawlCard() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
+          {!state?.running && (
+            <button
+              type="button"
+              onClick={() => setWithDeep(!withDeep)}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                withDeep
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent"
+              }`}
+              title="켜면 수집 직후 정밀 분석까지 실행해요 — 명당 시간이 약 2분으로 늘어납니다"
+            >
+              정밀 분석까지 {withDeep ? "ON" : "OFF"}
+            </button>
+          )}
           {!state?.running && (
             <div className="flex items-center gap-1 rounded-md border p-0.5">
               {(

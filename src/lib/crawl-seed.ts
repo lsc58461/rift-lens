@@ -6,7 +6,11 @@
 // 라이엇 호출은 저우선순위라 유저 검색이 들어오면 자동으로 뒤로 밀린다.
 
 import "server-only";
-import { runQuickAnalysis } from "@/lib/mmr/deep-jobs";
+import {
+  ensureQueuedAndSchedule,
+  runDeepAnalysis,
+  runQuickAnalysis,
+} from "@/lib/mmr/deep-jobs";
 import { recordSearch } from "@/lib/recent";
 import { riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
@@ -31,6 +35,8 @@ export interface CrawlState {
   done: boolean;
   target: number; // 이번 실행에서 수집할 소환사 수
   mode: CrawlMode; // balanced = 표본이 부족한 티어 우선
+  withDeep: boolean; // 수집 직후 정밀 분석까지 실행할지
+  deepDone: number; // 정밀까지 끝낸 수
   lastTier: string | null; // 직전 라운드가 타깃한 티어 (balanced 전용)
   rounds: number;
   analyzed: number;
@@ -40,13 +46,19 @@ export interface CrawlState {
   lastError: string | null;
 }
 
-function empty(target: number, mode: CrawlMode): CrawlState {
+function empty(
+  target: number,
+  mode: CrawlMode,
+  withDeep: boolean,
+): CrawlState {
   return {
     running: false,
     roundActive: false,
     done: false,
     target,
     mode,
+    withDeep,
+    deepDone: 0,
     lastTier: null,
     rounds: 0,
     analyzed: 0,
@@ -68,9 +80,10 @@ async function save(s: CrawlState): Promise<void> {
 export async function beginCrawl(
   target: number,
   mode: CrawlMode = "balanced",
+  withDeep = false,
 ): Promise<CrawlState> {
   const next = {
-    ...empty(Math.min(1000, Math.max(5, Math.floor(target))), mode),
+    ...empty(Math.min(1000, Math.max(5, Math.floor(target))), mode, withDeep),
     running: true,
   };
   await save(next);
@@ -269,7 +282,11 @@ export async function runCrawlRound(origin?: string): Promise<void> {
 
     let analyzed = 0;
     let failed = 0;
+    let deepDone = 0;
+    const roundStart = Date.now();
     for (const c of candidates) {
+      // 정밀까지 돌리면 명당 시간이 길다 — 함수 제한 안에서 안전하게 중단
+      if (Date.now() - roundStart > 200_000) break;
       // 후보 하나(~30초)마다 취소 확인
       const live = await getCrawlState();
       if (!live?.running) break;
@@ -288,6 +305,18 @@ export async function runCrawlRound(origin?: string): Promise<void> {
           estimatedPoints: result.estimatedPoints,
         });
         analyzed++;
+        // 옵션: 정밀 분석까지 — 러너 락이 비어 있을 때만 즉시 실행하고,
+        // 막혀 있으면 건너뛴다(새벽 갱신이 이어받음)
+        if (state.withDeep) {
+          let deepRun: Promise<void> | null = null;
+          await ensureQueuedAndSchedule("kr", c.name, c.tag, (p, g, t) => {
+            deepRun = runDeepAnalysis(p, g, t);
+          }).catch(() => {});
+          if (deepRun) {
+            await withLowPriority(() => deepRun as Promise<void>);
+            deepDone++;
+          }
+        }
       } catch {
         failed++;
         await markSkip(c).catch(() => {});
@@ -302,6 +331,7 @@ export async function runCrawlRound(origin?: string): Promise<void> {
       rounds: state.rounds + 1,
       analyzed: state.analyzed + analyzed,
       failed: state.failed + failed,
+      deepDone: (state.deepDone ?? 0) + deepDone,
       lastTier: pickedTier,
       lastError: null,
     });
