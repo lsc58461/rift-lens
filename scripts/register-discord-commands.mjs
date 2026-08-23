@@ -41,7 +41,7 @@ const commands = [
   { name: "rift-recent", description: "최근 조회된 소환사 목록" },
   {
     name: "rift-alerts",
-    description: "사이트 다운/복구 알림 채널 관리 (서버 관리자 전용)",
+    description: "사이트 다운/복구 알림 채널 관리 — 서버 관리 권한자에게만 보이는 명령이에요",
     default_member_permissions: MANAGE_GUILD,
     dm_permission: false,
     options: [
