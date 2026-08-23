@@ -39,9 +39,11 @@ export default async function MaintenancePage() {
         <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm">
           <CalendarClock className="size-4 shrink-0 text-primary" />
           <span>
-            {info.startsAt ? formatKst(info.startsAt) : ""}
-            {" ~ "}
-            {info.endsAt ? formatKst(info.endsAt) : "미정"}
+            {info.startsAt && info.endsAt
+              ? `${formatKst(info.startsAt)} ~ ${formatKst(info.endsAt)}`
+              : info.endsAt
+                ? `예상 종료: ${formatKst(info.endsAt)}`
+                : `${formatKst(info.startsAt!)} 시작 · 종료 미정`}
           </span>
         </div>
       )}
