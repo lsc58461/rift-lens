@@ -102,6 +102,49 @@ export async function listPatches(): Promise<{ patch: string; games: number }[]>
   });
 }
 
+/** 유실·지연된 쿼리가 페이지를 영원히 잡지 않도록 타임아웃 + 1회 재시도 */
+// postgres.js는 풀 초과분을 내부 대기열에 쌓는데, 드물게 대기열의 쿼리가
+// 영영 디스패치되지 않는 문제가 있다(재시도하면 즉시 성공 — 실측 확인).
+// 그래서 ① 동시 실행을 풀 크기 밑으로 우리가 직접 제한하고 ② 만일을 위한
+// 타임아웃+1회 재시도를 남긴다.
+const MAX_CONCURRENT = 3;
+let running = 0;
+const waiters: (() => void)[] = [];
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiters.push(resolve));
+  }
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+    waiters.shift()?.();
+  }
+}
+
+async function runQuery(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  text: string,
+  params: unknown[] = [],
+): Promise<unknown[]> {
+  const attempt = () =>
+    withSlot(() =>
+      Promise.race([
+        sql.unsafe(text, params as never[]) as unknown as Promise<unknown[]>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("query timeout")), 30_000),
+        ),
+      ]),
+    );
+  try {
+    return await attempt();
+  } catch {
+    return await attempt();
+  }
+}
+
 async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
   const sql = await getSql();
   const fp = riotKeyFp();
@@ -148,12 +191,11 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
     WHERE m.fp = '${fp.replace(/'/g, "")}' ${patchFilter}`;
 
   const [meta, base, positions, spells, items, runes, startItems, buildPaths] = await Promise.all([
-    sql.unsafe(
-      `SELECT count(*)::int AS games FROM matches m
+    runQuery(sql, `SELECT count(*)::int AS games FROM matches m
        WHERE m.fp = $1 ${patchFilter}`,
       [fp],
     ),
-    sql.unsafe(`
+    runQuery(sql, `
       SELECT champ, count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins,
              coalesce(avg(kills), 0)::float AS ak,
              coalesce(avg(deaths), 0)::float AS ad,
@@ -161,34 +203,32 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
              coalesce(avg(cs), 0)::float AS acs,
              coalesce(avg(damage), 0)::float AS admg
       FROM (${P}) p GROUP BY champ`),
-    sql.unsafe(`
+    runQuery(sql, `
       SELECT champ, pos, count(*)::int AS n, count(*) FILTER (WHERE win)::int AS w
       FROM (${P}) p WHERE coalesce(pos, '') <> '' GROUP BY champ, pos`),
-    sql.unsafe(`
+    runQuery(sql, `
       SELECT champ, least(s1, s2) AS s1, greatest(s1, s2) AS s2,
              count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
       FROM (${P}) p WHERE s1 IS NOT NULL AND s2 IS NOT NULL
       GROUP BY champ, least(s1, s2), greatest(s1, s2)`),
-    sql.unsafe(`
+    runQuery(sql, `
       SELECT champ, (it.val #>> '{}')::int AS id,
              count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
       FROM (${P}) p
       CROSS JOIN LATERAL jsonb_array_elements(p.items) WITH ORDINALITY AS it(val, ord)
       WHERE it.ord <= 6 AND (it.val #>> '{}')::int > 0
       GROUP BY champ, (it.val #>> '{}')::int`),
-    sql.unsafe(`
+    runQuery(sql, `
       SELECT champ, keystone, substyle,
              perks::text AS perks, subperks::text AS subperks, statperks::text AS statperks,
              count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
       FROM (${P}) p
       WHERE keystone IS NOT NULL AND substyle IS NOT NULL AND perks IS NOT NULL
       GROUP BY champ, keystone, substyle, perks::text, subperks::text, statperks::text`),
-    sql.unsafe(
-      `SELECT champ, items, games, wins FROM start_items WHERE fp = $1`,
+    runQuery(sql, `SELECT champ, items, games, wins FROM start_items WHERE fp = $1`,
       [fp],
     ),
-    sql.unsafe(
-      `SELECT champ, path, games, wins FROM build_paths WHERE fp = $1`,
+    runQuery(sql, `SELECT champ, path, games, wins FROM build_paths WHERE fp = $1`,
       [fp],
     ),
   ]);

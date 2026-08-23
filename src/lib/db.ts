@@ -6,7 +6,7 @@ import type { Sql } from "postgres";
 
 const globalForDb = globalThis as unknown as {
   __mmrSql?: Promise<Sql>;
-  __mmrSqlUsedAt?: number;
+  __mmrTick?: { last: number };
 };
 
 async function initSchema(sql: Sql): Promise<void> {
@@ -199,11 +199,12 @@ async function createSql(): Promise<Sql> {
   // 서버리스 전제 설정:
   // - connect_timeout: 풀 포화 시 무한 대기 대신 빠르게 실패시킨다
   //   (없으면 함수 제한까지 매달려 "API가 안 옴"으로 보인다)
-  // - idle_timeout: 인스턴스가 놀 때 커넥션을 반납해 풀 고갈을 막는다
-  // - max 2: 인스턴스가 여럿 뜨므로 인스턴스당 점유를 낮게 잡는다
+  // - idle_timeout은 쓰지 않는다: 유휴 커넥션을 닫는 타이머와 병렬 쿼리
+  //   발사가 겹치면 쿼리가 에러 없이 유실돼 promise가 영원히 안 풀리는
+  //   경합이 있다(집계 행의 원인). 죽은 소켓은 getSql의 해동 헬스체크가
+  //   처리하고, 트랜잭션 풀러라 유휴 클라이언트 커넥션 유지 부담도 없다
   const sql = postgres(url, {
     max: 5,
-    idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,
     onnotice: () => {},
@@ -212,47 +213,41 @@ async function createSql(): Promise<Sql> {
   return sql;
 }
 
-// 인스턴스가 이만큼 놀았다면 커넥션이 죽어 있을 수 있다고 본다
-const THAW_CHECK_MS = 30_000;
-const HEALTH_TIMEOUT_MS = 4_000;
+// ── 동결 감지 ────────────────────────────────────────────
+// Vercel은 요청이 없으면 인스턴스를 동결하고, 그때 풀의 소켓이 산 채로
+// 얼어붙는다(해동 후 재사용하면 응답이 영영 안 옴). 예전엔 SELECT 1
+// 헬스체크로 감지했지만, 풀이 무거운 쿼리로 바쁠 때도 4초 안에 답을 못 해
+// '죽음'으로 오판하고 멀쩡한 풀을 죽이는 사고가 났다(집계 행의 원인).
+// 대신 하트비트 타이머를 쓴다: 타이머는 동결 중에 멈추므로, 마지막 틱이
+// 오래됐는데 지금 코드가 돌고 있다 = 방금 해동됐다는 뜻이다. 해동 직후엔
+// 진행 중인 쿼리가 있을 수 없어 풀 교체가 안전하다.
+const TICK_MS = 5_000;
+const FROZEN_GAP_MS = 20_000; // 틱을 3번 이상 놓쳤으면 동결됐다 깨어난 것
 
-// 서버리스 함정: Vercel은 응답 후 인스턴스를 동결하는데, 그때 postgres.js가
-// 들고 있던 소켓이 산 채로 얼어붙는다(idle_timeout 타이머도 같이 언다).
-// 해동 후 죽은 소켓으로 쿼리를 보내면 DB까지는 도달하지만 응답이 돌아오지
-// 못해 함수 제한까지 매달린다 — "첫 요청만 수십 초 행" 증상의 원인.
-// 그래서 오래 쉰 풀은 재사용 전에 짧은 핑으로 살아 있는지 확인하고,
-// 죽었으면 풀을 버리고 새로 만든다.
-async function ensureAlive(pool: Promise<Sql>): Promise<Sql | null> {
-  try {
-    const sql = await pool;
-    await Promise.race([
-      sql`SELECT 1`,
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("db health timeout")),
-          HEALTH_TIMEOUT_MS,
-        ),
-      ),
-    ]);
-    return sql;
-  } catch {
-    void pool.then((sql) => sql.end({ timeout: 1 })).catch(() => {});
-    return null;
-  }
+function ensureTicker(): void {
+  const g = globalForDb;
+  if (g.__mmrTick) return;
+  g.__mmrTick = { last: Date.now() };
+  const timer = setInterval(() => {
+    g.__mmrTick!.last = Date.now();
+  }, TICK_MS);
+  // 로컬 프로세스가 타이머 때문에 안 죽는 것 방지 (서버리스에선 무의미)
+  (timer as { unref?: () => void }).unref?.();
 }
 
 export async function getSql(): Promise<Sql> {
   const g = globalForDb;
-  const idleMs = Date.now() - (g.__mmrSqlUsedAt ?? 0);
-  g.__mmrSqlUsedAt = Date.now();
+  ensureTicker();
 
-  if (g.__mmrSql && idleMs > THAW_CHECK_MS) {
-    const current = g.__mmrSql;
-    const alive = await ensureAlive(current);
-    if (alive) return alive;
-    // 다른 동시 요청이 이미 새 풀을 만들었을 수 있다 — 내가 검사한 풀일 때만 비운다
-    if (g.__mmrSql === current) g.__mmrSql = undefined;
+  const thawed =
+    g.__mmrSql && g.__mmrTick && Date.now() - g.__mmrTick.last > FROZEN_GAP_MS;
+  if (thawed) {
+    // 동결 전의 풀은 소켓이 죽어 있을 수 있다 — 통째로 교체
+    const dead = g.__mmrSql;
+    g.__mmrSql = undefined;
+    void dead?.then((sql) => sql.end({ timeout: 5 })).catch(() => {});
   }
+  g.__mmrTick!.last = Date.now();
 
   if (!g.__mmrSql) {
     const fresh = (g.__mmrSql = createSql());

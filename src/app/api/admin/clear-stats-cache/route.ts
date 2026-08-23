@@ -15,14 +15,19 @@ export async function POST(req: NextRequest) {
   }
   const started = Date.now();
   const sql = await getSql();
+  console.log("[재집계] 삭제 시작");
   const rows = await sql`
     DELETE FROM cache_entries WHERE key LIKE 'champstats:%' RETURNING 1`;
+  console.log("[재집계] 삭제", rows.length, "건 — 기본 집계 시작");
 
   // 유저가 실제로 조회하는 조합(기본 + 드롭다운 패치)을 미리 데운다
   await getChampionStats(null);
+  console.log("[재집계] 기본 완료 — 패치 목록");
   const patches = (await listPatches()).slice(0, 2);
+  console.log("[재집계] 패치", patches.map((p) => p.patch).join(","));
   for (const p of patches) {
     await getChampionStats(p.patch);
+    console.log("[재집계] 패치", p.patch, "완료");
   }
 
   return NextResponse.json({
