@@ -32,6 +32,10 @@ export interface RefreshAllState {
   failed: number;
   /** 연속으로 아무 일도 못 한 라운드 수 — 이게 쌓이면 종료한다 */
   idleRounds: number;
+  /** 이번 라운드에서 훑은 소환사 수 (실시간 진행 표시용) */
+  scanned: number;
+  /** 전체 순회 대상 소환사 수 */
+  target: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -47,6 +51,8 @@ function empty(): RefreshAllState {
     deepCompleted: 0,
     failed: 0,
     idleRounds: 0,
+    scanned: 0,
+    target: 0,
     startedAt: Date.now(),
     updatedAt: Date.now(),
     lastError: null,
@@ -86,7 +92,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   }
 
   // 라운드 시작 표시 (하트비트 겸용)
-  await save({ ...state, running: true, roundActive: true });
+  await save({ ...state, running: true, roundActive: true, scanned: 0 });
 
   try {
     // 취소 확인은 5초에 한 번만 DB를 읽는다
@@ -102,11 +108,21 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
 
     // 크론을 HTTP로 부르면 함수가 자기 자신을 호출하는 사슬이 생겨
     // Vercel 루프 감지(508)에 걸린다 — 같은 로직을 직접 실행한다
+    // 라운드 중 실시간 진행 저장 (2초 스로틀) — 중지 클릭을 덮어쓰지 않도록
+    // 매번 최신 상태를 읽고 그 위에 얹는다
+    let lastProgressSave = 0;
     const d = await runRefreshSweep({
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
       shouldContinue,
+      onProgress: async (p) => {
+        if (Date.now() - lastProgressSave < 2_000) return;
+        lastProgressSave = Date.now();
+        const cur = await getRefreshAllState();
+        if (!cur?.running) return;
+        await save({ ...cur, scanned: p.scanned, target: p.total });
+      },
     });
 
     const refreshed = d.quickRefreshed.length;

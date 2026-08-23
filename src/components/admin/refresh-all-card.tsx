@@ -26,6 +26,8 @@ interface State {
   failed: number;
   updatedAt: number;
   lastError: string | null;
+  scanned?: number;
+  target?: number;
 }
 
 const STALE_MS = 300_000; // 크론 한 라운드(최대 240초)보다 넉넉하게
@@ -100,6 +102,11 @@ export function RefreshAllCard() {
             <Badge variant="secondary" className="gap-1 font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
+              {state.target ? (
+                <span className="tabular-nums">
+                  · {state.scanned ?? 0}/{state.target}명
+                </span>
+              ) : null}
             </Badge>
           )}
         </CardTitle>

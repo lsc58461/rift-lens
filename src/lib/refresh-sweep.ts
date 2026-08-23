@@ -36,11 +36,28 @@ export async function runRefreshSweep(opts: {
   deepDeadlineMs: number;
   /** false를 돌려주면 다음 소환사로 넘어가지 않고 즉시 중단 (취소 반영) */
   shouldContinue?: () => Promise<boolean>;
+  /** 소환사 하나를 처리할 때마다 호출 — 라운드 중 실시간 진행 표시용 */
+  onProgress?: (p: {
+    scanned: number;
+    total: number;
+    refreshed: number;
+    deepCompleted: number;
+  }) => void | Promise<void>;
 }): Promise<SweepResult> {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
   // 상한을 두면 그 뒤 소환사는 자동 갱신에서 영영 빠진다 — 전량 순회한다
   const recent = await getRecentSearches(Infinity); // 최근 검색 순
+  let scanned = 0;
+  const reportProgress = async () => {
+    scanned++;
+    await opts.onProgress?.({
+      scanned,
+      total: recent.length,
+      refreshed: quickRefreshed.length,
+      deepCompleted,
+    });
+  };
 
   const quickRefreshed: string[] = [];
   let deepCompleted = 0;
@@ -64,6 +81,7 @@ export async function runRefreshSweep(opts: {
       const latest = await getLatestMatchId(r.region, r.gameName, r.tagLine);
       if (await getFreshDeepResult(r.region, r.gameName, r.tagLine, latest)) {
         skipped++;
+        await reportProgress().catch(() => {});
         continue;
       }
 
@@ -99,6 +117,7 @@ export async function runRefreshSweep(opts: {
     } catch {
       failed++;
     }
+    await reportProgress().catch(() => {});
   }
 
   return {
