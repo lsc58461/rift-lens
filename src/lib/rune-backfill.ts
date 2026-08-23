@@ -97,7 +97,10 @@ export async function runRunefillRound(origin?: string): Promise<void> {
 
     let filled = 0;
     let failed = 0;
+    let i = 0;
     for (const r of rows as unknown as { match_id: string; platform: PlatformRegion; body_ok: boolean }[]) {
+      // 5개마다 취소 확인
+      if (i++ % 5 === 0 && !((await getRunefillState())?.running ?? false)) break;
       try {
         // 본문(룬·패치)이 이미 채워진 매치는 타임라인만 받는다 — 호출 절약
         if (!r.body_ok) {

@@ -89,18 +89,37 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   await save({ ...state, running: true, roundActive: true });
 
   try {
+    // 취소 확인은 5초에 한 번만 DB를 읽는다
+    let lastCheck = 0;
+    let lastRunning = true;
+    const shouldContinue = async () => {
+      if (Date.now() - lastCheck > 5_000) {
+        lastCheck = Date.now();
+        lastRunning = (await getRefreshAllState())?.running ?? false;
+      }
+      return lastRunning;
+    };
+
     // 크론을 HTTP로 부르면 함수가 자기 자신을 호출하는 사슬이 생겨
     // Vercel 루프 감지(508)에 걸린다 — 같은 로직을 직접 실행한다
     const d = await runRefreshSweep({
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
+      shouldContinue,
     });
 
     const refreshed = d.quickRefreshed.length;
     const deep = d.deepCompleted;
+    // 라운드 도는 사이 중지됐을 수 있다 — 옛 상태로 running을 되살리지 않도록
+    // 반드시 최신 상태를 다시 읽고 그 위에 누적한다
+    const fresh = await getRefreshAllState();
+    if (!fresh?.running) {
+      if (fresh) await save({ ...fresh, roundActive: false });
+      return;
+    }
     state = {
-      ...state,
+      ...fresh,
       roundActive: false,
       rounds: state.rounds + 1,
       refreshed: state.refreshed + refreshed,

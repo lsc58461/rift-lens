@@ -270,6 +270,9 @@ export async function runCrawlRound(origin?: string): Promise<void> {
     let analyzed = 0;
     let failed = 0;
     for (const c of candidates) {
+      // 후보 하나(~30초)마다 취소 확인
+      const live = await getCrawlState();
+      if (!live?.running) break;
       try {
         const result = await withLowPriority(() =>
           runQuickAnalysis("kr", c.name, c.tag),

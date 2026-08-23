@@ -34,6 +34,8 @@ export async function runRefreshSweep(opts: {
   budgetMs: number;
   /** 이 시점(ms) 이후엔 정밀 분석을 새로 시작하지 않음 — 시간 초과 방지 */
   deepDeadlineMs: number;
+  /** false를 돌려주면 다음 소환사로 넘어가지 않고 즉시 중단 (취소 반영) */
+  shouldContinue?: () => Promise<boolean>;
 }): Promise<SweepResult> {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
@@ -50,6 +52,11 @@ export async function runRefreshSweep(opts: {
 
   for (const r of recent) {
     if (elapsed() > opts.budgetMs || quickRefreshed.length >= opts.limit) {
+      brokeEarly = true;
+      break;
+    }
+    // 취소 확인 — 진행 중이던 소환사만 마무리하고 멈춘다
+    if (opts.shouldContinue && !(await opts.shouldContinue())) {
       brokeEarly = true;
       break;
     }
