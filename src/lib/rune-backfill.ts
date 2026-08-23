@@ -9,7 +9,7 @@ import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/
 import { withLowPriority } from "@/lib/riot/limiter";
 import { chainNextRound } from "@/lib/round-chain";
 import { getSetting, setSetting } from "@/lib/store";
-import type { PlatformRegion } from "@/lib/riot/types";
+import { RiotApiError, type PlatformRegion } from "@/lib/riot/types";
 
 const STATE_KEY = "runefill:state";
 const PER_ROUND = 25; // 라운드당 매치 수 (호출 2회/매치: 본문+타임라인)
@@ -113,21 +113,27 @@ export async function runRunefillRound(origin?: string): Promise<void> {
             await harvestStartItems(r.platform, r.match_id, tl);
             await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
           }),
-        ).catch(async () => {
-          // 타임라인을 받을 수 없는 매치도 완료 표시 — 무한 재시도 방지
-          await sql`
-            UPDATE matches SET build_harvested = true
-            WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+        ).catch(async (e) => {
+          // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 재시도 여지
+          if (e instanceof RiotApiError && e.status === 404) {
+            await sql`
+              UPDATE matches SET build_harvested = true
+              WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+          }
         });
         filled++;
-      } catch {
+      } catch (e) {
         failed++;
-        // 다시 받을 수 없는 매치(만료 등)는 재시도 대상에서 제외
-        await sql`
-          UPDATE matches
-          SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
-              build_harvested = true
-          WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+        // 404(라이엇에 진짜 없는 매치)만 영구 제외한다 — 레이트리밋·5xx 같은
+        // 일시 오류로 실패한 매치는 그대로 둬서 다음 백필이 다시 시도한다
+        const permanent = e instanceof RiotApiError && e.status === 404;
+        if (permanent) {
+          await sql`
+            UPDATE matches
+            SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
+                build_harvested = true
+            WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+        }
       }
     }
 

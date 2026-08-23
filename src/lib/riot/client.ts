@@ -602,11 +602,13 @@ export async function harvestMissingBuildData(
       await harvestStartItems(platform, r.match_id, tl);
       // 수확용으로 받은 타임라인 캐시는 남기지 않는다 (KV 비대 방지)
       await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
-    } catch {
-      // 받을 수 없는 매치는 완료 표시해 재시도 낭비 방지
-      await sql`
-        UPDATE matches SET build_harvested = true
-        WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+    } catch (e) {
+      // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 다음 기회에
+      if (e instanceof RiotApiError && e.status === 404) {
+        await sql`
+          UPDATE matches SET build_harvested = true
+          WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+      }
     }
   }
 }
