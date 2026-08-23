@@ -23,6 +23,8 @@ export interface RunefillState {
   filled: number;
   failed: number;
   rounds: number;
+  /** 채운 것 없이 실패만 한 연속 라운드 수 — 쌓이면 안전 종료 */
+  noProgressRounds?: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -138,13 +140,24 @@ export async function runRunefillRound(origin?: string): Promise<void> {
     }
 
     state = (await getRunefillState()) ?? state;
+    // 404가 아닌 오류만 남은 꼬리 매치를 무한 재시도하지 않도록,
+    // 채운 것 없이 실패만 한 라운드가 3번 이어지면 안전 종료한다
+    // (남은 매치는 다음에 백필을 다시 시작하면 재시도된다)
+    const noProgress = filled === 0 && failed > 0
+      ? (state.noProgressRounds ?? 0) + 1
+      : 0;
+    const giveUp = noProgress >= 3;
     await save({
       ...state,
+      running: giveUp ? false : state.running,
       roundActive: false,
       rounds: state.rounds + 1,
       filled: state.filled + filled,
       failed: state.failed + failed,
-      lastError: null,
+      noProgressRounds: noProgress,
+      lastError: giveUp
+        ? "일시 오류가 계속돼 잠시 멈췄어요 — 나중에 다시 시작하면 이어서 시도합니다"
+        : null,
     });
     const next = await getRunefillState();
     if (origin && next?.running && !next.done) {
