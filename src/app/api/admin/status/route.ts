@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // 이 라우트는 대시보드가 5초마다 폴링한다 — 무거운 집계를 넣지 말 것.
+  // 이 라우트는 대시보드가 2초마다 폴링한다 — 무거운 집계를 넣지 말 것.
   // 목록은 최근 10명만, 상태별 개수는 SQL 집계, 통계는 60초 캐시를 쓴다.
   const [running, waiting, rate, top, stats] = await Promise.all([
     getRunnerStatus(),

@@ -24,7 +24,7 @@ import { EmptyState, LiveDot, PageHeader, StatTile } from "./ui";
 /**
  * 라이엇 API 한도 카드.
  * resumeInMs는 응답 시점 기준이라, 받은 순간의 로컬 시각을 더해 마감 시각을
- * 만들고 폴링(5초) 사이에는 클라이언트에서 직접 카운트다운한다.
+ * 만들고 폴링(2초) 사이에는 클라이언트에서 직접 카운트다운한다.
  */
 function RateCard({
   rate,
@@ -156,7 +156,7 @@ export function DashboardPanel() {
       } catch {
         // 다음 폴링에서 재시도
       }
-      if (!stopped) setTimeout(poll, 5000);
+      if (!stopped) setTimeout(poll, 2000);
     }
     poll();
     return () => {
