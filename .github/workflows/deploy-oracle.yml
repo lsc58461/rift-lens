@@ -49,7 +49,9 @@ jobs:
         run: npm run build
 
       - name: Docker image
-        run: docker build -t rift-lens:latest .
+        run: |
+          docker build -t rift-lens:latest .
+          docker build -t rift-lens-bot:latest ./bots/discord
 
       - name: Ship image over SSH
         env:
@@ -65,8 +67,8 @@ jobs:
             IdentityFile ~/.ssh/deploy_key
             StrictHostKeyChecking accept-new
           EOF
-          docker save rift-lens:latest | gzip | ssh oracle 'gunzip | sudo docker load'
+          docker save rift-lens:latest rift-lens-bot:latest | gzip | ssh oracle 'gunzip | sudo docker load'
 
       - name: Restart app
         run: |
-          ssh oracle 'cd /srv/stack && sudo docker compose up -d app && sudo docker image prune -f'
+          ssh oracle 'cd /srv/stack && sudo docker compose up -d app discord-bot && sudo docker image prune -f'

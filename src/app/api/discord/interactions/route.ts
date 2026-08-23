@@ -227,6 +227,49 @@ async function handleRecent(token: string): Promise<void> {
   });
 }
 
+// ── 알림 채널 설정 (/rift-alerts) ───────────────────────
+// 봇이 초대된 길드별로 관리자가 다운/복구 알림 채널을 지정한다.
+// 커맨드 자체에 default_member_permissions(서버 관리)가 걸려 있지만,
+// 클라이언트 조작 가능성에 대비해 서버에서도 권한 비트를 재확인한다.
+
+const MANAGE_GUILD = BigInt(32); // 1 << 5 (tsconfig target이 ES2020 미만이라 리터럴 대신)
+
+async function handleAlerts(
+  body: {
+    guild_id?: string;
+    member?: { permissions?: string; user?: { id: string } };
+    data?: { options?: { name: string; options?: Option[] }[] };
+  },
+): Promise<{ content: string }> {
+  const guildId = body.guild_id;
+  if (!guildId) return { content: "서버 안에서만 쓸 수 있는 명령이에요" };
+  const perms = BigInt(body.member?.permissions ?? "0");
+  if ((perms & MANAGE_GUILD) === BigInt(0)) {
+    return { content: "서버 관리 권한이 있어야 설정할 수 있어요" };
+  }
+
+  const sub = body.data?.options?.[0];
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+
+  if (sub?.name === "해제") {
+    await sql`DELETE FROM discord_alert_channels WHERE guild_id = ${guildId}`;
+    return { content: "🔕 이 서버의 알림을 해제했어요" };
+  }
+  // 설정
+  const channelId = sub?.options?.find((o) => o.name === "채널")?.value;
+  if (!channelId) return { content: "채널을 지정해 주세요" };
+  const setBy = body.member?.user?.id ?? "unknown";
+  await sql`
+    INSERT INTO discord_alert_channels (guild_id, channel_id, set_by, updated_at)
+    VALUES (${guildId}, ${channelId}, ${setBy}, now())
+    ON CONFLICT (guild_id) DO UPDATE
+    SET channel_id = EXCLUDED.channel_id, set_by = EXCLUDED.set_by, updated_at = now()`;
+  return {
+    content: `🔔 알림 채널을 <#${channelId}> 로 설정했어요 — 사이트 다운/복구 시 여기로 알려드릴게요`,
+  };
+}
+
 // ── 엔트리포인트 ────────────────────────────────────────
 
 interface Option {
@@ -253,6 +296,17 @@ export async function POST(req: NextRequest) {
     const opts: Option[] = body.data?.options ?? [];
     const get = (k: string) => opts.find((o) => o.name === k)?.value ?? "";
     const token: string = body.token;
+
+    // 알림 채널 설정은 점검과 무관하게 동작해야 한다 (점검 중일수록 필요)
+    if (name === "rift-alerts") {
+      const res = await handleAlerts(body).catch(() => ({
+        content: "설정 저장에 실패했어요 — 잠시 후 다시 시도해 주세요",
+      }));
+      return NextResponse.json({
+        type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+        data: { ...res, flags: 64 }, // EPHEMERAL
+      });
+    }
 
     // 점검 중엔 분석을 돌리지 않는다 — 웹과 동일한 정책
     const maint = await getMaintenanceInfo().catch(() => null);

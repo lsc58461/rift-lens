@@ -130,6 +130,15 @@ async function initSchema(sql: Sql): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
+    -- 디스코드 알림 채널 — 봇이 초대된 길드별로 관리자가 /rift-alerts로 지정.
+    -- 게이트웨이 봇(bots/discord)이 다운/복구 알림을 여기 등록된 채널로 보낸다.
+    CREATE TABLE IF NOT EXISTS discord_alert_channels (
+      guild_id text PRIMARY KEY,
+      channel_id text NOT NULL,
+      set_by text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
     -- 방문 로그 — 관리자 통계용(시간대 분포). 소환사 페이지가 실제로 열릴 때
     -- 한 줄씩 쌓고, 오래된 행은 새벽 크론이 정리한다. 봇 트래픽은 기록하지 않는다.
     CREATE TABLE IF NOT EXISTS visit_log (
