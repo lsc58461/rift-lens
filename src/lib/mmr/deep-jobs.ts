@@ -13,7 +13,11 @@ import { cache } from "@/lib/cache";
 import { canon } from "@/lib/identity";
 import { getAnalysis, saveAnalysis } from "@/lib/store";
 import { withLowPriority } from "@/lib/riot/limiter";
-import { getAccountByRiotId, getRankedMatchIds } from "@/lib/riot/client";
+import {
+  getAccountByRiotId,
+  getRankedMatchIds,
+  harvestMissingBuildData,
+} from "@/lib/riot/client";
 import type { PlatformRegion } from "@/lib/riot/types";
 import {
   ALGO_VERSION,
@@ -407,6 +411,7 @@ export async function runDeepAnalysis(
 ): Promise<void> {
   const jk = jobKey(platform, gameName, tagLine);
   let lastWritten = 0;
+  let harvestAfterDeep: string[] | null = null;
   try {
     // 백그라운드 작업은 저우선순위 — 페이지 로딩(전경) 호출이 항상 먼저 처리된다
     const result = await withLowPriority(() =>
@@ -444,6 +449,9 @@ export async function runDeepAnalysis(
       { state: "done", progress: 1, updatedAt: Date.now() },
       JOB_TTL,
     );
+    // 분석에 쓰인 매치의 빌드 데이터(시작 아이템·코어 순서)를 이어서 수확 —
+    // 결과 저장·완료 표시 후라 유저 응답과 무관하고, 실패해도 분석엔 영향 없음
+    harvestAfterDeep = result.matches.map((m) => m.matchId);
   } catch {
     await cache
       .set<DeepJob>(
@@ -454,5 +462,9 @@ export async function runDeepAnalysis(
       .catch(() => {});
   } finally {
     await releaseDeepRunner(jk).catch(() => {});
+  }
+  // 러너 락을 놓은 뒤에 수확 — 다음 대기자 분석을 막지 않는다
+  if (harvestAfterDeep) {
+    await harvestMissingBuildData(platform, harvestAfterDeep).catch(() => {});
   }
 }

@@ -1,6 +1,10 @@
 import "server-only";
 import { createHash } from "crypto";
-import { currentPriority, riotLimiter } from "./limiter";
+import {
+  currentPriority,
+  riotLimiter,
+  withLowPriority as withLowPriorityFn,
+} from "./limiter";
 import { recordRateLimitHit, trackRateLimiter } from "./rate-status";
 import { cache, cached } from "@/lib/cache";
 import { getSql as getDbSql } from "@/lib/db";
@@ -571,4 +575,38 @@ export async function harvestStartItems(
   await sql`
     UPDATE matches SET build_harvested = true
     WHERE fp = ${fp} AND match_id = ${matchId}`.catch(() => {});
+}
+
+/** 분석에 쓰인 매치 중 빌드 데이터(시작 아이템·코어 순서)가 아직 없는 것을
+ * 골라 타임라인을 수확한다. 정밀 분석 완료 훅에서 호출 — 활동 중인 유저의
+ * 새 매치는 대부분 1~5개뿐이라 저우선순위 몇 콜로 끝난다. 상한으로 지연을
+ * 묶고, 남은 것은 다음 분석이나 백필이 이어받는다. */
+export async function harvestMissingBuildData(
+  platform: PlatformRegion,
+  matchIds: string[],
+  cap = 10,
+): Promise<void> {
+  if (matchIds.length === 0) return;
+  const sql = await getDbSql();
+  const fp = keyFp();
+  const rows = await sql`
+    SELECT match_id FROM matches
+    WHERE fp = ${fp} AND match_id = ANY(${matchIds})
+      AND NOT build_harvested AND jsonb_array_length(participants) > 0
+    ORDER BY game_creation DESC LIMIT ${cap}`;
+  for (const r of rows as unknown as { match_id: string }[]) {
+    try {
+      const tl = await withLowPriorityFn(() =>
+        getMatchTimeline(platform, r.match_id),
+      );
+      await harvestStartItems(platform, r.match_id, tl);
+      // 수확용으로 받은 타임라인 캐시는 남기지 않는다 (KV 비대 방지)
+      await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
+    } catch {
+      // 받을 수 없는 매치는 완료 표시해 재시도 낭비 방지
+      await sql`
+        UPDATE matches SET build_harvested = true
+        WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+    }
+  }
 }
