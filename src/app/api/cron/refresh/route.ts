@@ -68,7 +68,10 @@ export async function GET(req: NextRequest) {
   // 만료된 캐시 행 정리 (누적 방지 — API 호출 없음)
   // 방문 로그는 지우지 않는다 — 데이터는 영구 보관이 원칙 (2026-08-22).
   // 만료 캐시는 데이터가 아니라 재계산 가능한 잔여물이라 청소 유지.
-  const cachePurged = await purgeExpiredCache().catch(() => 0);
+  // Redis 캐시 환경에선 cache_entries를 쓰지 않으므로(TTL 자체 만료) 건너뛴다.
+  const cachePurged = process.env.REDIS_URL
+    ? 0
+    : await purgeExpiredCache().catch(() => 0);
 
   return NextResponse.json({
     cachePurged,
