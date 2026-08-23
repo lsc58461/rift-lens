@@ -176,9 +176,13 @@ export async function estimateMmr(
     ? rankToPoints(solo.tier, solo.rank, solo.leaguePoints)
     : null;
 
-  const allMatches = await Promise.all(
-    matchIds.map((id) => getMatch(platform, id)),
-  );
+  // 라이엇이 일부 매치를 빈 껍데기(404 처리)로 주는 경우가 있다 — 그 경기
+  // 하나 때문에 분석 전체가 실패하지 않도록 개별 실패는 건너뛴다
+  const allMatches = (
+    await Promise.all(
+      matchIds.map((id) => getMatch(platform, id).catch(() => null)),
+    )
+  ).filter((m): m is NonNullable<typeof m> => m !== null);
   let pool = allMatches.filter((m) => m.gameDuration >= MIN_GAME_DURATION);
 
   // 듀오 감지 비활성화 구간: 한국 서버는 마스터+, 전 서버 그랜드마스터+가
@@ -207,9 +211,13 @@ export async function estimateMmr(
       const maxPool = Math.min(fetchCountFor(depth) * 2, 100);
       const moreIds = await getRankedMatchIds(platform, account.puuid, maxPool);
       if (moreIds.length > matchIds.length) {
-        const extra = await Promise.all(
-          moreIds.slice(matchIds.length).map((id) => getMatch(platform, id)),
-        );
+        const extra = (
+          await Promise.all(
+            moreIds
+              .slice(matchIds.length)
+              .map((id) => getMatch(platform, id).catch(() => null)),
+          )
+        ).filter((m): m is NonNullable<typeof m> => m !== null);
         pool = [
           ...pool,
           ...extra.filter((m) => m.gameDuration >= MIN_GAME_DURATION),
