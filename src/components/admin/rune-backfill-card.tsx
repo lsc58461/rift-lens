@@ -159,13 +159,13 @@ export function RuneBackfillCard() {
               if (res.ok) {
                 const d = await res.json();
                 toast.success(
-                  `통계 캐시 ${d.cleared}건을 비웠어요 — 다음 조회부터 현재 데이터로 집계됩니다`,
+                  `통계를 다시 집계했어요 (${Math.round(d.tookMs / 1000)}초) — 바로 최신 데이터가 보입니다`,
                 );
               } else toast.error("요청에 실패했어요");
             }}
           >
             <Eraser className="size-3.5" />
-            통계 캐시 초기화
+            통계 재집계
           </Button>
           {state?.running ? (
             <Button
