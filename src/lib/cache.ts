@@ -1,5 +1,6 @@
-// 키-값 JSON 캐시. DATABASE_URL이 있으면 Postgres(cache_entries 테이블),
-// 없으면 인메모리 Map으로 동작한다. 라이엇 API 호출량을 줄이는 게 목적.
+// 키-값 JSON 캐시. REDIS_URL이 있으면 Redis, 아니면 DATABASE_URL이 있으면
+// Postgres(cache_entries 테이블), 둘 다 없으면 인메모리 Map으로 동작한다.
+// 라이엇 API 호출량을 줄이는 게 목적. (자체 서버는 Redis, Vercel은 Postgres)
 
 import "server-only";
 
@@ -99,13 +100,71 @@ class PostgresStore implements CacheStore {
   }
 }
 
+class RedisStore implements CacheStore {
+  private client: Promise<import("redis").RedisClientType>;
+
+  constructor(url: string) {
+    this.client = import("redis").then(async (m) => {
+      const c = m.createClient({
+        url,
+        socket: { connectTimeout: 5000 },
+      }) as import("redis").RedisClientType;
+      // 끊겨도 프로세스는 살아야 한다 — 재연결은 클라이언트가 알아서 한다
+      c.on("error", (e) => console.error("[cache] redis error:", e?.message));
+      await c.connect();
+      return c;
+    });
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    const c = await this.client;
+    const raw = await c.get(key);
+    return raw === null ? null : (JSON.parse(raw) as T);
+  }
+
+  async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    const c = await this.client;
+    await c.set(key, JSON.stringify(value), { EX: Math.max(1, Math.ceil(ttlSeconds)) });
+  }
+
+  private async scan(prefix: string): Promise<string[]> {
+    const c = await this.client;
+    const keys: string[] = [];
+    for await (const batch of c.scanIterator({ MATCH: `${prefix}*`, COUNT: 500 })) {
+      keys.push(...batch);
+    }
+    return keys;
+  }
+
+  async keys(prefix: string): Promise<string[]> {
+    return this.scan(prefix);
+  }
+
+  async entries<T>(prefix: string): Promise<{ key: string; value: T }[]> {
+    const c = await this.client;
+    const keys = await this.scan(prefix);
+    if (!keys.length) return [];
+    const values = await c.mGet(keys);
+    return keys.flatMap((key, i) =>
+      values[i] === null ? [] : [{ key, value: JSON.parse(values[i]) as T }],
+    );
+  }
+
+  async delete(key: string): Promise<void> {
+    const c = await this.client;
+    await c.del(key);
+  }
+}
+
 const globalForCache = globalThis as unknown as { __mmrCache?: CacheStore };
 
 export const cache: CacheStore =
   globalForCache.__mmrCache ??
-  (globalForCache.__mmrCache = process.env.DATABASE_URL
-    ? new PostgresStore()
-    : new MemoryStore());
+  (globalForCache.__mmrCache = process.env.REDIS_URL
+    ? new RedisStore(process.env.REDIS_URL)
+    : process.env.DATABASE_URL
+      ? new PostgresStore()
+      : new MemoryStore());
 
 /** 캐시에 있으면 반환, 없으면 fn 실행 후 저장 */
 export async function cached<T>(
