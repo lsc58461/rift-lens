@@ -55,7 +55,7 @@ async function lookupRenamed(
   }
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   if (req.nextUrl.pathname === "/maintenance") return NextResponse.next();
   if (await isMaintenanceOn()) {
     return NextResponse.rewrite(new URL("/maintenance", req.url));
