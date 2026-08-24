@@ -171,6 +171,9 @@ async function initSchema(sql: Sql): Promise<void> {
     -- 팀별 오브젝트 요약(용·바론·전령·타워·선취점 등) — 매치당 2팀.
     -- participant 확장 필드와 함께, 이후 지표를 재수집 없이 뽑기 위한 선캡처.
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS teams jsonb NOT NULL DEFAULT '[]'::jsonb;
+    -- 확장 필드 캡처 완료 표시 — 도입 전 매치는 false라, 백필이 본문을 재수집해
+    -- 밴·팀·participant 확장 필드를 채우고 true로 바꾼다.
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS fields_captured boolean NOT NULL DEFAULT false;
     -- 타임라인(빌드 데이터) 수확 완료 표시 — 백필이 남은 작업을 찾는 기준
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS build_harvested boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS matches_fp_patch_idx ON matches (fp, patch);

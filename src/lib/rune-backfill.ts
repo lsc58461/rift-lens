@@ -49,7 +49,7 @@ export async function countMissingRunes(): Promise<number> {
     WHERE fp = ${riotKeyFp()}
       AND jsonb_array_length(participants) > 0
       AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
-           OR NOT build_harvested)`;
+           OR NOT build_harvested OR NOT fields_captured)`;
   return (r[0]?.n as number) ?? 0;
 }
 
@@ -103,12 +103,13 @@ export async function runRunefillRound(origin?: string): Promise<void> {
     const perRound = turbo ? TURBO_PER_ROUND : PER_ROUND;
     const rows = await sql`
       SELECT match_id, platform,
-             ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok
+             ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok,
+             build_harvested, fields_captured
       FROM matches
       WHERE fp = ${fp}
         AND jsonb_array_length(participants) > 0
         AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
-             OR NOT build_harvested)
+             OR NOT build_harvested OR NOT fields_captured)
       ORDER BY game_creation DESC LIMIT ${perRound}`;
 
     if (rows.length === 0) {
@@ -119,40 +120,50 @@ export async function runRunefillRound(origin?: string): Promise<void> {
     let filled = 0;
     let failed = 0;
     let i = 0;
-    for (const r of rows as unknown as { match_id: string; platform: PlatformRegion; body_ok: boolean }[]) {
+    for (const r of rows as unknown as {
+      match_id: string;
+      platform: PlatformRegion;
+      body_ok: boolean;
+      build_harvested: boolean;
+      fields_captured: boolean;
+    }[]) {
       // 5개마다 취소 확인
       if (i++ % 5 === 0 && !((await getRunefillState())?.running ?? false)) break;
       try {
-        // 본문(룬·패치)이 이미 채워진 매치는 타임라인만 받는다 — 호출 절약
-        if (!r.body_ok) {
+        // 본문 재수집이 필요한 경우: 룬/패치 누락(!body_ok) 또는 확장 필드 미캡처.
+        // getMatch(force)가 밴·팀·participant 확장 필드까지 다시 저장하고
+        // fields_captured=true로 만든다.
+        if (!r.body_ok || !r.fields_captured) {
           await runAt(() => getMatch(r.platform, r.match_id, true));
         }
-        // 같은 매치의 타임라인으로 시작 아이템도 수확 (매치당 1회 마커로 중복 방지).
-        // 수확 후 타임라인 캐시는 지운다 — 수천 매치 분량이 KV에 쌓이는 것 방지
-        await runAt(() =>
-          getMatchTimeline(r.platform, r.match_id).then(async (tl) => {
-            await harvestStartItems(r.platform, r.match_id, tl);
-            await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
-          }),
-        ).catch(async (e) => {
-          // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 재시도 여지
-          if (e instanceof RiotApiError && e.status === 404) {
-            await sql`
-              UPDATE matches SET build_harvested = true
-              WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
-          }
-        });
+        // 타임라인 빌드 수확은 아직 안 한 매치만 (이미 수확했으면 콜 낭비 안 함)
+        if (!r.build_harvested) {
+          await runAt(() =>
+            getMatchTimeline(r.platform, r.match_id).then(async (tl) => {
+              await harvestStartItems(r.platform, r.match_id, tl);
+              await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
+            }),
+          ).catch(async (e) => {
+            // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 재시도 여지
+            if (e instanceof RiotApiError && e.status === 404) {
+              await sql`
+                UPDATE matches SET build_harvested = true
+                WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+            }
+          });
+        }
         filled++;
       } catch (e) {
         failed++;
         // 404(라이엇에 진짜 없는 매치)만 영구 제외한다 — 레이트리밋·5xx 같은
-        // 일시 오류로 실패한 매치는 그대로 둬서 다음 백필이 다시 시도한다
+        // 일시 오류로 실패한 매치는 그대로 둬서 다음 백필이 다시 시도한다.
+        // fields_captured도 true로 박아 이 매치가 무한 재시도되지 않게 한다.
         const permanent = e instanceof RiotApiError && e.status === 404;
         if (permanent) {
           await sql`
             UPDATE matches
             SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
-                build_harvested = true
+                build_harvested = true, fields_captured = true
             WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
         }
       }
