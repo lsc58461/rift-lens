@@ -16,10 +16,19 @@ export function patchLabel(version: string): string {
   return `${maj}.${min}`;
 }
 
+const BASE = "https://www.leagueoflegends.com/ko-kr/news/game-updates";
+
 /** 공식 패치노트 URL (ko-kr). 예: DDragon 16.16 → league-of-legends-patch-26-16-notes */
 export function patchNotesUrl(version: string): string {
   const { maj, min } = marketing(version);
-  return `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-${maj}-${min}-notes/`;
+  return `${BASE}/league-of-legends-patch-${maj}-${min}-notes/`;
+}
+
+/** 구형식 URL — 라이엇이 26.4부터 앞에 'league-of-legends-'를 붙였고,
+ *  그 이전(예: 26.1~26.3)은 'patch-26-1-notes' 형태다. 404면 이쪽으로 폴백. */
+function legacyPatchNotesUrl(version: string): string {
+  const { maj, min } = marketing(version);
+  return `${BASE}/patch-${maj}-${min}-notes/`;
 }
 
 /** 패치노트 허브(개별 링크가 안 열릴 때 대비) */
@@ -35,13 +44,27 @@ export interface PatchNote {
 }
 
 /** 공식 패치노트 페이지에서 히어로 이미지·게시일·요약을 뽑는다(메타태그/JSON-LD). */
-async function enrich(url: string): Promise<Partial<PatchNote>> {
+async function enrich(
+  url: string,
+  fallbackUrl?: string,
+): Promise<Partial<PatchNote>> {
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(8_000),
-      headers: { "user-agent": "Mozilla/5.0 RiftLens" },
-    });
+    const get = (u: string) =>
+      fetch(u, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(8_000),
+        headers: { "user-agent": "Mozilla/5.0 RiftLens" },
+      });
+    let usedUrl = url;
+    let res = await get(url);
+    // 신형식이 없으면 구형식으로 폴백 (라이엇이 26.4부터 URL 스킴을 바꿈)
+    if (!res.ok && fallbackUrl) {
+      const alt = await get(fallbackUrl);
+      if (alt.ok) {
+        res = alt;
+        usedUrl = fallbackUrl;
+      }
+    }
     if (!res.ok) return {};
     const html = await res.text();
     const og = (prop: string) =>
@@ -62,7 +85,7 @@ async function enrich(url: string): Promise<Partial<PatchNote>> {
     }
     const summary = og("og:description");
     const date = html.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1];
-    return { image, summary, date };
+    return { image, summary, date, url: usedUrl };
   } catch {
     return {};
   }
@@ -82,17 +105,26 @@ export async function getRecentPatchNotes(limit = 16): Promise<PatchNote[]> {
       versions = [FALLBACK];
     }
     const seen = new Set<string>();
-    const base: PatchNote[] = [];
+    const base: { patch: string; url: string; legacy: string }[] = [];
     for (const v of versions) {
       const label = patchLabel(v);
       if (seen.has(label)) continue;
       seen.add(label);
-      base.push({ patch: label, url: patchNotesUrl(v) });
+      base.push({
+        patch: label,
+        url: patchNotesUrl(v),
+        legacy: legacyPatchNotesUrl(v),
+      });
       if (base.length >= limit) break;
     }
-    // 각 패치 페이지에서 히어로 이미지·게시일을 병렬로 채운다(6h 캐시 내 1회).
-    return Promise.all(
-      base.map(async (n) => ({ ...n, ...(await enrich(n.url)) })),
+    // 각 패치 페이지에서 히어로 이미지·게시일을 병렬로 채우고, 404면 구형식 URL로
+    // 폴백한다(6h 캐시 내 1회). 어느 쪽도 없으면 해당 패치는 목록에서 제외한다.
+    const enriched = await Promise.all(
+      base.map(async ({ patch, url, legacy }) => {
+        const meta = await enrich(url, legacy);
+        return meta.url ? { patch, ...meta, url: meta.url } : null;
+      }),
     );
+    return enriched.filter((n): n is PatchNote => n !== null);
   });
 }

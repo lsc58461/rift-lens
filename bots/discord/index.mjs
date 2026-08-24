@@ -101,14 +101,25 @@ async function setLastAnnouncedPatch(patch) {
     () => {},
   );
 }
-/** 공식 패치노트 페이지에서 히어로 이미지·요약을 뽑는다 (임베드에 첨부용) */
-async function fetchPatchMeta(url) {
+/** 공식 패치노트 페이지에서 히어로 이미지·요약을 뽑는다 (임베드에 첨부용).
+ *  라이엇이 26.4부터 URL 스킴을 바꿔, 신형식 404면 구형식으로 폴백한다. */
+async function fetchPatchMeta(url, fallbackUrl) {
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(10_000),
-      headers: { "user-agent": "Mozilla/5.0 RiftLensBot" },
-    });
+    const get = (u) =>
+      fetch(u, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(10_000),
+        headers: { "user-agent": "Mozilla/5.0 RiftLensBot" },
+      });
+    let usedUrl = url;
+    let res = await get(url);
+    if (!res.ok && fallbackUrl) {
+      const alt = await get(fallbackUrl);
+      if (alt.ok) {
+        res = alt;
+        usedUrl = fallbackUrl;
+      }
+    }
     if (!res.ok) return {};
     const html = await res.text();
     const og = (p) =>
@@ -122,7 +133,7 @@ async function fetchPatchMeta(url) {
         image = image.slice(0, first + 1) + image.slice(first + 1).replace(/\?/g, "&");
       }
     }
-    return { image, summary: og("og:description") };
+    return { image, summary: og("og:description"), url: usedUrl };
   } catch {
     return {};
   }
@@ -149,17 +160,20 @@ async function patchLoop() {
     // 마케팅 패치번호 = DDragon major + 10 (DDragon 16.16 → 패치 26.16)
     const [dMaj, dMin] = latest.split(".").map((n) => parseInt(n, 10));
     const mkt = `${(dMaj || 0) + 10}.${dMin || 0}`;
-    const url = `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
-    const meta = await fetchPatchMeta(url);
+    const base = "https://www.leagueoflegends.com/ko-kr/news/game-updates";
+    const url = `${base}/league-of-legends-patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
+    const legacy = `${base}/patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
+    const meta = await fetchPatchMeta(url, legacy);
+    const finalUrl = meta.url || url;
     const embed = new EmbedBuilder()
       .setColor(0x3b82f6)
       .setTitle(`새 패치 ${mkt} 노트가 나왔어요`)
       .setDescription(
         meta.summary
-          ? `${meta.summary}\n${url}`
-          : `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${url}`,
+          ? `${meta.summary}\n${finalUrl}`
+          : `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${finalUrl}`,
       )
-      .setURL(url)
+      .setURL(finalUrl)
       .setTimestamp();
     if (meta.image) embed.setImage(meta.image);
     await broadcast(embed);
