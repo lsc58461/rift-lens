@@ -4,15 +4,22 @@ import { cached } from "@/lib/cache";
 
 const FALLBACK = "16.16.1";
 
-/** "16.16.1" → "16.16" */
-export function patchLabel(version: string): string {
-  return version.split(".").slice(0, 2).join(".");
+// 라이엇 마케팅 패치번호는 DDragon major + 10 (DDragon 16.x = 패치 26.x, 2026 시즌).
+function marketing(version: string): { maj: number; min: number } {
+  const [maj, min] = version.split(".").map((n) => parseInt(n, 10));
+  return { maj: (maj || 0) + 10, min: min || 0 };
 }
 
-/** 공식 패치노트 URL (ko-kr). 예: 16.16 → patch-16-16-notes */
+/** 표시용 패치 라벨 (마케팅 번호). "16.16.1" → "26.16" */
+export function patchLabel(version: string): string {
+  const { maj, min } = marketing(version);
+  return `${maj}.${min}`;
+}
+
+/** 공식 패치노트 URL (ko-kr). 예: DDragon 16.16 → league-of-legends-patch-26-16-notes */
 export function patchNotesUrl(version: string): string {
-  const [maj, min] = version.split(".");
-  return `https://www.leagueoflegends.com/ko-kr/news/game-updates/patch-${maj}-${min}-notes/`;
+  const { maj, min } = marketing(version);
+  return `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-${maj}-${min}-notes/`;
 }
 
 /** 패치노트 허브(개별 링크가 안 열릴 때 대비) */

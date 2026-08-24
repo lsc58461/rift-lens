@@ -110,7 +110,7 @@ async function patchLoop() {
     );
     if (!res.ok) return;
     const versions = await res.json();
-    latest = String(versions[0] ?? "").split(".").slice(0, 2).join(".");
+    latest = String(versions[0] ?? "").split(".").slice(0, 2).join("."); // DDragon "16.16"
   } catch {
     return;
   }
@@ -119,14 +119,16 @@ async function patchLoop() {
   if (last === latest) return;
   // 첫 실행(기록 없음)엔 기준만 저장하고 알리지 않는다 — 봇 재시작 스팸 방지
   if (last) {
-    const [maj, min] = latest.split(".");
-    const url = `https://www.leagueoflegends.com/ko-kr/news/game-updates/patch-${maj}-${min}-notes/`;
+    // 마케팅 패치번호 = DDragon major + 10 (DDragon 16.16 → 패치 26.16)
+    const [dMaj, dMin] = latest.split(".").map((n) => parseInt(n, 10));
+    const mkt = `${(dMaj || 0) + 10}.${dMin || 0}`;
+    const url = `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
     await broadcast(
       new EmbedBuilder()
         .setColor(0x3b82f6)
-        .setTitle(`새 패치 ${latest} 노트가 나왔어요`)
+        .setTitle(`새 패치 ${mkt} 노트가 나왔어요`)
         .setDescription(
-          `리그 오브 레전드 패치 ${latest} 노트를 확인해 보세요.\n${url}`,
+          `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${url}`,
         )
         .setURL(url)
         .setTimestamp(),
