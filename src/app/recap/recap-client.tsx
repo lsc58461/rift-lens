@@ -108,7 +108,11 @@ export function RecapClient({
       {recap && (
         <>
           {/* 히어로 — 이름과 관측 최고 랭크 */}
-          <div className="rounded-xl border bg-card p-5 text-center">
+          <div className="relative overflow-hidden rounded-2xl border bg-card p-6 text-center">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-amber-500/12 to-transparent"
+            />
             <div className="text-xs text-muted-foreground">
               시즌 랭크 {recap.totalRanked}
               {recap.totalCapped ? "+" : ""}판

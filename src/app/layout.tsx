@@ -2,14 +2,13 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { BarChart3, CircleHelp, History, Newspaper } from "lucide-react";
+import { BarChart3, CircleHelp, History, Newspaper, Wrench } from "lucide-react";
 import Link from "next/link";
 import "./globals.css";
 import { AnnouncementBanner } from "@/components/announcement-banner";
 import { LogoMark } from "@/components/logo-mark";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ToolsMenu } from "@/components/tools-menu";
 import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
@@ -113,7 +112,13 @@ export default function RootLayout({
                   <CircleHelp className="size-4" />
                   <span className="hidden sm:inline">FAQ</span>
                 </Link>
-                <ToolsMenu />
+                <Link
+                  href="/tools"
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Wrench className="size-4" />
+                  <span className="hidden sm:inline">도구</span>
+                </Link>
                 <ThemeToggle />
               </div>
             </div>

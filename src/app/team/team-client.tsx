@@ -282,9 +282,22 @@ export function TeamClient() {
               const sumB = current.b.reduce((s, i) => s + valid[i].points, 0);
               const pct = sumA + sumB > 0 ? (sumA / (sumA + sumB)) * 100 : 50;
               return (
-                <div className="mt-2.5 flex h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="bg-blue-500" style={{ width: `${pct}%` }} />
-                  <div className="flex-1 bg-red-500" />
+                <div className="mt-2.5">
+                  <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="bg-blue-500 transition-all duration-300"
+                      style={{ width: `${pct}%` }}
+                    />
+                    <div className="flex-1 bg-red-500 transition-all duration-300" />
+                  </div>
+                  <div className="mt-1.5 flex justify-between text-[11px] tabular-nums">
+                    <span className="text-blue-600 dark:text-blue-400">
+                      블루 {pct.toFixed(1)}% · {sumA.toLocaleString()}pt
+                    </span>
+                    <span className="text-red-600 dark:text-red-400">
+                      {(100 - pct).toFixed(1)}% 레드 · {sumB.toLocaleString()}pt
+                    </span>
+                  </div>
                 </div>
               );
             })()}

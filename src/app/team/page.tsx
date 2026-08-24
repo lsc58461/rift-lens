@@ -1,5 +1,5 @@
 import { Swords } from "lucide-react";
-import { PageHeader } from "@/components/page-kit";
+import { OtherTools, ToolHero } from "@/components/tool-kit";
 import { TeamClient } from "./team-client";
 
 export const metadata = {
@@ -10,13 +10,20 @@ export const metadata = {
 
 export default function TeamPage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
+    <div className="mx-auto max-w-3xl space-y-5">
+      <ToolHero
+        tone="sky"
         icon={Swords}
         title="내전 팀 밸런서"
-        description="매칭 실력대 기준으로 가장 공평한 팀을 짜드려요"
+        description="참가자들의 매칭 실력대를 추정해 전력 차가 가장 적은 팀 구성을 찾아드려요"
+        steps={[
+          "참가자 닉네임 입력 (짝수 인원)",
+          "팀 나누기",
+          "마음에 안 들면 다른 조합",
+        ]}
       />
       <TeamClient />
+      <OtherTools current="/team" />
     </div>
   );
 }

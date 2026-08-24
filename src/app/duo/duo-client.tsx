@@ -138,14 +138,20 @@ export function DuoClient() {
 
       {result && (
         <>
-          {/* 두 사람 — 이름과 함께 승률을 한 줄로 */}
-          <div className="rounded-xl border bg-card p-5">
-            <div className="flex items-center justify-center gap-3 text-sm font-semibold sm:text-base">
-              <span className="min-w-0 flex-1 truncate text-right">
+          {/* 두 사람 — VS 카드: 이름을 크게, 가운데 하트 타일 */}
+          <div className="relative overflow-hidden rounded-2xl border bg-card p-6">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-rose-500/10 to-transparent"
+            />
+            <div className="relative flex items-center justify-center gap-4">
+              <span className="min-w-0 flex-1 truncate text-right text-base font-bold tracking-tight sm:text-lg">
                 {result.a.name.split("#")[0]}
               </span>
-              <Heart className="size-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-500/15 ring-1 ring-rose-500/25">
+                <Heart className="size-5 text-rose-500 dark:text-rose-400" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-base font-bold tracking-tight sm:text-lg">
                 {result.b.name.split("#")[0]}
               </span>
             </div>
