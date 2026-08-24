@@ -37,7 +37,6 @@ const POSITION_LABEL: Record<string, string> = {
 };
 const LANES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 
-type SortKey = "games" | "winrate";
 type Lane = (typeof LANES)[number] | "all";
 
 function wr(wins: number, games: number): number {
@@ -64,10 +63,39 @@ function laneStats(c: ChampionStat, lane: Lane): { games: number; wins: number }
   return { games: p?.games ?? 0, wins: p?.wins ?? 0 };
 }
 
+/** 정렬·표시용 자체 점수 — 전체 라인에선 주 포지션 점수, 특정 라인에선 그 라인 점수 */
+function scoreOf(c: ChampionStat, lane: Lane): number | undefined {
+  if (lane === "all") {
+    const main = Object.entries(c.positions).sort(
+      (a, b) => b[1].games - a[1].games,
+    )[0];
+    return main?.[1].score;
+  }
+  return c.positions[lane]?.score;
+}
+
 /** OP 챔피언 판정 — 표본 보정 승률이 높고(≥53%) 표본이 충분한(50판+) 챔피언.
  * 판수 적은 고승률 편향을 윌슨 하한으로 걸러 진짜 강한 챔프만 표시한다. */
 function isOp(wins: number, games: number): boolean {
   return games >= 50 && adjustedRate(wins, games) >= 0.53;
+}
+
+const TIER_STYLE: Record<number, string> = {
+  1: "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/30",
+  2: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
+  3: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  4: "bg-muted text-muted-foreground border-transparent",
+  5: "bg-muted/60 text-muted-foreground/70 border-transparent",
+};
+function TierBadge({ tier }: { tier?: number }) {
+  if (!tier) return <span className="inline-block w-9" />;
+  return (
+    <span
+      className={`inline-flex w-9 shrink-0 items-center justify-center rounded-md border py-0.5 text-[11px] font-bold tabular-nums ${TIER_STYLE[tier] ?? TIER_STYLE[4]}`}
+    >
+      {tier}티어
+    </span>
+  );
 }
 
 function WinrateText({ wins, games }: { wins: number; games: number }) {
@@ -100,7 +128,6 @@ export function ChampionsTable({
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("winrate");
   const [lane, setLane] = useState<Lane>("all");
   const [selected, setSelected] = useState<ChampionStat | null>(null);
 
@@ -123,14 +150,13 @@ export function ChampionsTable({
       });
     }
     return [...list].sort((a, b) => {
-      const sa = laneStats(a, lane);
-      const sb = laneStats(b, lane);
-      return sort === "games"
-        ? sb.games - sa.games
-        : wr(sb.wins, sb.games) - wr(sa.wins, sa.games) ||
-            sb.games - sa.games;
+      // 자체 점수 내림차순 — 점수 없으면(표본 부족) 맨 뒤, 동점은 판수순
+      const sca = scoreOf(a, lane) ?? -1;
+      const scb = scoreOf(b, lane) ?? -1;
+      if (scb !== sca) return scb - sca;
+      return laneStats(b, lane).games - laneStats(a, lane).games;
     });
-  }, [stats.champions, q, sort, lane, names]);
+  }, [stats.champions, q, lane, names]);
 
   const maxGames = Math.max(
     1,
@@ -176,27 +202,9 @@ export function ChampionsTable({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        <div className="flex items-center gap-1 self-end rounded-md border p-0.5 sm:self-auto">
-          {(
-            [
-              ["games", "판수순"],
-              ["winrate", "승률순"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSort(key)}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                sort === key
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <span className="self-end text-[11px] text-muted-foreground sm:self-auto">
+          자체 점수순
+        </span>
       </div>
 
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
@@ -219,10 +227,12 @@ export function ChampionsTable({
       <Card className="py-0">
         <CardContent className="px-0">
           <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
+            <span className="w-9 shrink-0 text-center">티어</span>
             <span className="flex-1">챔피언</span>
             <span className="w-24 shrink-0 text-right">
               판수{lane !== "all" && ` (${POSITION_LABEL[lane]})`}
             </span>
+            <span className="w-14 shrink-0 text-right">점수</span>
             <span className="w-16 shrink-0 text-right">승률</span>
             {(stats.bansMatchTotal ?? 0) > 0 && (
               <span className="hidden w-14 shrink-0 text-right sm:block">밴률</span>
@@ -238,6 +248,10 @@ export function ChampionsTable({
               const mainPos = Object.entries(c.positions).sort(
                 (a, b) => b[1].games - a[1].games,
               )[0];
+              const tier =
+                lane === "all"
+                  ? (mainPos ? c.positions[mainPos[0]]?.tier : undefined)
+                  : c.positions[lane]?.tier;
               return (
                 <button
                   key={c.champ}
@@ -245,6 +259,7 @@ export function ChampionsTable({
                   onClick={() => setSelected(c)}
                   className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
                 >
+                  <TierBadge tier={tier} />
                   <span className="flex min-w-0 flex-1 items-center gap-2.5 font-medium">
                     <Image
                       src={championIconUrl(version, c.champ)}
@@ -277,6 +292,12 @@ export function ChampionsTable({
                     <span className="text-xs tabular-nums text-muted-foreground">
                       {s.games}판
                     </span>
+                  </span>
+                  <span className="w-14 shrink-0 text-right text-xs font-semibold tabular-nums">
+                    {(() => {
+                      const sc = scoreOf(c, lane);
+                      return sc !== undefined ? sc.toFixed(2) : "—";
+                    })()}
                   </span>
                   <span className="w-16 shrink-0 text-right text-xs font-medium">
                     <WinrateText wins={s.wins} games={s.games} />

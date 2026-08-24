@@ -46,6 +46,8 @@ export interface RuneStat {
 export interface PositionStat {
   games: number;
   wins: number;
+  tier?: number; // 이 라인 기준 1(최상)~5 티어 (opgg식 상대 순위)
+  score?: number; // 자체 점수(승률+픽·밴 프레즌스) — 정렬·표시용
 }
 
 export interface StartItemStat {
@@ -357,6 +359,54 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
   for (const c of champions) c.bans = bansByChamp.get(c.champ) ?? 0;
   const bansMatchTotal =
     (banTotalRows as unknown as { n: number }[])[0]?.n ?? 0;
+
+  // ── 티어 산정(라인별 상대 순위, opgg식) ──────────────────
+  // 점수 = 표본보정 승률(윌슨 하한) + 픽률·밴률 프레즌스 가중.
+  // 라인마다 최소 표본 넘는 챔프만 대상으로 점수순 정렬 후 백분위로 1~5티어.
+  const totalMatches =
+    (meta as unknown as { games: number }[])[0]?.games ?? 0;
+  const LANE_MIN = 20; // 이 라인에서 이 판수 미만이면 티어 산정 제외
+  const wilson = (wins: number, games: number): number => {
+    if (games === 0) return 0;
+    const z = 1.96;
+    const p = wins / games;
+    return (
+      (p + (z * z) / (2 * games) -
+        z * Math.sqrt((p * (1 - p) + (z * z) / (4 * games)) / games)) /
+      (1 + (z * z) / games)
+    );
+  };
+  const score = (posGames: number, posWins: number, banCount: number): number => {
+    const wr = wilson(posWins, posGames); // 0~1
+    const pick = totalMatches ? posGames / totalMatches : 0;
+    const ban = bansMatchTotal ? banCount / bansMatchTotal : 0;
+    // 승률을 주로, 프레즌스(픽+밴)를 보조로 반영 (점수 대역 ~50대 유지)
+    return wr * 100 + pick * 100 * 0.3 + ban * 100 * 0.15;
+  };
+  // 티어 컷 백분위(상위부터 누적): 1티어 8% / 2티어 20% / 3티어 50% / 4티어 78% / 나머지 5
+  const tierOf = (rank: number, n: number): number => {
+    const pct = n <= 1 ? 0 : rank / (n - 1); // 0=최상
+    if (pct <= 0.08) return 1;
+    if (pct <= 0.2) return 2;
+    if (pct <= 0.5) return 3;
+    if (pct <= 0.78) return 4;
+    return 5;
+  };
+  for (const lane of ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"]) {
+    const pool = champions
+      .map((c) => ({ c, p: c.positions[lane] }))
+      .filter((x) => x.p && x.p.games >= LANE_MIN)
+      .map((x) => ({
+        c: x.c,
+        p: x.p as PositionStat,
+        s: score(x.p!.games, x.p!.wins, x.c.bans ?? 0),
+      }))
+      .sort((a, b) => b.s - a.s);
+    pool.forEach((x, i) => {
+      x.p.tier = tierOf(i, pool.length);
+      x.p.score = Math.round(x.s * 100) / 100; // 소수 2자리
+    });
+  }
 
   return {
     totalGames: (meta as unknown as { games: number }[])[0]?.games ?? 0,
