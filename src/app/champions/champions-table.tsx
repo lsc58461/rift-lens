@@ -262,15 +262,21 @@ export function ChampionsTable({
 
       <Card className="py-0">
         <CardContent className="px-0">
-          <div className="flex items-center gap-2 border-b px-3 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:gap-3 sm:px-4">
+          {/* 헤더는 데스크톱에서만 — 모바일은 2줄 카드형이라 컬럼 헤더가 불필요 */}
+          <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
             <span className="w-9 shrink-0 text-center">티어</span>
             <span className="flex-1">챔피언</span>
-            <span className="w-12 shrink-0 text-right sm:w-14">점수</span>
-            <span className="w-12 shrink-0 text-right sm:w-16">승률</span>
-            {(stats.bansMatchTotal ?? 0) > 0 && (
-              <span className="w-11 shrink-0 text-right sm:w-14">밴률</span>
-            )}
-            <span className="w-4 shrink-0 sm:w-6" />
+            <span className="flex items-center justify-end gap-3">
+              <span className="w-16 text-right normal-case">
+                {lane === "all" ? "표본·주포지션" : "표본·점유"}
+              </span>
+              <span className="w-14 text-right">점수</span>
+              <span className="w-12 text-right">승률</span>
+              {(stats.bansMatchTotal ?? 0) > 0 && (
+                <span className="w-12 text-right">밴률</span>
+              )}
+              <span className="w-4 shrink-0" />
+            </span>
           </div>
           <div className="divide-y divide-border/60">
             {rows.map((c) => {
@@ -287,59 +293,61 @@ export function ChampionsTable({
                   key={c.champ}
                   type="button"
                   onClick={() => setSelected(c)}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 sm:gap-3 sm:px-4"
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
                 >
+                  {/* 1줄차: 티어 + 챔피언 (모바일에선 지표가 2줄차로 내려감) */}
                   <TierBadge tier={tier} />
-                  <Image
-                    src={championIconUrl(version, c.champ)}
-                    alt=""
-                    width={32}
-                    height={32}
-                    unoptimized
-                    className="size-8 shrink-0 rounded-lg object-cover"
-                  />
-                  {/* 이름 + (판수·포지션) 서브타이틀 — 한 줄 유지, 넘치면 이름만 말줄임 */}
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <span className="truncate">
-                        {championNameKo(names, c.champ)}
-                      </span>
-                      {isOp(s.wins, s.games) && (
-                        <span
-                          title="OP — 표본 충분 + 보정 승률 상위"
-                          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400"
-                        >
-                          <Flame className="size-2.5" />
-                          OP
-                        </span>
-                      )}
+                  <span className="flex min-w-0 flex-1 items-center gap-2.5 font-medium">
+                    <Image
+                      src={championIconUrl(version, c.champ)}
+                      alt=""
+                      width={32}
+                      height={32}
+                      unoptimized
+                      className="size-8 shrink-0 rounded-lg object-cover"
+                    />
+                    <span className="truncate">
+                      {championNameKo(names, c.champ)}
                     </span>
-                    <span className="truncate text-[11px] tabular-nums text-muted-foreground">
+                    {isOp(s.wins, s.games) && (
+                      <span
+                        title="OP — 표본 충분 + 보정 승률 상위"
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400"
+                      >
+                        <Flame className="size-2.5" />
+                        OP
+                      </span>
+                    )}
+                  </span>
+                  {/* 지표: 모바일에선 w-full로 2줄차, sm+에선 인라인. 컬럼 구성 동일 */}
+                  <span className="flex w-full items-center justify-end gap-3 pl-11 text-xs text-muted-foreground sm:w-auto sm:pl-0">
+                    <span className="tabular-nums">
                       {s.games}판
                       {lane === "all"
                         ? mainPos
                           ? ` · ${POSITION_LABEL[mainPos[0]] ?? mainPos[0]}`
                           : ""
-                        : ` · 점유 ${Math.round((s.games / c.games) * 100)}%`}
+                        : ` · ${Math.round((s.games / c.games) * 100)}%`}
                     </span>
-                  </span>
-                  <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums sm:w-14">
-                    {(() => {
-                      const sc = scoreOf(c, lane);
-                      return sc !== undefined ? sc.toFixed(2) : "—";
-                    })()}
-                  </span>
-                  <span className="w-12 shrink-0 text-right text-xs font-medium sm:w-16">
-                    <WinrateText wins={s.wins} games={s.games} />
-                  </span>
-                  {(stats.bansMatchTotal ?? 0) > 0 && (
-                    <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:w-14">
-                      {c.bans && stats.bansMatchTotal
-                        ? `${Math.round((c.bans / stats.bansMatchTotal) * 100)}%`
-                        : "—"}
+                    <span className="w-14 shrink-0 text-right font-semibold tabular-nums text-foreground">
+                      {(() => {
+                        const sc = scoreOf(c, lane);
+                        return sc !== undefined ? sc.toFixed(2) : "—";
+                      })()}
                     </span>
-                  )}
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="w-12 shrink-0 text-right font-medium">
+                      <WinrateText wins={s.wins} games={s.games} />
+                    </span>
+                    {(stats.bansMatchTotal ?? 0) > 0 && (
+                      <span className="w-12 shrink-0 text-right tabular-nums">
+                        밴{" "}
+                        {c.bans && stats.bansMatchTotal
+                          ? `${Math.round((c.bans / stats.bansMatchTotal) * 100)}%`
+                          : "—"}
+                      </span>
+                    )}
+                    <ChevronRight className="size-4 shrink-0" />
+                  </span>
                 </button>
               );
             })}
