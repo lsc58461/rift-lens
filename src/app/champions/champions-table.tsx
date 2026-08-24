@@ -308,7 +308,7 @@ export function ChampionsTable({
                       width={32}
                       height={32}
                       unoptimized
-                      className="size-8 rounded-lg"
+                      className="size-8 shrink-0 rounded-lg object-cover"
                     />
                     <span className="truncate">
                       {championNameKo(names, c.champ)}
@@ -443,7 +443,7 @@ function ChampionModal({
             width={44}
             height={44}
             unoptimized
-            className="size-11 rounded-xl"
+            className="size-11 shrink-0 rounded-xl object-cover"
           />
           <div className="min-w-0 flex-1">
             <div className="truncate text-base font-semibold">

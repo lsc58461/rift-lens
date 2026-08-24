@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AnnouncementCard } from "./announcement-card";
-import { ChangelogCard } from "./changelog-card";
 import { CrawlCard } from "./crawl-card";
 import { MigrationCard } from "./migration-card";
 import { RefreshAllCard } from "./refresh-all-card";
@@ -112,8 +111,6 @@ export function MaintenancePanel() {
       />
 
       <AnnouncementCard />
-
-      <ChangelogCard />
 
       <RefreshAllCard />
 

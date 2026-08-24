@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Users,
   Wrench,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { LogoMark } from "@/components/logo-mark";
 const NAV = [
   { href: "/admin", label: "대시보드", icon: LayoutDashboard },
   { href: "/admin/summoners", label: "소환사", icon: Users },
+  { href: "/admin/updates", label: "업데이트 내역", icon: Megaphone },
   { href: "/admin/maintenance", label: "점검", icon: Wrench },
 ] as const;
 
