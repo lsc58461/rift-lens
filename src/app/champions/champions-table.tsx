@@ -48,6 +48,13 @@ const RANK_OPTIONS: { key: string; label: string }[] = [
   { key: "master", label: "마스터 이상" },
 ];
 
+/** 표시용 패치 라벨 — DB엔 DDragon 번호(16.16)로 저장되지만 유저에겐 라이엇
+ * 마케팅 번호(26.16)로 보여준다. 패치노트 페이지와 표기를 맞추기 위함. */
+function patchDisplay(p: string): string {
+  const [maj, min] = p.split(".").map((n) => parseInt(n, 10));
+  return Number.isFinite(maj) ? `${maj + 10}.${min ?? 0}` : p;
+}
+
 function wr(wins: number, games: number): number {
   return games > 0 ? Math.round((wins / games) * 100) : 0;
 }
@@ -193,7 +200,7 @@ export function ChampionsTable({
         {patches.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 self-end rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent data-popup-open:bg-accent sm:self-auto">
-              {currentPatch ? `패치 ${currentPatch}` : "패치 선택"}
+              {currentPatch ? `패치 ${patchDisplay(currentPatch)}` : "패치 선택"}
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
@@ -204,7 +211,7 @@ export function ChampionsTable({
                   className="justify-between text-xs"
                 >
                   <span>
-                    패치 {p.patch}
+                    패치 {patchDisplay(p.patch)}
                     <span className="ml-1.5 text-muted-foreground">
                       {p.games.toLocaleString()}경기
                     </span>

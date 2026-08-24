@@ -2,6 +2,7 @@ import { BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { getChampionStats, listPatches } from "@/lib/champion-stats";
 import { RANK_BRACKETS } from "@/lib/rank-pts";
+import { patchLabel } from "@/lib/patch-notes";
 import {
   getChampionNamesKo,
   getDDragonVersion,
@@ -50,7 +51,7 @@ export default async function ChampionsPage({
       <PageHeader
         icon={BarChart3}
         title="챔피언 통계"
-        description={`${patch ? `패치 ${patch}` : "전체"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
+        description={`${patch ? `패치 ${patchLabel(patch)}` : "전체"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
       />
       <ChampionsTable
         stats={stats}
