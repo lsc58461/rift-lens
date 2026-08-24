@@ -75,6 +75,9 @@ async function initSchema(sql: Sql): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS league_snap_idx
     ON league_snapshots (fp, platform, puuid, created_at DESC);
+    -- rank_pts 계산은 platform 없이 (fp, puuid)로 최신 스냅샷을 찾으므로 전용 인덱스
+    CREATE INDEX IF NOT EXISTS league_snap_puuid_idx
+    ON league_snapshots (fp, puuid, created_at DESC);
 
     -- 분석 결과 (quick/deep) — 소환사·종류당 1행 upsert
     CREATE TABLE IF NOT EXISTS analyses (
