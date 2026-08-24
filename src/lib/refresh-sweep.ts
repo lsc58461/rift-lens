@@ -105,9 +105,9 @@ export async function runRefreshSweep(opts: {
         let deepRun: Promise<void> | null = null;
         await ensureQueuedAndSchedule(r.region, r.gameName, r.tagLine, (p, g, t) => {
           // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
-          // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=20) 빌드를 한 번에 다
+          // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=30) 빌드를 한 번에 다
           // 수확해 백필거리를 남기지 않는다 (인터랙티브 검색은 기본 10 유지).
-          deepRun = runDeepAnalysis(p, g, t, 20);
+          deepRun = runDeepAnalysis(p, g, t, 30);
         });
         if (deepRun) {
           await deepRun;

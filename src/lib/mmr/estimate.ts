@@ -34,12 +34,14 @@ export interface AnalysisDepth {
 
 // 빠른 추정: 개발 키(2분당 100회)로도 수 초 안에 끝나는 표본
 export const QUICK_DEPTH: AnalysisDepth = { matches: 8, samplesPerTeam: 3 };
-// 정밀 분석: 20경기 × 팀당 3명(매치당 6명).
-// 전원(5 = 내 팀 4 + 상대 5 = 9명) 조회에서 줄인 값 — 참가자 랭크 조회가
-// 정밀 분석 API 콜의 90%를 차지해 대기 시간을 지배했다. 매치당 6명이면
-// trimmedMean의 절사 조건(5명 이상)도 유지되고, 로비 평균의 표본오차 증가는
-// 매치 20건의 평균으로 상쇄된다. 경기 수는 추이 그래프에 그대로 쓰이므로 유지.
-export const DEEP_DEPTH: AnalysisDepth = { matches: 20, samplesPerTeam: 3 };
+// 정밀 분석: 30경기 × 팀당 5명(매치당 10명).
+// 원래 Vercel 300초 제한 때문에 20경기×3명으로 깎았던 값을, 자체 서버로 옮겨
+// 타임아웃이 사라지고(50:10 한도·매치 저장 재분석) 정확도를 되올린 값.
+//  - samplesPerTeam 5: 경기별 로비 평균의 표본오차를 직접 줄인다(정확도 최대 레버).
+//  - matches 30: 관측을 늘려 신뢰구간을 좁히고 추이 그래프를 길게 한다.
+// 비용은 상대 랭크 조회가 늘어 정밀 분석 소요가 길어지지만, 빠른 추정이 먼저
+// 화면을 채우므로 유저 체감 지연은 없다(정밀 결과만 늦게 갱신).
+export const DEEP_DEPTH: AnalysisDepth = { matches: 30, samplesPerTeam: 5 };
 
 /** 리메이크 제외분을 감안해 여유 있게 조회할 매치 ID 수 */
 export function fetchCountFor(depth: AnalysisDepth): number {
@@ -334,8 +336,10 @@ export async function estimateMmr(
   }
 
   const totalSamples = matchSamples.reduce((a, s) => a + s.sampleSize, 0);
+  // 표본 최대치가 커졌으므로(30경기×팀당5=매치당10 → 최대 ~300) 신뢰도 임계도
+  // 비례 상향한다. 예전 30/15는 옛 최대(120) 기준이라 지금은 거의 항상 high였다.
   const confidence =
-    totalSamples >= 30 ? "high" : totalSamples >= 15 ? "medium" : "low";
+    totalSamples >= 80 ? "high" : totalSamples >= 40 ? "medium" : "low";
 
   return {
     algoVersion: ALGO_VERSION,
