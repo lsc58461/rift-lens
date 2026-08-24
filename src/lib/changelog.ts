@@ -1,0 +1,401 @@
+// 업데이트 내역(체인지로그) — DB에서 관리해 재배포 없이 수정한다.
+// 공개 페이지(/updates)는 published 항목만, 어드민은 전부 본다.
+import "server-only";
+import { getSql } from "@/lib/db";
+
+export type ChangelogTag = "신규" | "개선" | "수정";
+export interface ChangelogItem {
+  tag: ChangelogTag;
+  text: string;
+}
+export interface ChangelogEntry {
+  id: number;
+  date: string; // 표시용 (entry_date)
+  title: string;
+  items: ChangelogItem[];
+  published: boolean;
+}
+
+interface Row {
+  id: string | number;
+  entry_date: string;
+  title: string;
+  items: ChangelogItem[];
+  published: boolean;
+}
+
+function toEntry(r: Row): ChangelogEntry {
+  return {
+    id: Number(r.id),
+    date: r.entry_date,
+    title: r.title,
+    items: Array.isArray(r.items) ? r.items : [],
+    published: r.published,
+  };
+}
+
+// 최초 1회 시드 — 예전 하드코딩 내역을 DB로 옮긴다(테이블이 비었을 때만).
+const SEED: { date: string; title: string; items: ChangelogItem[] }[] = [
+  {
+    date: "2026-08-22",
+    title: "챔피언 통계 · 전적 상세 대개편",
+    items: [
+      {
+        tag: "신규",
+        text: "챔피언 통계 페이지가 생겼어요 (상단 메뉴 > 챔피언) — 수집된 솔로랭크 경기 기준 챔피언별 승률·판수·주 포지션에, 라인 필터와 패치별 보기까지 지원해요",
+      },
+      {
+        tag: "신규",
+        text: "챔피언을 누르면 상세가 열려요: 평균 KDA·CS·딜량, 포지션별 성적, 시작 아이템, 코어 아이템 순서, 스펠 조합, 완성 아이템 승률, 풀 룬 페이지 — 추천은 판수를 보정한 승률 기준이고, 모바일에선 전체 화면으로 열립니다",
+      },
+      {
+        tag: "신규",
+        text: "전적에서 경기를 펼치면 종합 스코어보드(딜량·골드·CS·시야·아이템) / 팀 분석(5개 지표 비교) / 빌드(아이템 타임라인·스킬 순서·룬) 세 탭으로 볼 수 있어요",
+      },
+      {
+        tag: "개선",
+        text: "최근 경기 요약(승률·KDA·포지션·챔피언)이 실력대 추이 아래 독립 카드로 옮겨졌고, 지난 경기들의 룬·패치·빌드 데이터를 다시 불러와 채우는 중이라 통계가 점점 풍성해져요",
+      },
+      {
+        tag: "신규",
+        text: "공지가 있을 때 화면 상단에 배너로 안내해 드려요",
+      },
+      {
+        tag: "수정",
+        text: "모바일에서 소환사 페이지가 가로로 넘치던 문제와 페이지가 간헐적으로 오래 멈추던 문제를 고쳤어요",
+      },
+    ],
+  },
+  {
+    date: "2026-08-21",
+    title: "전적 화면 개편",
+    items: [
+      {
+        tag: "개선",
+        text: "최근 전적을 전적검색 사이트처럼 다시 만들었어요 — 결과·게임시간, 챔피언과 소환사 주문, KDA와 평점, 킬관여율, CS·시야, 아이템, 양 팀 구성이 한 줄에 정리됩니다",
+      },
+      {
+        tag: "신규",
+        text: "경기를 펼치면 10명 전원의 챔피언·KDA·CS를 보여주는 스코어보드가 열려요",
+      },
+      {
+        tag: "신규",
+        text: "딜량 막대 — 그 경기 최고 딜러 대비 내 딜 비중을 한눈에 볼 수 있어요",
+      },
+      {
+        tag: "개선",
+        text: "분석에 사용된 경기 목록도 같은 디자인으로 정리하고, 로비 평균 옆에 티어 엠블럼을 붙였어요",
+      },
+      {
+        tag: "신규",
+        text: "최근 20경기 요약 패널 — 승률 도넛, 평균 KDA, 킬관여율, 분당 CS, 선호 포지션 비중을 한눈에",
+      },
+      {
+        tag: "신규",
+        text: "자주 쓴 챔피언 top3(승률·KDA)와 함께 플레이한 소환사(승률) 추가 — 이름을 누르면 그 소환사 분석으로 이동해요",
+      },
+      {
+        tag: "개선",
+        text: "화면을 넓게 쓰도록 2단 배치로 바꿨어요 — 왼쪽에 실력대·티어·LP·로비 분포, 오른쪽에 추이 그래프와 전적. 스크롤이 크게 줄어듭니다",
+      },
+      {
+        tag: "신규",
+        text: "전적에 나오는 다른 소환사 이름을 누르면 그 소환사 분석 페이지로 바로 이동해요",
+      },
+      {
+        tag: "신규",
+        text: "전적 아래 '20경기 더 보기'로 과거 경기를 계속 불러올 수 있어요 (라이엇이 제공하는 최근 약 6개월치까지)",
+      },
+      {
+        tag: "수정",
+        text: "경기 후 닉네임을 바꾼 팀원이 옛 이름으로 표시되던 문제 — 알고 있는 계정은 현재 이름으로 보여줍니다",
+      },
+    ],
+  },
+  {
+    date: "2026-08-20",
+    title: "분석 속도 향상과 디스코드 명령어 개편",
+    items: [
+      {
+        tag: "개선",
+        text: "정밀 분석이 훨씬 빨라졌어요 — 라이엇 API 호출 한도가 올라가면서 몇 분씩 걸리던 분석이 보통 수십 초에 끝납니다",
+      },
+      {
+        tag: "개선",
+        text: "여러 명이 동시에 검색해도 대기열이 훨씬 빨리 빠져요",
+      },
+      {
+        tag: "신규",
+        text: "디스코드 명령어 이름이 바뀌었어요 — /mmr → /rift, /mmr-team → /rift-team, /mmr-duo → /rift-duo, /mmr-recent → /rift-recent",
+      },
+      {
+        tag: "수정",
+        text: "소환사 인증과 승급/강등 디스코드 알림 기능은 종료했어요 (분석 기능에는 영향 없습니다)",
+      },
+      {
+        tag: "수정",
+        text: "이름 끝에 공백이 붙은 링크(예: '소환사 #KR1')로 들어오면 정밀 분석이 끝나지 않고 계속 도는 문제",
+      },
+    ],
+  },
+  {
+    date: "2026-08-19",
+    title: "분석 속도와 화면 정리",
+    items: [
+      {
+        tag: "개선",
+        text: "정밀 분석이 더 빨라졌어요 — 표본 구성을 조정하고 참가자 랭크 재사용 기간을 늘렸습니다",
+      },
+      {
+        tag: "개선",
+        text: "실력대 추이 그래프 — 승/패를 점 채움으로 구분하고, 매칭 실력대 선에도 점과 범례를 추가했어요",
+      },
+      {
+        tag: "개선",
+        text: "소환사 페이지 — 최근 전적과 분석에 사용된 경기를 탭으로 묶어 스크롤을 줄였어요",
+      },
+      {
+        tag: "개선",
+        text: "내전 밸런서·듀오 궁합·시즌 결산·인증 페이지 디자인 정리 (팀 전력차 막대, 듀오 승률 게이지, 챔피언 막대 등)",
+      },
+      {
+        tag: "수정",
+        text: "그래프 세로축에서 마스터 이상 티어 표기가 줄바꿈되던 문제",
+      },
+      {
+        tag: "수정",
+        text: "전각 태그(ＫR1 등) 계정이 두 번 분석돼 정밀 분석이 매번 처음부터 다시 돌던 문제",
+      },
+    ],
+  },
+  {
+    date: "2026-08-19",
+    title: "닉네임 재사용 대응",
+    items: [
+      {
+        tag: "수정",
+        text: "누군가 남이 버린 옛 닉네임을 새로 쓰기 시작하면, 그 이름은 더 이상 이전 주인에게 연결되지 않아요",
+      },
+      {
+        tag: "개선",
+        text: "닉네임을 바꾸면 옛 이름으로 남아 있던 분석·검색 기록을 정리해요",
+      },
+    ],
+  },
+  {
+    date: "2026-08-02",
+    title: "닉네임 변경 대응",
+    items: [
+      {
+        tag: "신규",
+        text: "닉네임을 바꿔도 기존 분석·인증 기록이 그대로 이어져요",
+      },
+      {
+        tag: "신규",
+        text: "옛 닉네임으로 검색하면 새 이름 페이지로 자동 이동 — 예전에 공유한 링크도 안 깨져요",
+      },
+    ],
+  },
+  {
+    date: "2026-07-31",
+    title: "분석 속도 개선",
+    items: [
+      {
+        tag: "개선",
+        text: "참가자 랭크 재사용을 늘려 정밀 분석 대기 시간 단축",
+      },
+    ],
+  },
+  {
+    date: "2026-07-26",
+    title: "전적검색과 도메인 이전",
+    items: [
+      {
+        tag: "신규",
+        text: "최근 전적 — 챔피언·KDA·CS·딜량·아이템·스펠과 팀 구성까지 한눈에",
+      },
+      {
+        tag: "개선",
+        text: "사이트 이름이 Rift Lens로, 주소가 rift-lens.xyz로 바뀌었어요",
+      },
+    ],
+  },
+  {
+    date: "2026-07-24",
+    title: "디스코드 봇",
+    items: [
+      {
+        tag: "신규",
+        text: "디스코드 봇 — /mmr 로 서버에서 바로 조회, /mmr-team·/mmr-duo·/mmr-recent 지원",
+      },
+      {
+        tag: "신규",
+        text: "/mmr-verify 로 계정 인증 — 디스코드에서 명령어 한 줄이면 알림 대상 등록",
+      },
+      {
+        tag: "개선",
+        text: "알림 발송이 Rift Lens 봇으로 통일됐어요",
+      },
+    ],
+  },
+  {
+    date: "2026-07-22",
+    title: "새 도구 3종과 디스코드 알림",
+    items: [
+      {
+        tag: "신규",
+        text: "내전 팀 밸런서 — 매칭 실력대로 가장 공평한 팀 자동 구성",
+      },
+      { tag: "신규", text: "듀오 궁합 분석 — 함께한 경기 승률·맞대결 기록" },
+      { tag: "신규", text: "시즌 결산 — 판수·승률·최다 챔피언 카드" },
+      {
+        tag: "신규",
+        text: "소환사 인증 — 인증하면 승급/강등, 5·10연승, 시즌 최고 티어 달성 시 디스코드 알림을 받아요",
+      },
+      { tag: "신규", text: "소환사 입력 자동완성 (기록 기반)" },
+    ],
+  },
+  {
+    date: "2026-07-22",
+    title: "LP 흐름 추적과 내부 구조 개선",
+    items: [
+      {
+        tag: "신규",
+        text: "LP 흐름 카드 — 승리당/패배당 평균 LP로 내부 실력 지표를 교차 확인 (데이터가 쌓이면 표시)",
+      },
+      { tag: "신규", text: "업데이트 내역·점검 안내 페이지" },
+      {
+        tag: "개선",
+        text: "데이터 구조 전면 개편 — 분석 기록 영구 보관, 랭크 히스토리 축적 시작",
+      },
+      {
+        tag: "수정",
+        text: "전각 문자 태그(ＫR1 등)가 다른 소환사로 취급되던 문제",
+      },
+    ],
+  },
+  {
+    date: "2026-07-21",
+    title: "편의 기능과 안정성 업데이트",
+    items: [
+      { tag: "신규", text: "자주 묻는 질문(FAQ) 페이지" },
+      { tag: "신규", text: "업데이트 내역 페이지" },
+      { tag: "신규", text: "재분석 버튼 — 방금 끝난 게임을 즉시 반영" },
+      { tag: "신규", text: "정밀 분석 대기열 — 순번과 남은 분석 수 표시" },
+      {
+        tag: "신규",
+        text: "새벽 자동 갱신(3~7시) — 아침에는 항상 최신 결과로 시작",
+      },
+      {
+        tag: "개선",
+        text: "이전 분석 즉시 표시 — 재분석을 기다리는 동안에도 결과를 바로 확인",
+      },
+      {
+        tag: "개선",
+        text: "결과 보관 기간 30일로 연장 — 오래 안 봐도 기록이 사라지지 않음",
+      },
+      {
+        tag: "수정",
+        text: "한국 서버 마스터 이상 구간의 듀오 오탐 수정 (듀오 금지 구간 감지 제외)",
+      },
+      {
+        tag: "수정",
+        text: "카카오톡 인앱 브라우저에서 이미지 공유가 안 되던 문제",
+      },
+    ],
+  },
+  {
+    date: "2026-07-20",
+    title: "정확도 개선과 새 기능",
+    items: [
+      { tag: "신규", text: "듀오 추정 경기 자동 감지·분석 제외 (부족분은 과거 경기로 보충)" },
+      { tag: "신규", text: "결과 이미지 공유 — 카톡·디스코드 링크 미리보기 지원" },
+      { tag: "신규", text: "최근 검색 페이지" },
+      { tag: "신규", text: "챔피언 아이콘·티어 엠블럼·한글 챔피언명" },
+      {
+        tag: "개선",
+        text: "추정 알고리즘 고도화 — 리메이크 제외, 이상치 완화, 승패 반영(Elo), 오차범위 표시",
+      },
+      { tag: "개선", text: "전체 디자인 개편 (블루·골드 테마, 다크모드)" },
+    ],
+  },
+  {
+    date: "2026-07-19",
+    title: "Rift Lens 오픈",
+    items: [
+      {
+        tag: "신규",
+        text: "숨은 실력대 추정 — 최근 경기 로비의 랭크를 역추적해 계산",
+      },
+      { tag: "신규", text: "정밀 분석 — 20경기 × 전원 표본, 완료 시 자동 갱신" },
+      { tag: "신규", text: "경기별 실력대 추이 그래프" },
+    ],
+  },
+];
+
+
+let seedChecked = false;
+async function ensureSeeded(): Promise<void> {
+  if (seedChecked) return;
+  seedChecked = true;
+  const sql = await getSql();
+  const [{ n }] = (await sql`SELECT count(*)::int AS n FROM changelog_entries`) as unknown as {
+    n: number;
+  }[];
+  if (n > 0) return;
+  for (const e of SEED) {
+    await sql`
+      INSERT INTO changelog_entries (entry_date, title, items, published)
+      VALUES (${e.date}, ${e.title}, ${sql.json(e.items as never)}, true)`;
+  }
+}
+
+/** 공개 페이지용 — published 항목만, 최신 날짜 우선 */
+export async function getPublishedChangelog(): Promise<ChangelogEntry[]> {
+  await ensureSeeded();
+  const sql = await getSql();
+  const rows = (await sql`
+    SELECT id, entry_date, title, items, published FROM changelog_entries
+    WHERE published ORDER BY entry_date DESC, id DESC`) as unknown as Row[];
+  return rows.map(toEntry);
+}
+
+/** 어드민용 — 미공개 포함 전부 */
+export async function listChangelog(): Promise<ChangelogEntry[]> {
+  await ensureSeeded();
+  const sql = await getSql();
+  const rows = (await sql`
+    SELECT id, entry_date, title, items, published FROM changelog_entries
+    ORDER BY entry_date DESC, id DESC`) as unknown as Row[];
+  return rows.map(toEntry);
+}
+
+export async function upsertChangelog(input: {
+  id?: number;
+  date: string;
+  title: string;
+  items: ChangelogItem[];
+  published: boolean;
+}): Promise<ChangelogEntry> {
+  const sql = await getSql();
+  if (input.id) {
+    const rows = (await sql`
+      UPDATE changelog_entries
+      SET entry_date = ${input.date}, title = ${input.title},
+          items = ${sql.json(input.items as never)}, published = ${input.published},
+          updated_at = now()
+      WHERE id = ${input.id}
+      RETURNING id, entry_date, title, items, published`) as unknown as Row[];
+    return toEntry(rows[0]);
+  }
+  const rows = (await sql`
+    INSERT INTO changelog_entries (entry_date, title, items, published)
+    VALUES (${input.date}, ${input.title}, ${sql.json(input.items as never)}, ${input.published})
+    RETURNING id, entry_date, title, items, published`) as unknown as Row[];
+  return toEntry(rows[0]);
+}
+
+export async function deleteChangelog(id: number): Promise<void> {
+  const sql = await getSql();
+  await sql`DELETE FROM changelog_entries WHERE id = ${id}`;
+}

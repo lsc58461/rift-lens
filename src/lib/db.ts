@@ -139,6 +139,20 @@ async function initSchema(sql: Sql): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
 
+    -- 업데이트 내역(체인지로그) — 재배포 없이 어드민에서 관리한다.
+    -- items: [{"tag":"신규|개선|수정","text":"..."}]. entry_date는 표시용 문자열.
+    CREATE TABLE IF NOT EXISTS changelog_entries (
+      id bigserial PRIMARY KEY,
+      entry_date text NOT NULL,
+      title text NOT NULL,
+      items jsonb NOT NULL DEFAULT '[]'::jsonb,
+      published boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS changelog_order_idx
+    ON changelog_entries (entry_date DESC, id DESC);
+
     -- 방문 로그 — 관리자 통계용(시간대 분포). 소환사 페이지가 실제로 열릴 때
     -- 한 줄씩 쌓고, 오래된 행은 새벽 크론이 정리한다. 봇 트래픽은 기록하지 않는다.
     CREATE TABLE IF NOT EXISTS visit_log (
