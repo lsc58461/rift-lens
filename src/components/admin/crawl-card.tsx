@@ -48,8 +48,8 @@ const TIER_KO: Record<string, string> = {
 };
 
 const STALE_MS = 300_000;
-const TARGETS = [10, 30, 50, 100, 300] as const;
-const TARGET_MAX = 1000;
+const TARGETS = [10, 30, 100, 300, 1000, 10000] as const;
+const TARGET_MAX = 10000;
 
 export function CrawlCard() {
   const [state, setState] = useState<State | null>(null);

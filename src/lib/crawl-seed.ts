@@ -20,10 +20,11 @@ import { getSetting, setSetting } from "@/lib/store";
 import { canon } from "@/lib/identity";
 
 const STATE_KEY = "crawl:state";
+const MAX_TARGET = 10_000; // 한 번에 수집할 최대 소환사 수
 const PER_ROUND = 3; // 라운드당 분석할 후보 수
 // 라운드 상한은 목표를 채우는 데 필요한 만큼 + 여유 — 폭주 방지용일 뿐
-// 목표 상한(1000명) 기준으로 넉넉히 잡는다
-const MAX_ROUNDS = 400;
+// 목표 상한(10000명 ÷ 라운드당 3명 ≈ 3334라운드) 기준으로 넉넉히 잡는다
+const MAX_ROUNDS = 4000;
 const ROUND_STALE_MS = 300_000;
 const SKIP_TTL = "7 days"; // 실패한 후보를 다시 시도하기까지의 유예
 
@@ -83,7 +84,7 @@ export async function beginCrawl(
   withDeep = false,
 ): Promise<CrawlState> {
   const next = {
-    ...empty(Math.min(1000, Math.max(5, Math.floor(target))), mode, withDeep),
+    ...empty(Math.min(MAX_TARGET, Math.max(5, Math.floor(target))), mode, withDeep),
     running: true,
   };
   await save(next);
