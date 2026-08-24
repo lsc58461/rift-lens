@@ -6,6 +6,7 @@ import postgres from "postgres";
 
 const SITE = "https://rift-lens.xyz";
 const CHECK_INTERVAL_MS = 60_000;
+const PATCH_CHECK_INTERVAL_MS = 30 * 60_000; // 새 패치 감지 주기(30분)
 const FAIL_THRESHOLD = 3; // 연속 실패 N회부터 다운으로 판정 (일시 오류 오탐 방지)
 
 const sql = postgres(process.env.DATABASE_URL, { max: 2, connect_timeout: 10 });
@@ -83,6 +84,57 @@ async function healthLoop() {
 }
 
 // ── 라이프사이클 ────────────────────────────────────────
+// ── 패치노트 알림 ───────────────────────────────────────
+// DDragon 최신 버전을 주기적으로 확인해 새 패치가 뜨면 알림 채널로 링크 발송.
+// 마지막으로 알린 패치는 app_settings(discord:last_patch)에 저장.
+async function getLastAnnouncedPatch() {
+  const r = await sql`SELECT value FROM app_settings WHERE key = 'discord:last_patch'`.catch(
+    () => [],
+  );
+  return r[0]?.value ?? null;
+}
+async function setLastAnnouncedPatch(patch) {
+  await sql`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES ('discord:last_patch', ${sql.json(patch)}, now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`.catch(
+    () => {},
+  );
+}
+async function patchLoop() {
+  let latest;
+  try {
+    const res = await fetch(
+      "https://ddragon.leagueoflegends.com/api/versions.json",
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    if (!res.ok) return;
+    const versions = await res.json();
+    latest = String(versions[0] ?? "").split(".").slice(0, 2).join(".");
+  } catch {
+    return;
+  }
+  if (!latest) return;
+  const last = await getLastAnnouncedPatch();
+  if (last === latest) return;
+  // 첫 실행(기록 없음)엔 기준만 저장하고 알리지 않는다 — 봇 재시작 스팸 방지
+  if (last) {
+    const [maj, min] = latest.split(".");
+    const url = `https://www.leagueoflegends.com/ko-kr/news/game-updates/patch-${maj}-${min}-notes/`;
+    await broadcast(
+      new EmbedBuilder()
+        .setColor(0x3b82f6)
+        .setTitle(`새 패치 ${latest} 노트가 나왔어요`)
+        .setDescription(
+          `리그 오브 레전드 패치 ${latest} 노트를 확인해 보세요.\n${url}`,
+        )
+        .setURL(url)
+        .setTimestamp(),
+    );
+  }
+  await setLastAnnouncedPatch(latest);
+}
+
 client.once("clientReady", () => {
   console.log(`[bot] 로그인: ${client.user.tag}, 길드 ${client.guilds.cache.size}개`);
   // 상태에 링크는 클릭이 안 되므로 커맨드 안내를 띄운다 (주소는 봇 프로필 소개에)
@@ -92,6 +144,8 @@ client.once("clientReady", () => {
     state: "🔍 /rift 로 매칭 실력대 분석",
   });
   setInterval(healthLoop, CHECK_INTERVAL_MS);
+  patchLoop().catch(() => {});
+  setInterval(() => patchLoop().catch(() => {}), PATCH_CHECK_INTERVAL_MS);
 });
 
 // 길드에서 쫓겨나면 등록된 알림 채널도 정리

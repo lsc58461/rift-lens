@@ -2,7 +2,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { BarChart3, CircleHelp, History } from "lucide-react";
+import { BarChart3, CircleHelp, History, Newspaper } from "lucide-react";
 import Link from "next/link";
 import "./globals.css";
 import { AnnouncementBanner } from "@/components/announcement-banner";
@@ -98,6 +98,13 @@ export default function RootLayout({
                 >
                   <History className="size-4" />
                   <span className="hidden sm:inline">최근 검색</span>
+                </Link>
+                <Link
+                  href="/patch-notes"
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Newspaper className="size-4" />
+                  <span className="hidden sm:inline">패치노트</span>
                 </Link>
                 <Link
                   href="/faq"
