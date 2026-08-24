@@ -78,6 +78,15 @@ export async function stopRefreshAll(): Promise<void> {
   if (s) await save({ ...s, running: false, roundActive: false });
 }
 
+/** 프로세스 종료(배포로 컨테이너 교체) 직전 — 돌던 라운드를 "놓았다"고 표시해
+ *  새 인스턴스가 5분 스테일 타이머를 기다리지 않고 바로 이어받게 한다. */
+export async function releaseRefreshAllRound(): Promise<boolean> {
+  const s = await getRefreshAllState();
+  if (!s?.running || !s.roundActive) return false;
+  await save({ ...s, roundActive: false });
+  return true;
+}
+
 /** 한 라운드 진행. 더 갱신할 대상이 없으면 done 처리한다. */
 export async function runRefreshAllRound(origin: string): Promise<void> {
   let state = (await getRefreshAllState()) ?? empty();

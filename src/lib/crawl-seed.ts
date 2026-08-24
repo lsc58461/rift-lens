@@ -95,6 +95,14 @@ export async function stopCrawl(): Promise<void> {
   if (s) await save({ ...s, running: false, roundActive: false });
 }
 
+/** 종료 직전 라운드 놓기 — 새 인스턴스가 즉시 이어받도록 (refresh-all과 동일) */
+export async function releaseCrawlRound(): Promise<boolean> {
+  const s = await getCrawlState();
+  if (!s?.running || !s.roundActive) return false;
+  await save({ ...s, roundActive: false });
+  return true;
+}
+
 interface Candidate {
   name: string;
   tag: string;

@@ -77,6 +77,14 @@ export async function stopRunefill(): Promise<void> {
   if (s) await save({ ...s, running: false, roundActive: false });
 }
 
+/** 종료 직전 라운드 놓기 — 새 인스턴스가 즉시 이어받도록 (refresh-all과 동일) */
+export async function releaseRunefillRound(): Promise<boolean> {
+  const s = await getRunefillState();
+  if (!s?.running || !s.roundActive) return false;
+  await save({ ...s, roundActive: false });
+  return true;
+}
+
 /** 진행 중에도 최고속 모드를 켜고 끈다 (다음 라운드부터 반영) */
 export async function setRunefillTurbo(turbo: boolean): Promise<RunefillState | null> {
   const s = await getRunefillState();
