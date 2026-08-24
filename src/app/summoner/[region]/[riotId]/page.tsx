@@ -84,6 +84,11 @@ export async function generateMetadata({
   params: Promise<{ region: string; riotId: string }>;
 }) {
   const { region, riotId } = await params;
+  // 한국 서버 전용 — 스트리밍(loading.tsx) 시작 전인 메타데이터 단계에서
+  // 404를 확정해야 상태코드가 200으로 굳지 않는다.
+  if (!(region in PLATFORM_LABELS)) {
+    notFound();
+  }
   const decoded = decodeURIComponent(riotId);
   const title = `${decoded} 숨은 실력대`;
   const description = `${decoded}의 숨은 실력대 — 최근 솔로랭크 경기 로비 랭크 역추적 기반 추정치를 확인해 보세요.`;
