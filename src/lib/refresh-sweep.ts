@@ -15,6 +15,36 @@ import {
 } from "@/lib/mmr/deep-jobs";
 import { getRecentSearches } from "@/lib/recent";
 import { recomputeRankPtsBatch } from "@/lib/rank-pts";
+import { cache } from "@/lib/cache";
+import { getSql } from "@/lib/db";
+import { canon } from "@/lib/identity";
+import { RiotApiError } from "@/lib/riot/types";
+
+// 계정이 사라진(404) 소환사는 7일간 건너뛴다 — 매 라운드 같은 계정을
+// 재시도하며 실패 수만 불리던 문제 방지. 닉변이면 puuid 폴백이 먼저 잡는다.
+const GONE_TTL_SEC = 7 * 24 * 60 * 60;
+const goneKey = (region: string, g: string, t: string) =>
+  `sweep:gone:${region}:${canon(g)}#${canon(t)}`;
+
+// 최근 이 시간 안에 정밀분석이 끝난 소환사는 DB만 보고 건너뛴다(라이엇 콜 0).
+// 라운드마다 목록 처음부터 재스캔하는 구조라, 이게 없으면 10분 캐시가 만료될
+// 때마다 ~수백 명의 최신 매치ID 조회가 반복돼 쿼터를 낭비했다.
+const RECENT_DEEP_MS = 6 * 60 * 60_000;
+async function deepAnalyzedWithin(
+  platform: string,
+  gameName: string,
+  tagLine: string,
+  ms: number,
+): Promise<boolean> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT updated_at FROM analyses
+    WHERE platform = ${platform} AND kind = 'deep'
+      AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}
+    LIMIT 1`;
+  const at = rows[0]?.updated_at as string | undefined;
+  return !!at && Date.now() - new Date(at).getTime() < ms;
+}
 
 export interface SweepResult {
   quickRefreshed: string[];
@@ -81,6 +111,18 @@ export async function runRefreshSweep(opts: {
       brokeEarly = true;
       break;
     }
+    // ① 사라진 계정(최근 404) — 쿨다운 동안 라이엇 콜 없이 건너뜀
+    if (await cache.get(goneKey(r.region, r.gameName, r.tagLine)).catch(() => null)) {
+      skipped++;
+      await reportProgress().catch(() => {});
+      continue;
+    }
+    // ② 최근 정밀분석 완료 — DB만 보고 건너뜀(재스캔 쿼터 낭비 방지)
+    if (await deepAnalyzedWithin(r.region, r.gameName, r.tagLine, RECENT_DEEP_MS).catch(() => false)) {
+      skipped++;
+      await reportProgress().catch(() => {});
+      continue;
+    }
     try {
       const latest = await getLatestMatchId(r.region, r.gameName, r.tagLine);
       if (await getFreshDeepResult(r.region, r.gameName, r.tagLine, latest)) {
@@ -127,6 +169,12 @@ export async function runRefreshSweep(opts: {
       if (failures.length < 10) failures.push({ who, error });
       // 서버 로그에도 남겨 사후 추적 가능하게 (스택 포함)
       console.error(`[sweep] 실패 ${who} (${r.region}):`, e);
+      // 계정 자체가 없으면(404, puuid 폴백도 실패) 7일간 재시도하지 않는다
+      if (e instanceof RiotApiError && e.status === 404) {
+        await cache
+          .set(goneKey(r.region, r.gameName, r.tagLine), Date.now(), GONE_TTL_SEC)
+          .catch(() => {});
+      }
     }
     await reportProgress().catch(() => {});
   }

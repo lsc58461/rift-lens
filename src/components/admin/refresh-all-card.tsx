@@ -104,7 +104,7 @@ export function RefreshAllCard() {
               진행 중
               {state.target ? (
                 <span className="tabular-nums">
-                  · {state.scanned ?? 0}/{state.target}명
+                  · {state.rounds + 1}라운드 스캔 {state.scanned ?? 0}/{state.target}
                 </span>
               ) : null}
             </Badge>
