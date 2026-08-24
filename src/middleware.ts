@@ -45,7 +45,8 @@ async function lookupRenamed(
     if (renameCache.size > 500) renameCache.clear();
     renameCache.set(key, { to: data.renamed, at: Date.now() });
     return data.renamed;
-  } catch {
+  } catch (e) {
+    console.error("[mw] renamed 조회 실패:", origin, e instanceof Error ? e.message : e);
     return null;
   }
 }
