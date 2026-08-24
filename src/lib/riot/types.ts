@@ -1,20 +1,14 @@
-export type PlatformRegion = "kr" | "na1" | "euw1" | "eun1" | "jp1";
-export type RoutingRegion = "asia" | "americas" | "europe";
+// 한국 서버 전용 서비스 — 다른 리전을 다시 열려면 여기에 추가하면
+// 라우트 검증(`region in PLATFORM_LABELS`)까지 자동으로 풀린다.
+export type PlatformRegion = "kr";
+export type RoutingRegion = "asia";
 
 export const PLATFORM_TO_ROUTING: Record<PlatformRegion, RoutingRegion> = {
   kr: "asia",
-  jp1: "asia",
-  na1: "americas",
-  euw1: "europe",
-  eun1: "europe",
 };
 
 export const PLATFORM_LABELS: Record<PlatformRegion, string> = {
   kr: "한국",
-  jp1: "일본",
-  na1: "북미",
-  euw1: "유럽 서부",
-  eun1: "유럽 동북",
 };
 
 export interface RiotAccount {

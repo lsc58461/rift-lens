@@ -6,12 +6,10 @@ import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SummonerAutocomplete } from "@/components/summoner-autocomplete";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PLATFORM_LABELS, type PlatformRegion } from "@/lib/riot/types";
 
+// 한국 서버 전용 — 리전 탭 없이 kr로 고정 검색한다.
 export function SearchForm({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
-  const [region, setRegion] = useState<PlatformRegion>("kr");
   const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -24,23 +22,12 @@ export function SearchForm({ compact = false }: { compact?: boolean }) {
       return;
     }
     startTransition(() => {
-      router.push(`/summoner/${region}/${encodeURIComponent(trimmed)}`);
+      router.push(`/summoner/kr/${encodeURIComponent(trimmed)}`);
     });
   }
 
   return (
-    <form onSubmit={submit} className="w-full space-y-3">
-      {!compact && (
-        <Tabs value={region} onValueChange={(v) => setRegion(v as PlatformRegion)}>
-          <TabsList>
-            {Object.entries(PLATFORM_LABELS).map(([value, label]) => (
-              <TabsTrigger key={value} value={value}>
-                {label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      )}
+    <form onSubmit={submit} className="w-full">
       <div className="flex gap-2">
         <SummonerAutocomplete
           value={query}
