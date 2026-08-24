@@ -14,6 +14,7 @@ import {
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
 import { getRecentSearches } from "@/lib/recent";
+import { recomputeRankPtsBatch } from "@/lib/rank-pts";
 
 export interface SweepResult {
   quickRefreshed: string[];
@@ -129,6 +130,10 @@ export async function runRefreshSweep(opts: {
     }
     await reportProgress().catch(() => {});
   }
+
+  // 이번 라운드에서 새 매치·스냅샷이 생겼으니, 미계산 매치의 랭크점수를 조금 채운다
+  // (챔피언 통계 랭크 필터용 — 점진적으로 커버리지가 올라간다).
+  await recomputeRankPtsBatch(300).catch(() => {});
 
   return {
     quickRefreshed,

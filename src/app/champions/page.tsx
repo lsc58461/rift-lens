@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { getChampionStats, listPatches } from "@/lib/champion-stats";
+import { RANK_BRACKETS } from "@/lib/rank-pts";
 import {
   getChampionNamesKo,
   getDDragonVersion,
@@ -20,9 +21,13 @@ export const metadata = {
 export default async function ChampionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ patch?: string }>;
+  searchParams: Promise<{ patch?: string; rank?: string }>;
 }) {
-  const { patch: rawPatch } = await searchParams;
+  const { patch: rawPatch, rank: rawRank } = await searchParams;
+  // 랭크 브라켓 — 기본은 에메랄드 이상
+  const bracket = RANK_BRACKETS.some((b) => b.key === rawRank)
+    ? (rawRank as (typeof RANK_BRACKETS)[number]["key"])
+    : "emerald";
   // 최근 패치 몇 개를 선택지로 제공하고, 기본은 최신 패치.
   // 옛 패치 데이터는 삭제하지 않고 선택하면 볼 수 있다.
   const patches = (await listPatches()).slice(0, 6);
@@ -32,7 +37,7 @@ export default async function ChampionsPage({
       ? rawPatch
       : (patches[0]?.patch ?? null);
   const [stats, version] = await Promise.all([
-    getChampionStats(patch),
+    getChampionStats(patch, bracket),
     getDDragonVersion(),
   ]);
   const [names, runes] = await Promise.all([
@@ -54,6 +59,7 @@ export default async function ChampionsPage({
         runeMap={runes}
         patches={patches}
         currentPatch={patch}
+        currentBracket={bracket}
       />
     </div>
   );

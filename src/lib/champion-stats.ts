@@ -9,6 +9,7 @@ import {
   getDDragonVersion,
 } from "@/lib/ddragon";
 import { getSql } from "@/lib/db";
+import { bracketOf, type RankBracketKey } from "@/lib/rank-pts";
 import { riotKeyFp } from "@/lib/riot/client";
 
 const MIN_CHAMP_GAMES = 10; // 이보다 표본이 적은 챔피언은 목록에서 제외
@@ -91,9 +92,12 @@ export interface ChampionStatsPayload {
 
 export function getChampionStats(
   patch: string | null = null,
+  bracket: RankBracketKey = "all",
 ): Promise<ChampionStatsPayload> {
-  return cached(`champstats:v7:${patch ?? "recent2"}`, TTL_SECONDS, () =>
-    buildStats(patch),
+  return cached(
+    `champstats:v8:${patch ?? "recent2"}:${bracket}`,
+    TTL_SECONDS,
+    () => buildStats(patch, bracket),
   );
 }
 
@@ -153,7 +157,10 @@ async function runQuery(
   }
 }
 
-async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
+async function buildStats(
+  patch: string | null,
+  bracket: RankBracketKey = "all",
+): Promise<ChampionStatsPayload> {
   const sql = await getSql();
   const fp = riotKeyFp();
   // 기본 보기(patch=null)는 '최근 2개 패치 합산' — 옛 패치 매치는 집계에서만
@@ -171,6 +178,14 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
       .join(",");
     if (list) patchFilter = `AND m.patch IN (${list})`;
   }
+  // 랭크 브라켓 필터 — rank_pts(참가자 평균 랭크점수) 범위. -1(계산불가)·NULL은
+  // 브라켓 선택 시 자동 제외(>= min이 걸러줌). '전체'면 필터 없음.
+  const b = bracketOf(bracket);
+  let rankFilter = "";
+  if (b.min !== null) rankFilter += ` AND m.rank_pts >= ${b.min}`;
+  if (b.max !== null) rankFilter += ` AND m.rank_pts < ${b.max}`;
+  // patchFilter에 합쳐 모든 쿼리에 함께 적용
+  patchFilter += rankFilter;
   // 아이템 통계는 완성 아이템만 — 컴포넌트·소모품이 섞이면 목록이 지저분하다
   const completed = new Set(
     await getCompletedItemIds(await getDDragonVersion()),

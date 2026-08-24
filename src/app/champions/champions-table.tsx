@@ -39,6 +39,15 @@ const LANES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 
 type Lane = (typeof LANES)[number] | "all";
 
+// 랭크 브라켓 (서버 RANK_BRACKETS와 라벨 일치)
+const RANK_OPTIONS: { key: string; label: string }[] = [
+  { key: "all", label: "전체 랭크" },
+  { key: "brpl", label: "브·실·골·플" },
+  { key: "emerald", label: "에메랄드 이상" },
+  { key: "diamond", label: "다이아 이상" },
+  { key: "master", label: "마스터 이상" },
+];
+
 function wr(wins: number, games: number): number {
   return games > 0 ? Math.round((wins / games) * 100) : 0;
 }
@@ -118,6 +127,7 @@ export function ChampionsTable({
   runeMap,
   patches,
   currentPatch,
+  currentBracket,
 }: {
   stats: ChampionStatsPayload;
   version: string;
@@ -125,11 +135,21 @@ export function ChampionsTable({
   runeMap: Record<number, RuneInfo>;
   patches: { patch: string; games: number }[];
   currentPatch: string | null;
+  currentBracket: string;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [lane, setLane] = useState<Lane>("all");
   const [selected, setSelected] = useState<ChampionStat | null>(null);
+
+  // 패치·랭크 선택을 URL로 이동 (서로 유지). rank 기본값(emerald)은 URL에서 생략.
+  const go = (patch: string | null, rank: string) => {
+    const p = new URLSearchParams();
+    if (patch) p.set("patch", patch);
+    if (rank && rank !== "emerald") p.set("rank", rank);
+    const qs = p.toString();
+    router.push(`/champions${qs ? `?${qs}` : ""}`);
+  };
 
   const rows = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -185,7 +205,7 @@ export function ChampionsTable({
               {patches.map((p) => (
                 <DropdownMenuItem
                   key={p.patch}
-                  onClick={() => router.push(`/champions?patch=${p.patch}`)}
+                  onClick={() => go(p.patch, currentBracket)}
                   className="justify-between text-xs"
                 >
                   <span>
@@ -202,6 +222,27 @@ export function ChampionsTable({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 self-end rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent data-popup-open:bg-accent sm:self-auto">
+            {RANK_OPTIONS.find((r) => r.key === currentBracket)?.label ??
+              "에메랄드 이상"}
+            <ChevronDown className="size-3.5 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-40">
+            {RANK_OPTIONS.map((r) => (
+              <DropdownMenuItem
+                key={r.key}
+                onClick={() => go(currentPatch, r.key)}
+                className="justify-between text-xs"
+              >
+                {r.label}
+                {currentBracket === r.key && (
+                  <Check className="size-3.5 text-primary" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <span className="self-end text-[11px] text-muted-foreground sm:self-auto">
           자체 점수순
         </span>

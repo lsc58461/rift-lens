@@ -174,6 +174,10 @@ async function initSchema(sql: Sql): Promise<void> {
     -- 확장 필드 캡처 완료 표시 — 도입 전 매치는 false라, 백필이 본문을 재수집해
     -- 밴·팀·participant 확장 필드를 채우고 true로 바꾼다.
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS fields_captured boolean NOT NULL DEFAULT false;
+    -- 매치 평균 랭크점수(참가자 중 랭크를 아는 인원의 평균) — 챔피언 통계 랭크 필터용.
+    -- league_snapshots에서 계산해 채운다. 랭크 아는 참가자가 없으면 NULL.
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS rank_pts int;
+    CREATE INDEX IF NOT EXISTS matches_rankpts_idx ON matches (fp, rank_pts);
     -- 타임라인(빌드 데이터) 수확 완료 표시 — 백필이 남은 작업을 찾는 기준
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS build_harvested boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS matches_fp_patch_idx ON matches (fp, patch);
