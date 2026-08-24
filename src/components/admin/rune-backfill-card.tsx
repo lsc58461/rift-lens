@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Eraser, Loader2, Play, Sparkle, Square, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { estimateEtaMs, formatEta } from "@/lib/eta";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,6 +26,7 @@ interface State {
   failed: number;
   rounds: number;
   turbo?: boolean;
+  startedAt?: number;
   updatedAt: number;
   lastError: string | null;
 }
@@ -107,6 +109,18 @@ export function RuneBackfillCard() {
             <Badge variant="secondary" className="gap-1 font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
+              {state.startedAt && state.total > 0 ? (
+                <span className="tabular-nums">
+                  {" · 남은 시간 "}
+                  {formatEta(
+                    estimateEtaMs({
+                      startedAt: state.startedAt,
+                      done: state.filled + state.failed,
+                      total: state.total,
+                    }),
+                  )}
+                </span>
+              ) : null}
             </Badge>
           )}
         </CardTitle>

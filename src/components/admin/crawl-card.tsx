@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Play, Radar, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { estimateEtaMs, formatEta } from "@/lib/eta";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +29,7 @@ interface State {
   rounds: number;
   analyzed: number;
   failed: number;
+  startedAt?: number;
   updatedAt: number;
   lastError: string | null;
 }
@@ -125,6 +127,18 @@ export function CrawlCard() {
               {state.mode === "balanced" && state.lastTier && (
                 <> · {TIER_KO[state.lastTier] ?? state.lastTier} 수집</>
               )}
+              {state.startedAt && state.target > 0 ? (
+                <span className="tabular-nums">
+                  {" · 남은 시간 "}
+                  {formatEta(
+                    estimateEtaMs({
+                      startedAt: state.startedAt,
+                      done: state.analyzed,
+                      total: state.target,
+                    }),
+                  )}
+                </span>
+              ) : null}
             </Badge>
           )}
         </CardTitle>

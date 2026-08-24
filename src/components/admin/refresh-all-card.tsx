@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { estimateEtaMs, formatEta } from "@/lib/eta";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +29,8 @@ interface State {
   lastError: string | null;
   scanned?: number;
   target?: number;
+  peakScanned?: number;
+  startedAt?: number;
 }
 
 const STALE_MS = 300_000; // 크론 한 라운드(최대 240초)보다 넉넉하게
@@ -105,6 +108,18 @@ export function RefreshAllCard() {
               {state.target ? (
                 <span className="tabular-nums">
                   · {state.rounds + 1}라운드 스캔 {state.scanned ?? 0}/{state.target}
+                  {state.startedAt ? (
+                    <>
+                      {" · 남은 시간 "}
+                      {formatEta(
+                        estimateEtaMs({
+                          startedAt: state.startedAt,
+                          done: Math.max(state.peakScanned ?? 0, state.scanned ?? 0),
+                          total: state.target,
+                        }),
+                      )}
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </Badge>

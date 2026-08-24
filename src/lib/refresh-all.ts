@@ -36,6 +36,8 @@ export interface RefreshAllState {
   scanned: number;
   /** 전체 순회 대상 소환사 수 */
   target: number;
+  /** 라운드를 통틀어 도달한 최고 스캔 위치 — 남은 시간 추정용(라운드마다 재스캔하므로) */
+  peakScanned: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -53,6 +55,7 @@ function empty(): RefreshAllState {
     idleRounds: 0,
     scanned: 0,
     target: 0,
+    peakScanned: 0,
     startedAt: Date.now(),
     updatedAt: Date.now(),
     lastError: null,
@@ -130,7 +133,12 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
         lastProgressSave = Date.now();
         const cur = await getRefreshAllState();
         if (!cur?.running) return;
-        await save({ ...cur, scanned: p.scanned, target: p.total });
+        await save({
+          ...cur,
+          scanned: p.scanned,
+          target: p.total,
+          peakScanned: Math.max(cur.peakScanned ?? 0, p.scanned),
+        });
       },
     });
 
