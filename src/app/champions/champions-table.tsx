@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Flame, Search, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +62,12 @@ function laneStats(c: ChampionStat, lane: Lane): { games: number; wins: number }
   if (lane === "all") return { games: c.games, wins: c.wins };
   const p = c.positions[lane];
   return { games: p?.games ?? 0, wins: p?.wins ?? 0 };
+}
+
+/** OP 챔피언 판정 — 표본 보정 승률이 높고(≥53%) 표본이 충분한(50판+) 챔피언.
+ * 판수 적은 고승률 편향을 윌슨 하한으로 걸러 진짜 강한 챔프만 표시한다. */
+function isOp(wins: number, games: number): boolean {
+  return games >= 50 && adjustedRate(wins, games) >= 0.53;
 }
 
 function WinrateText({ wins, games }: { wins: number; games: number }) {
@@ -146,17 +152,10 @@ export function ChampionsTable({
         {patches.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-9 items-center gap-1.5 self-end rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent data-popup-open:bg-accent sm:self-auto">
-              {currentPatch ? `패치 ${currentPatch}` : "최근 2패치"}
+              {currentPatch ? `패치 ${currentPatch}` : "패치 선택"}
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem
-                onClick={() => router.push("/champions")}
-                className="justify-between text-xs"
-              >
-                최근 2패치 합산
-                {!currentPatch && <Check className="size-3.5 text-primary" />}
-              </DropdownMenuItem>
               {patches.map((p) => (
                 <DropdownMenuItem
                   key={p.patch}
@@ -255,6 +254,15 @@ export function ChampionsTable({
                     <span className="truncate">
                       {championNameKo(names, c.champ)}
                     </span>
+                    {isOp(s.wins, s.games) && (
+                      <span
+                        title="OP — 표본 충분 + 보정 승률 상위"
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400"
+                      >
+                        <Flame className="size-2.5" />
+                        OP
+                      </span>
+                    )}
                   </span>
                   <span className="flex w-24 shrink-0 items-center justify-end gap-2">
                     <span className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-foreground/10 sm:block">
