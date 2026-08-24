@@ -408,6 +408,9 @@ export async function runDeepAnalysis(
   platform: PlatformRegion,
   gameName: string,
   tagLine: string,
+  // 분석 후 빌드 수확 상한. 인터랙티브 검색은 기본 10(응답 뒤 가볍게),
+  // 전체 갱신 sweep은 DEEP_DEPTH 전체를 넘겨 백필거리를 남기지 않는다.
+  harvestCap = 10,
 ): Promise<void> {
   const jk = jobKey(platform, gameName, tagLine);
   let lastWritten = 0;
@@ -465,6 +468,8 @@ export async function runDeepAnalysis(
   }
   // 러너 락을 놓은 뒤에 수확 — 다음 대기자 분석을 막지 않는다
   if (harvestAfterDeep) {
-    await harvestMissingBuildData(platform, harvestAfterDeep).catch(() => {});
+    await harvestMissingBuildData(platform, harvestAfterDeep, harvestCap).catch(
+      () => {},
+    );
   }
 }
