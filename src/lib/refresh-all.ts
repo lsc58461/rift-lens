@@ -141,7 +141,13 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       refreshed: state.refreshed + refreshed,
       deepCompleted: state.deepCompleted + deep,
       failed: state.failed + d.failed,
-      lastError: null,
+      // 실패가 있으면 첫 몇 건의 사유를 남겨 진단 가능하게 한다
+      lastError: d.failures.length
+        ? d.failures
+            .slice(0, 3)
+            .map((f) => `${f.who}: ${f.error}`)
+            .join(" | ")
+        : null,
     };
     // 한 라운드가 놀았다고 곧장 끝내면 안 된다 — 목록 앞쪽이 최신이라 건너뛰었을
     // 뿐이거나, 러너 락이 잡혀 정밀을 못 돌린 것일 수 있다. 크론이 "남은 작업 없음"을

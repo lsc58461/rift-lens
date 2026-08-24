@@ -23,6 +23,8 @@ export interface SweepResult {
   brokeEarly: boolean;
   skipped: number;
   failed: number;
+  /** 실패한 소환사와 사유 (진단용 — 상위 몇 건만) */
+  failures: { who: string; error: string }[];
   /** brokeEarly 또는 deepPending — 다음 스윕이 이어받을 작업이 남음 */
   remaining: boolean;
 }
@@ -66,6 +68,7 @@ export async function runRefreshSweep(opts: {
   let brokeEarly = false; // 예산/상한으로 순회를 중단함 — 다음 스윕에서 이어서
   let skipped = 0;
   let failed = 0;
+  const failures: { who: string; error: string }[] = [];
 
   for (const r of recent) {
     if (elapsed() > opts.budgetMs || quickRefreshed.length >= opts.limit) {
@@ -114,8 +117,13 @@ export async function runRefreshSweep(opts: {
       } else {
         deepPending = true; // 이 소환사의 정밀은 다음 스윕이 처리
       }
-    } catch {
+    } catch (e) {
       failed++;
+      const who = `${r.gameName}#${r.tagLine}`;
+      const error = e instanceof Error ? e.message : String(e);
+      if (failures.length < 10) failures.push({ who, error });
+      // 서버 로그에도 남겨 사후 추적 가능하게 (스택 포함)
+      console.error(`[sweep] 실패 ${who} (${r.region}):`, e);
     }
     await reportProgress().catch(() => {});
   }
@@ -128,6 +136,7 @@ export async function runRefreshSweep(opts: {
     brokeEarly,
     skipped,
     failed,
+    failures,
     remaining: brokeEarly || deepPending,
   };
 }
