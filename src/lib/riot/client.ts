@@ -110,9 +110,49 @@ export async function getAccountByRiotId(
     return { puuid: row.puuid, gameName: row.game_name, tagLine: row.tag_line };
   }
   const routing = PLATFORM_TO_ROUTING[platform];
-  const account = await riotFetch<RiotAccount>(
-    `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
-  );
+  let account: RiotAccount;
+  try {
+    account = await riotFetch<RiotAccount>(
+      `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
+    );
+  } catch (e) {
+    // 닉변 추적 — riot-id가 사라졌으면(404) 저장된 puuid로 현재 이름을 역조회한다.
+    // 검색뿐 아니라 전체 갱신 sweep도 이 경로를 타므로, 닉변 계정이 자동 승계된다.
+    if (e instanceof RiotApiError && e.status === 404) {
+      const known = await findSummonerByName(
+        keyFp(),
+        platform,
+        gameName,
+        tagLine,
+        Number.POSITIVE_INFINITY, // 오래된 행이어도 puuid만 있으면 된다
+      );
+      if (known?.puuid) {
+        const current = await getAccountByPuuid(platform, known.puuid);
+        if (
+          current &&
+          (canon(current.gameName) !== canon(gameName) ||
+            canon(current.tagLine) !== canon(tagLine))
+        ) {
+          // 이름만 바뀌고 계정은 살아있음 — 새 이름으로 승계 후 반환
+          await recordNameChange(
+            platform,
+            gameName,
+            tagLine,
+            current.gameName,
+            current.tagLine,
+          ).catch(() => {});
+          await migrateIdentity(
+            platform,
+            current.puuid,
+            current.gameName,
+            current.tagLine,
+          ).catch(() => {});
+          return current;
+        }
+      }
+    }
+    throw e; // 폴백 실패(진짜 삭제 등) — 원래 오류 유지
+  }
   await upsertSummonerNames(
     keyFp(),
     platform,
