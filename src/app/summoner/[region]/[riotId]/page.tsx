@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -208,13 +208,9 @@ export default async function SummonerPage({
 }) {
   const { region, riotId } = await params;
   const { renamed } = await searchParams;
+  // 한국 서버 전용 — 타 리전 URL은 404 (SEO에 잘못된 200이 남지 않게)
   if (!(region in PLATFORM_LABELS)) {
-    return (
-      <ErrorCard
-        title="지원하지 않는 지역이에요"
-        description="지역을 다시 선택해 주세요."
-      />
-    );
+    notFound();
   }
   // NFKC 정규화 — 전각(ＫR1)/반각(KR1) 등이 다른 소환사로 취급되는 것 방지
   const decoded = decodeURIComponent(riotId).normalize("NFKC");
