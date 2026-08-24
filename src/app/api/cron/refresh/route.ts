@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getCrawlState } from "@/lib/crawl-seed";
+import { getRefreshAllState } from "@/lib/refresh-all";
 import { runRefreshSweep, type SweepResult } from "@/lib/refresh-sweep";
+import { getRunefillState } from "@/lib/rune-backfill";
 import { purgeExpiredCache } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +32,26 @@ export async function GET(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // 관리자가 켜둔 백그라운드 작업(전체 갱신·룬 백필·시드 수집)이 돌고 있으면
+  // 크론은 빠진다 — 전체 갱신은 같은 스윕이라 중복이고, 나머지는 라이엇 쿼터를
+  // 나눠 써서 둘 다 느려질 뿐이다. 다음 크론(한 시간 뒤)이 다시 확인한다.
+  const [refreshAll, runefill, crawl] = await Promise.all([
+    getRefreshAllState().catch(() => null),
+    getRunefillState().catch(() => null),
+    getCrawlState().catch(() => null),
+  ]);
+  const busy = refreshAll?.running
+    ? "refresh-all"
+    : runefill?.running
+      ? "rune-backfill"
+      : crawl?.running
+        ? "crawl"
+        : null;
+  if (busy) {
+    console.log(`[cron] ${busy} 진행 중 — 이번 크론 스윕 건너뜀`);
+    return NextResponse.json({ skippedBecause: busy, cycles: 0, tookMs: 0 });
+  }
+
   const limit = Math.min(
     Number(req.nextUrl.searchParams.get("limit") ?? MAX_REFRESH),
     MAX_REFRESH,
