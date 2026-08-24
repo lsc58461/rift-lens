@@ -107,14 +107,19 @@ export async function saveMatchRow(
   match: MatchInfo,
 ): Promise<void> {
   const sql = await getSql();
+  const bans = sql.json((match.bans ?? []) as never);
+  const teams = sql.json((match.teams ?? []) as never);
   await sql`
-    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, participants, patch)
+    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, participants, patch, bans, teams)
     VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},
             ${match.gameDuration}, ${match.queueId}, ${sql.json(match.participants as never)},
-            ${match.patch ?? null})
+            ${match.patch ?? null}, ${bans}, ${teams})
     ON CONFLICT (fp, match_id) DO UPDATE
     SET participants = EXCLUDED.participants,
-        patch = coalesce(EXCLUDED.patch, matches.patch)`;
+        patch = coalesce(EXCLUDED.patch, matches.patch),
+        -- 밴·팀요약은 새 캡처가 있으면 갱신, 없으면(빈값) 기존 유지
+        bans = CASE WHEN EXCLUDED.bans = '[]'::jsonb THEN matches.bans ELSE EXCLUDED.bans END,
+        teams = CASE WHEN EXCLUDED.teams = '[]'::jsonb THEN matches.teams ELSE EXCLUDED.teams END`;
 }
 
 // ── 랭크 스냅샷 (히스토리 적재) ─────────────────────────

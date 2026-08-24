@@ -166,6 +166,11 @@ async function initSchema(sql: Sql): Promise<void> {
     CREATE INDEX IF NOT EXISTS visit_log_at_idx ON visit_log (at DESC);
 
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch text;
+    -- 밴 챔피언 id 목록(밴률 집계용). 캡처 도입 전 매치는 빈 배열로 남는다.
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS bans jsonb NOT NULL DEFAULT '[]'::jsonb;
+    -- 팀별 오브젝트 요약(용·바론·전령·타워·선취점 등) — 매치당 2팀.
+    -- participant 확장 필드와 함께, 이후 지표를 재수집 없이 뽑기 위한 선캡처.
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS teams jsonb NOT NULL DEFAULT '[]'::jsonb;
     -- 타임라인(빌드 데이터) 수확 완료 표시 — 백필이 남은 작업을 찾는 기준
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS build_harvested boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS matches_fp_patch_idx ON matches (fp, patch);

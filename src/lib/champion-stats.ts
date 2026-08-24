@@ -3,7 +3,11 @@
 
 import "server-only";
 import { cached } from "@/lib/cache";
-import { getCompletedItemIds, getDDragonVersion } from "@/lib/ddragon";
+import {
+  getChampionKeyToId,
+  getCompletedItemIds,
+  getDDragonVersion,
+} from "@/lib/ddragon";
 import { getSql } from "@/lib/db";
 import { riotKeyFp } from "@/lib/riot/client";
 
@@ -60,6 +64,7 @@ export interface ChampionStat {
   champ: string;
   games: number;
   wins: number;
+  bans?: number; // 이 챔피언이 밴된 매치 수 (밴 캡처 도입 후 매치 기준)
   avgKills: number;
   avgDeaths: number;
   avgAssists: number;
@@ -76,6 +81,7 @@ export interface ChampionStat {
 export interface ChampionStatsPayload {
   totalGames: number; // 집계에 쓰인 매치 수
   totalParticipants: number;
+  bansMatchTotal?: number; // 밴이 캡처된 매치 수 (밴률 분모)
   patch: string | null; // null = 전체 패치
   champions: ChampionStat[];
   builtAt: number;
@@ -326,9 +332,36 @@ async function buildStats(patch: string | null): Promise<ChampionStatsPayload> {
     }))
     .sort((a, b) => b.games - a.games);
 
+  // ── 밴 집계 — matches.bans(챔피언 id 배열)를 펼쳐 챔피언별 밴 매치 수를 센다.
+  // 밴 캡처 도입 후 매치만 대상이라, 분모(밴 캡처된 매치 수)도 따로 구해 밴률을 낸다.
+  const [banRows, banTotalRows] = await Promise.all([
+    runQuery(sql, `
+      SELECT (b.val #>> '{}')::int AS champ_id, count(*)::int AS n
+      FROM matches m
+      CROSS JOIN LATERAL jsonb_array_elements(m.bans) b(val)
+      WHERE m.fp = $1 ${patchFilter}
+      GROUP BY (b.val #>> '{}')::int`,
+      [fp],
+    ),
+    runQuery(sql, `SELECT count(*)::int AS n FROM matches m
+       WHERE m.fp = $1 AND jsonb_array_length(m.bans) > 0 ${patchFilter}`,
+      [fp],
+    ),
+  ]);
+  const keyToId = await getChampionKeyToId(await getDDragonVersion());
+  const bansByChamp = new Map<string, number>();
+  for (const r of banRows as unknown as { champ_id: number; n: number }[]) {
+    const name = keyToId[r.champ_id];
+    if (name) bansByChamp.set(name, r.n);
+  }
+  for (const c of champions) c.bans = bansByChamp.get(c.champ) ?? 0;
+  const bansMatchTotal =
+    (banTotalRows as unknown as { n: number }[])[0]?.n ?? 0;
+
   return {
     totalGames: (meta as unknown as { games: number }[])[0]?.games ?? 0,
     totalParticipants: champions.reduce((a, c) => a + c.games, 0),
+    bansMatchTotal, // 밴이 캡처된 매치 수(밴률 분모)
     patch,
     champions,
     builtAt: Date.now(),

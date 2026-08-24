@@ -407,6 +407,43 @@ export async function getMatch(
     item4: number;
     item5: number;
     item6: number;
+    // 확장 캡처 필드 (전부 옵셔널 — 응답에 있으면 저장)
+    championId?: number;
+    individualPosition?: string;
+    goldSpent?: number;
+    totalDamageTaken?: number;
+    damageSelfMitigated?: number;
+    damageDealtToObjectives?: number;
+    damageDealtToTurrets?: number;
+    totalHeal?: number;
+    totalHealsOnTeammates?: number;
+    totalDamageShieldedOnTeammates?: number;
+    timeCCingOthers?: number;
+    turretKills?: number;
+    inhibitorKills?: number;
+    dragonKills?: number;
+    baronKills?: number;
+    objectivesStolen?: number;
+    wardsPlaced?: number;
+    wardsKilled?: number;
+    visionWardsBoughtInGame?: number;
+    largestKillingSpree?: number;
+    largestMultiKill?: number;
+    doubleKills?: number;
+    tripleKills?: number;
+    quadraKills?: number;
+    pentaKills?: number;
+    firstBloodKill?: boolean;
+    firstTowerKill?: boolean;
+    gameEndedInSurrender?: boolean;
+    gameEndedInEarlySurrender?: boolean;
+    challenges?: { killParticipation?: number; soloKills?: number };
+  }
+  interface RawTeam {
+    teamId: number;
+    win: boolean;
+    objectives?: Record<string, { first?: boolean; kills?: number }>;
+    bans?: { championId: number }[];
   }
   const raw = await riotFetch<{
     info: {
@@ -414,6 +451,7 @@ export async function getMatch(
       gameDuration: number;
       gameVersion?: string;
       queueId: number;
+      teams?: RawTeam[];
       participants: RawParticipant[];
     };
   }>(`https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`);
@@ -429,6 +467,24 @@ export async function getMatch(
     gameDuration: raw.info.gameDuration,
     queueId: raw.info.queueId,
     patch: raw.info.gameVersion?.split(".").slice(0, 2).join("."),
+    bans: (raw.info.teams ?? [])
+      .flatMap((t) => (t.bans ?? []).map((b) => b.championId))
+      .filter((id) => typeof id === "number" && id > 0),
+    teams: (raw.info.teams ?? []).map((t) => {
+      const o = t.objectives ?? {};
+      return {
+        teamId: t.teamId,
+        win: t.win,
+        firstBlood: o.champion?.first,
+        firstTower: o.tower?.first,
+        dragon: o.dragon?.kills,
+        herald: o.riftHerald?.kills,
+        baron: o.baron?.kills,
+        tower: o.tower?.kills,
+        inhibitor: o.inhibitor?.kills,
+        atakhan: o.atakhan?.kills,
+      };
+    }),
     participants: raw.info.participants.map((p) => ({
       puuid: p.puuid,
       riotIdGameName: p.riotIdGameName,
@@ -465,6 +521,40 @@ export async function getMatch(
           ]
         : undefined,
       items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6],
+      // 확장 캡처 필드
+      championId: p.championId,
+      individualPosition: p.individualPosition,
+      csTotal: p.totalMinionsKilled,
+      csJungle: p.neutralMinionsKilled,
+      goldSpent: p.goldSpent,
+      damageTaken: p.totalDamageTaken,
+      damageMitigated: p.damageSelfMitigated,
+      damageToObjectives: p.damageDealtToObjectives,
+      damageToTurrets: p.damageDealtToTurrets,
+      totalHeal: p.totalHeal,
+      healOnTeammates: p.totalHealsOnTeammates,
+      shieldOnTeammates: p.totalDamageShieldedOnTeammates,
+      ccScore: p.timeCCingOthers,
+      turretKills: p.turretKills,
+      inhibitorKills: p.inhibitorKills,
+      dragonKills: p.dragonKills,
+      baronKills: p.baronKills,
+      objectivesStolen: p.objectivesStolen,
+      wardsPlaced: p.wardsPlaced,
+      wardsKilled: p.wardsKilled,
+      controlWardsBought: p.visionWardsBoughtInGame,
+      largestKillingSpree: p.largestKillingSpree,
+      largestMultiKill: p.largestMultiKill,
+      doubleKills: p.doubleKills,
+      tripleKills: p.tripleKills,
+      quadraKills: p.quadraKills,
+      pentaKills: p.pentaKills,
+      firstBloodKill: p.firstBloodKill,
+      firstTowerKill: p.firstTowerKill,
+      killParticipation: p.challenges?.killParticipation,
+      soloKills: p.challenges?.soloKills,
+      gameEndedInSurrender: p.gameEndedInSurrender,
+      gameEndedInEarlySurrender: p.gameEndedInEarlySurrender,
     })),
   };
   await saveMatchRow(keyFp(), platform, match).catch(() => {});

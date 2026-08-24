@@ -224,6 +224,9 @@ export function ChampionsTable({
               판수{lane !== "all" && ` (${POSITION_LABEL[lane]})`}
             </span>
             <span className="w-16 shrink-0 text-right">승률</span>
+            {(stats.bansMatchTotal ?? 0) > 0 && (
+              <span className="hidden w-14 shrink-0 text-right sm:block">밴률</span>
+            )}
             <span className="w-20 shrink-0 text-right">
               {lane === "all" ? "주 포지션" : "라인 점유"}
             </span>
@@ -278,6 +281,13 @@ export function ChampionsTable({
                   <span className="w-16 shrink-0 text-right text-xs font-medium">
                     <WinrateText wins={s.wins} games={s.games} />
                   </span>
+                  {(stats.bansMatchTotal ?? 0) > 0 && (
+                    <span className="hidden w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:block">
+                      {c.bans && stats.bansMatchTotal
+                        ? `${Math.round((c.bans / stats.bansMatchTotal) * 100)}%`
+                        : "—"}
+                    </span>
+                  )}
                   <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                     {lane === "all"
                       ? mainPos

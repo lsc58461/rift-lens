@@ -32,6 +32,32 @@ export async function getDDragonVersion(): Promise<string> {
 }
 
 /** 챔피언 영문 키 → 한글 이름 매핑 (예: MonkeyKing → 오공) */
+/** 숫자 챔피언 id(key) → 영문 id(예: 62 → MonkeyKing). 밴 집계용 매핑 */
+export async function getChampionKeyToId(
+  version: string,
+): Promise<Record<number, string>> {
+  try {
+    return await cached(
+      `ddragon:champkeys:${version}`,
+      60 * 60 * 24 * 7,
+      async () => {
+        const res = await fetch(
+          `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`,
+          { cache: "no-store", signal: AbortSignal.timeout(8_000) },
+        );
+        if (!res.ok) throw new Error(`champion.json ${res.status}`);
+        const data: { data: Record<string, { key: string; id: string }> } =
+          await res.json();
+        const map: Record<number, string> = {};
+        for (const c of Object.values(data.data)) map[Number(c.key)] = c.id;
+        return map;
+      },
+    );
+  } catch {
+    return {};
+  }
+}
+
 export async function getChampionNamesKo(
   version: string,
 ): Promise<Record<string, string>> {
