@@ -8,10 +8,15 @@ import { NextResponse, type NextRequest } from "next/server";
 let cached: { on: boolean; at: number } | null = null;
 const CACHE_MS = 10_000;
 
-async function isMaintenanceOn(origin: string): Promise<boolean> {
+// 자체 호스팅에선 req.nextUrl.origin이 바인딩 주소(https://0.0.0.0:3000)로 잡혀
+// self-fetch가 실패한다 — 내부 API 호출은 루프백으로 고정한다.
+// (matcher가 /api를 제외하므로 미들웨어 재귀는 없다)
+const INTERNAL_ORIGIN = "http://127.0.0.1:3000";
+
+async function isMaintenanceOn(): Promise<boolean> {
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.on;
   try {
-    const res = await fetch(`${origin}/api/maintenance`, {
+    const res = await fetch(`${INTERNAL_ORIGIN}/api/maintenance`, {
       signal: AbortSignal.timeout(3_000),
     });
     const data: { active: boolean } = await res.json();
@@ -29,7 +34,6 @@ const renameCache = new Map<string, { to: string | null; at: number }>();
 const RENAME_CACHE_MS = 60_000;
 
 async function lookupRenamed(
-  origin: string,
   region: string,
   riotId: string,
 ): Promise<string | null> {
@@ -38,7 +42,7 @@ async function lookupRenamed(
   if (hit && Date.now() - hit.at < RENAME_CACHE_MS) return hit.to;
   try {
     const res = await fetch(
-      `${origin}/api/renamed?region=${region}&riotId=${encodeURIComponent(riotId)}`,
+      `${INTERNAL_ORIGIN}/api/renamed?region=${region}&riotId=${encodeURIComponent(riotId)}`,
       { signal: AbortSignal.timeout(3_000) },
     );
     const data: { renamed: string | null } = await res.json();
@@ -46,14 +50,14 @@ async function lookupRenamed(
     renameCache.set(key, { to: data.renamed, at: Date.now() });
     return data.renamed;
   } catch (e) {
-    console.error("[mw] renamed 조회 실패:", origin, e instanceof Error ? e.message : e);
+    console.error("[mw] renamed 조회 실패:", e instanceof Error ? e.message : e);
     return null;
   }
 }
 
 export async function middleware(req: NextRequest) {
   if (req.nextUrl.pathname === "/maintenance") return NextResponse.next();
-  if (await isMaintenanceOn(req.nextUrl.origin)) {
+  if (await isMaintenanceOn()) {
     return NextResponse.rewrite(new URL("/maintenance", req.url));
   }
 
@@ -67,7 +71,7 @@ export async function middleware(req: NextRequest) {
     }
     if (!req.nextUrl.searchParams.has("renamed")) {
       const riotId = decodeURIComponent(m[2]).normalize("NFKC");
-      const to = await lookupRenamed(req.nextUrl.origin, region, riotId);
+      const to = await lookupRenamed(region, riotId);
       if (to && to !== riotId) {
         const url = new URL(
           `/summoner/${region}/${encodeURIComponent(to)}`,
