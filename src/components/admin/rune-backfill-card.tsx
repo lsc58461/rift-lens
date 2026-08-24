@@ -4,7 +4,7 @@
 // 다른 대량 작업 카드와 같은 폴링·라운드 이어달리기 방식.
 
 import { useCallback, useEffect, useState } from "react";
-import { Eraser, Loader2, Play, Sparkle, Square } from "lucide-react";
+import { Eraser, Loader2, Play, Sparkle, Square, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ interface State {
   filled: number;
   failed: number;
   rounds: number;
+  turbo?: boolean;
   updatedAt: number;
   lastError: string | null;
 }
@@ -170,16 +171,43 @@ export function RuneBackfillCard() {
             통계 재집계
           </Button>
           {state?.running ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => act("stop")}
-              disabled={busy}
-              className="gap-1.5"
-            >
-              <Square className="size-3.5" />
-              중지
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant={state.turbo ? "default" : "outline"}
+                disabled={busy}
+                className="gap-1.5"
+                onClick={async () => {
+                  const on = !state.turbo;
+                  const res = await fetch(
+                    `/api/admin/rune-backfill?action=turbo&turbo=${on ? "on" : "off"}`,
+                    { method: "POST" },
+                  );
+                  if (res.ok) {
+                    const d = await res.json();
+                    setState(d.state);
+                    toast.success(
+                      on
+                        ? "최고속 모드 켜짐 — 유저 검색과 한도를 나눠 씁니다"
+                        : "최고속 모드 꺼짐 — 저우선순위로 돌아갑니다",
+                    );
+                  } else toast.error("요청에 실패했어요");
+                }}
+              >
+                <Zap className="size-3.5" />
+                {state.turbo ? "최고속 켜짐" : "최고속 꺼짐"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => act("stop")}
+                disabled={busy}
+                className="gap-1.5"
+              >
+                <Square className="size-3.5" />
+                중지
+              </Button>
+            </>
           ) : (
             <Button
               size="sm"

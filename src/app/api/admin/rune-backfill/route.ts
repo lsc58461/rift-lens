@@ -8,6 +8,7 @@ import {
   countMissingRunes,
   getRunefillState,
   runRunefillRound,
+  setRunefillTurbo,
   stopRunefill,
 } from "@/lib/rune-backfill";
 
@@ -49,6 +50,11 @@ export async function POST(req: NextRequest) {
     await stopRunefill();
     return NextResponse.json({ state: await getRunefillState() });
   }
+  // 진행 중 최고속 모드 토글 (?turbo=on|off)
+  if (action === "turbo") {
+    const on = req.nextUrl.searchParams.get("turbo") !== "off";
+    return NextResponse.json({ state: await setRunefillTurbo(on) });
+  }
   if (action === "start") {
     // 대량 백그라운드 작업은 한 번에 하나만
     const [ra, cr] = await Promise.all([getRefreshAllState(), getCrawlState()]);
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    await beginRunefill();
+    await beginRunefill(req.nextUrl.searchParams.get("turbo") === "on");
   }
   const origin = publicOrigin(req);
   after(() => runRunefillRound(origin).catch(() => {}));
