@@ -101,6 +101,33 @@ async function setLastAnnouncedPatch(patch) {
     () => {},
   );
 }
+/** 공식 패치노트 페이지에서 히어로 이미지·요약을 뽑는다 (임베드에 첨부용) */
+async function fetchPatchMeta(url) {
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "user-agent": "Mozilla/5.0 RiftLensBot" },
+    });
+    if (!res.ok) return {};
+    const html = await res.text();
+    const og = (p) =>
+      html.match(new RegExp(`<meta[^>]*property="${p}"[^>]*content="([^"]+)"`, "i"))?.[1];
+    let image = og("og:image");
+    if (image) {
+      image = image.replace(/&amp;/g, "&");
+      // 라이엇 og:image는 물음표가 둘("...?accountingTag=LoL?w=1200") — 정리한다
+      const first = image.indexOf("?");
+      if (first >= 0) {
+        image = image.slice(0, first + 1) + image.slice(first + 1).replace(/\?/g, "&");
+      }
+    }
+    return { image, summary: og("og:description") };
+  } catch {
+    return {};
+  }
+}
+
 async function patchLoop() {
   let latest;
   try {
@@ -123,16 +150,19 @@ async function patchLoop() {
     const [dMaj, dMin] = latest.split(".").map((n) => parseInt(n, 10));
     const mkt = `${(dMaj || 0) + 10}.${dMin || 0}`;
     const url = `https://www.leagueoflegends.com/ko-kr/news/game-updates/league-of-legends-patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
-    await broadcast(
-      new EmbedBuilder()
-        .setColor(0x3b82f6)
-        .setTitle(`새 패치 ${mkt} 노트가 나왔어요`)
-        .setDescription(
-          `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${url}`,
-        )
-        .setURL(url)
-        .setTimestamp(),
-    );
+    const meta = await fetchPatchMeta(url);
+    const embed = new EmbedBuilder()
+      .setColor(0x3b82f6)
+      .setTitle(`새 패치 ${mkt} 노트가 나왔어요`)
+      .setDescription(
+        meta.summary
+          ? `${meta.summary}\n${url}`
+          : `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${url}`,
+      )
+      .setURL(url)
+      .setTimestamp();
+    if (meta.image) embed.setImage(meta.image);
+    await broadcast(embed);
   }
   await setLastAnnouncedPatch(latest);
 }

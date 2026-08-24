@@ -49,8 +49,17 @@ async function enrich(url: string): Promise<Partial<PatchNote>> {
         new RegExp(`<meta[^>]*property="${prop}"[^>]*content="([^"]+)"`, "i"),
       )?.[1];
     let image = og("og:image");
-    // og:image에 붙은 리사이즈 쿼리를 다듬어 과한 크기 방지 (원본 파라미터 유지)
-    if (image) image = image.replace(/&amp;/g, "&");
+    if (image) {
+      image = image.replace(/&amp;/g, "&");
+      // 라이엇 og:image는 "...jpg?accountingTag=LoL?w=1200&..."처럼 물음표가 둘이다.
+      // 두 번째 '?'부터를 &로 바꿔 정상 쿼리스트링으로 정리한다.
+      const first = image.indexOf("?");
+      if (first >= 0) {
+        image =
+          image.slice(0, first + 1) +
+          image.slice(first + 1).replace(/\?/g, "&");
+      }
+    }
     const summary = og("og:description");
     const date = html.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1];
     return { image, summary, date };
@@ -61,7 +70,7 @@ async function enrich(url: string): Promise<Partial<PatchNote>> {
 
 /** 최근 패치 목록(중복 major.minor 제거, 최신순). */
 export async function getRecentPatchNotes(limit = 16): Promise<PatchNote[]> {
-  return cached(`patchnotes:list:v1:${limit}`, 60 * 60 * 6, async () => {
+  return cached(`patchnotes:list:v2:${limit}`, 60 * 60 * 6, async () => {
     let versions: string[] = [];
     try {
       const res = await fetch(
