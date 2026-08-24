@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
         hostname: "ddragon.leagueoflegends.com",
         pathname: "/cdn/**",
       },
+      {
+        // 공식 패치노트 히어로 이미지 (Riot CMS)
+        protocol: "https",
+        hostname: "cmsassets.rgpub.io",
+      },
     ],
   },
 };
