@@ -8,7 +8,7 @@ import { getSql } from "@/lib/db";
 import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
 import { chainNextRound } from "@/lib/round-chain";
-import { getSetting, setSetting } from "@/lib/store";
+import { claimRound, getSetting, setSetting } from "@/lib/store";
 import { RiotApiError, type PlatformRegion } from "@/lib/riot/types";
 
 const STATE_KEY = "runefill:state";
@@ -98,7 +98,10 @@ export async function runRunefillRound(origin?: string): Promise<void> {
   let state = await getRunefillState();
   if (!state?.running) return;
   if (state.roundActive && Date.now() - state.updatedAt < ROUND_STALE_MS) return;
-  await save({ ...state, roundActive: true });
+  // 원자적 점유 — 동시 트리거는 하나만 통과
+  const claimed = await claimRound<RunefillState>(STATE_KEY, ROUND_STALE_MS);
+  if (!claimed) return;
+  state = claimed;
 
   try {
     const sql = await getSql();

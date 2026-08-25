@@ -585,6 +585,30 @@ export async function setSetting<T>(key: string, value: T): Promise<void> {
     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
 }
 
+/** 백그라운드 작업 라운드 점유를 원자적으로 시도한다.
+ *  running이고 (라운드가 안 돌고 있거나 하트비트가 staleMs 넘게 죽어 있을 때)만
+ *  roundActive=true로 바꾸고 바뀐 상태를 돌려준다 — 동시 호출은 하나만 성공한다.
+ *  (체인·관리자 탭 폴링·부팅 훅이 같은 순간 들어와 라운드가 겹치던 문제 방지.)
+ *  patch는 점유와 함께 덮어쓸 필드(예: 라운드 진행 카운터 초기화). */
+export async function claimRound<T>(
+  key: string,
+  staleMs: number,
+  patch: Record<string, unknown> = {},
+): Promise<T | null> {
+  const sql = await getSql();
+  const now = Date.now();
+  const rows = await sql`
+    UPDATE app_settings
+    SET value = value || ${sql.json({ ...patch, roundActive: true, updatedAt: now } as never)},
+        updated_at = now()
+    WHERE key = ${key}
+      AND coalesce((value->>'running')::boolean, false)
+      AND (NOT coalesce((value->>'roundActive')::boolean, false)
+           OR coalesce((value->>'updatedAt')::bigint, 0) < ${now - staleMs})
+    RETURNING value`;
+  return (rows[0]?.value as T | undefined) ?? null;
+}
+
 // ── 어드민 ──────────────────────────────────────────────
 
 export async function adminFindUser(

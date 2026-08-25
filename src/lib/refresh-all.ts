@@ -10,7 +10,7 @@
 import "server-only";
 import { runRefreshSweep } from "@/lib/refresh-sweep";
 import { chainNextRound } from "@/lib/round-chain";
-import { getSetting, setSetting } from "@/lib/store";
+import { claimRound, getSetting, setSetting } from "@/lib/store";
 
 const STATE_KEY = "refresh-all:state";
 const MAX_ROUNDS = 400; // 폭주 방지 상한 (소환사 수백 명 규모 대응)
@@ -103,8 +103,10 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     return;
   }
 
-  // 라운드 시작 표시 (하트비트 겸용)
-  await save({ ...state, running: true, roundActive: true, scanned: 0 });
+  // 라운드 시작 표시 (하트비트 겸용) — 원자적 점유라 동시 트리거는 하나만 통과
+  const claimed = await claimRound<RefreshAllState>(STATE_KEY, ROUND_STALE_MS, { scanned: 0 });
+  if (!claimed) return;
+  state = claimed;
 
   try {
     // 취소 확인은 5초에 한 번만 DB를 읽는다

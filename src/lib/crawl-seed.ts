@@ -11,7 +11,7 @@ import { pointsToRank, rankToPoints } from "@/lib/mmr/rank";
 import { riotKeyFp } from "@/lib/riot/client";
 import { getSql } from "@/lib/db";
 import { chainNextRound } from "@/lib/round-chain";
-import { getSetting, setSetting, upsertRecentSearch } from "@/lib/store";
+import { claimRound, getSetting, setSetting, upsertRecentSearch } from "@/lib/store";
 
 const STATE_KEY = "crawl:state";
 const MAX_TARGET = 10_000; // 한 번에 수집할 최대 소환사 수
@@ -259,7 +259,10 @@ export async function runCrawlRound(origin?: string): Promise<void> {
     return;
   }
 
-  await save({ ...state, roundActive: true });
+  // 원자적 점유 — 동시에 들어온 다른 트리거는 여기서 탈락한다
+  const claimed = await claimRound<CrawlState>(STATE_KEY, ROUND_STALE_MS);
+  if (!claimed) return;
+  state = claimed;
 
   try {
     const want = Math.min(PER_ROUND, state.target - state.analyzed);
@@ -282,8 +285,12 @@ export async function runCrawlRound(origin?: string): Promise<void> {
     let failed = 0;
     let i = 0;
     for (const c of candidates) {
-      // 20명마다 취소 확인
-      if (i++ % 20 === 0 && !((await getCrawlState())?.running ?? false)) break;
+      // 50명마다 취소 확인 + 하트비트(라운드가 길어도 죽은 것으로 오판되지 않게)
+      if (i++ % 50 === 0) {
+        const live = await getCrawlState();
+        if (!live?.running) break;
+        await save(live);
+      }
       try {
         await upsertRecentSearch({
           platform: "kr",
