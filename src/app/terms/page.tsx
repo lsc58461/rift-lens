@@ -123,7 +123,7 @@ export default function TermsPage() {
           <li>이 약관은 {EFFECTIVE}부터 시행합니다.</li>
           <li>
             운영자: 이정윤 · 문의:{" "}
-            <a href="mailto:lsc58461@naver.com">lsc58461@naver.com</a>
+            <a href="mailto:riftlens.contact@gmail.com">riftlens.contact@gmail.com</a>
           </li>
         </ul>
       </LegalSection>

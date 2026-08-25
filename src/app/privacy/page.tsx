@@ -116,7 +116,7 @@ export default function PrivacyPage() {
         <ul>
           <li>개인정보 보호책임자: 이정윤</li>
           <li>
-            이메일: <a href="mailto:lsc58461@naver.com">lsc58461@naver.com</a>
+            이메일: <a href="mailto:riftlens.contact@gmail.com">riftlens.contact@gmail.com</a>
           </li>
         </ul>
         <p>
