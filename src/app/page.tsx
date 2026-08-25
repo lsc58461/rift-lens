@@ -1,4 +1,5 @@
 import {
+  Bot,
   Activity,
   ArrowRight,
   BarChart3,
@@ -199,6 +200,23 @@ export default async function Home() {
           <span className="block text-sm font-semibold">챔피언 통계</span>
           <span className="block text-sm text-muted-foreground">
             라인별 1~5티어와 승률·픽률·밴률 — 지금 강한 챔피언을 확인하세요
+          </span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
+
+      {/* 디스코드 봇 배너 */}
+      <Link
+        href="/discord"
+        className="group flex w-full items-center gap-4 rounded-xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-[#5865F2]/40 hover:shadow-md animate-in fade-in slide-in-from-bottom-3 duration-700 delay-500 fill-mode-backwards"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#5865F2]/12 text-[#5865F2]">
+          <Bot className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">디스코드 봇 초대하기</span>
+          <span className="block text-sm text-muted-foreground">
+            새 패치노트와 서비스 상태를 여러분의 서버 채널로 알려드려요
           </span>
         </span>
         <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />

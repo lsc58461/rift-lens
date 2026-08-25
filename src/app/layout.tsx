@@ -136,6 +136,10 @@ export default function RootLayout({
                 자주 묻는 질문
               </Link>
               <span aria-hidden>·</span>
+              <Link href="/discord" className="hover:text-foreground hover:underline">
+                디스코드 봇
+              </Link>
+              <span aria-hidden>·</span>
               <Link href="/terms" className="hover:text-foreground hover:underline">
                 이용약관
               </Link>
