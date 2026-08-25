@@ -25,7 +25,7 @@ const summoner = (name, desc) => ({
 const commands = [
   {
     name: "rift",
-    description: "소환사 매칭 실력대 분석",
+    description: "소환사 매칭 구간 조회 (최근 로비 평균 랭크)",
     options: [summoner("소환사", "닉네임#태그")],
   },
   {

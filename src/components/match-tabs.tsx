@@ -1,6 +1,6 @@
 "use client";
 
-// 경기 목록 두 개(최근 전적 / 실력대 분석에 사용된 경기)를 탭으로 묶는다.
+// 경기 목록 두 개(최근 전적 / 매칭 구간 집계에 사용된 경기)를 탭으로 묶는다.
 // 세로로 나란히 쌓으면 페이지 하단이 지나치게 길어지는데, 두 목록을 동시에
 // 보는 경우는 드물어서 탭이 맞다.
 
@@ -51,7 +51,7 @@ export function MatchTabs({
             <CardDescription>최근 솔로랭크 경기 기록</CardDescription>
           </TabsContent>
           <TabsContent value="analysis">
-            <CardTitle className="sr-only">실력대 분석에 사용된 경기</CardTitle>
+            <CardTitle className="sr-only">매칭 구간 집계에 사용된 경기</CardTitle>
             <CardDescription>
               로비 평균 랭크 기준 · 최근 {rows.length}경기
             </CardDescription>

@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { ImageResponse } from "next/og";
 
-export const alt = "Rift Lens — 숨은 실력대 판독기";
+export const alt = "Rift Lens — 롤 매칭 구간 분석";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -105,7 +105,7 @@ export default async function OgImage() {
             textAlign: "center",
           }}
         >
-          내 진짜 실력대는 어디쯤일까?
+          나는 어느 구간에서 매칭되고 있을까?
         </div>
         <div
           style={{
@@ -115,7 +115,7 @@ export default async function OgImage() {
             textAlign: "center",
           }}
         >
-          최근 경기 로비의 랭크를 역추적해 매칭 실력대를 추정해 드립니다
+          최근 솔로랭크 경기 로비의 평균 랭크로 매칭 구간을 보여드립니다
         </div>
 
         {/* 티어 엠블럼 행 */}

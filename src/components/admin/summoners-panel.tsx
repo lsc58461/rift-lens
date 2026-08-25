@@ -146,7 +146,7 @@ export function SummonersPanel() {
           <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
             <span className="flex-1">소환사</span>
             <span className="w-24 shrink-0">상태</span>
-            <span className="w-40 shrink-0 text-right">현재 → 추정</span>
+            <span className="w-40 shrink-0 text-right">현재 → 매칭 구간</span>
             <span className="w-16 shrink-0 text-right">검색</span>
           </div>
           <div className="divide-y divide-border/60">

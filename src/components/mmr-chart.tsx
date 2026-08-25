@@ -21,13 +21,13 @@ import { pointsToRank, pointsToShortLabel } from "@/lib/mmr/rank";
 export interface MmrChartPoint {
   game: string; // "8경기 전" ... "최근"
   lobby: number | null;
-  est: number | null; // 그 경기까지 반영한 추정 레이팅
+  est: number | null; // 그 경기까지의 누적 로비 평균(매칭 구간)
   win: boolean;
 }
 
 const chartConfig = {
   lobby: { label: "로비 평균 랭크", color: "var(--chart-1)" },
-  est: { label: "매칭 실력대", color: "var(--chart-2)" },
+  est: { label: "매칭 구간", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
 // 색은 전역 토큰으로 직접 참조한다. ChartContainer가 만드는 --color-lobby /
@@ -111,8 +111,7 @@ export function MmrChart({
               formatter={(value, name) => (
                 <span>
                   {chartConfig[name as keyof typeof chartConfig]?.label}:{" "}
-                  {pointsToRank(Number(value)).label} (
-                  {Math.round(Number(value))}pt)
+                  {pointsToRank(Number(value)).label}
                 </span>
               )}
             />
@@ -203,7 +202,7 @@ export function MmrChart({
               strokeDasharray="5 3"
             />
           </svg>
-          매칭 실력대
+          매칭 구간 (누적 평균)
         </span>
         <span className="flex items-center gap-1.5">
           <span className="text-muted-foreground/70">로비 점</span>

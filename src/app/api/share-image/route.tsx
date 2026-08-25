@@ -12,9 +12,9 @@ export const maxDuration = 120;
 
 function gapText(gap: number | null): string {
   if (gap === null) return "";
-  if (gap >= 50) return "티어보다 높은 실력대에서 매칭 중";
-  if (gap <= -50) return "티어보다 낮은 실력대에서 매칭 중";
-  return "티어와 실제 실력대가 일치";
+  if (gap >= 50) return "최근 로비 평균 랭크가 현재 티어보다 높은 구간";
+  if (gap <= -50) return "최근 로비 평균 랭크가 현재 티어보다 낮은 구간";
+  return "최근 로비 평균 랭크가 현재 티어와 비슷한 구간";
 }
 
 export async function GET(req: NextRequest) {
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
             <span style={{ color: "#71717b" }}>#{tagLine}</span>
           </div>
           <div style={{ display: "flex", fontSize: 28, color: "#a1a1aa" }}>
-            아직 분석되지 않은 소환사예요 — 검색하면 숨은 실력대 분석이
+            아직 분석되지 않은 소환사예요 — 검색하면 매칭 구간 분석이
             시작됩니다
           </div>
           <div style={{ display: "flex", fontSize: 22, color: "#52525c" }}>
@@ -216,7 +216,7 @@ export async function GET(req: NextRequest) {
                 marginTop: 10,
               }}
             >
-              매칭 실력대
+              최근 매칭 구간
             </div>
             <div
               style={{
@@ -228,12 +228,9 @@ export async function GET(req: NextRequest) {
             >
               {result.estimatedRank?.label ?? "표본 부족"}
             </div>
-            {result.estimatedPoints !== null && (
+            {result.estimatedRank && (
               <div style={{ display: "flex", fontSize: 26, color: "#71717b" }}>
-                {Math.round(result.estimatedPoints).toLocaleString()}pt
-                {result.errorMargin !== null
-                  ? ` · 오차범위 ±${result.errorMargin}pt`
-                  : ""}
+                최근 솔로랭크 경기 로비의 평균 랭크
               </div>
             )}
             <div
@@ -249,21 +246,6 @@ export async function GET(req: NextRequest) {
               <span style={{ color: curColor, fontWeight: 700 }}>
                 {result.currentRank?.label ?? "언랭크"}
               </span>
-              {result.gap !== null && (
-                <span
-                  style={{
-                    color:
-                      result.gap >= 50
-                        ? "#34d399"
-                        : result.gap <= -50
-                          ? "#f87171"
-                          : "#a1a1aa",
-                  }}
-                >
-                  ({result.gap > 0 ? "+" : ""}
-                  {result.gap}pt)
-                </span>
-              )}
             </div>
           </div>
 
@@ -290,7 +272,7 @@ export async function GET(req: NextRequest) {
         >
           <div style={{ display: "flex" }}>{gapText(result.gap)}</div>
           <div style={{ display: "flex" }}>
-            최근 경기 로비 랭크 역추적 기반 추정치 · Riot 비공식
+            최근 솔로랭크 경기 로비 평균 랭크 집계 · Riot 비공식
           </div>
         </div>
       </div>

@@ -187,7 +187,7 @@ client.once("clientReady", () => {
   client.user.setActivity({
     type: ActivityType.Custom,
     name: "custom",
-    state: "🔍 /rift 로 매칭 실력대 분석",
+    state: "🔍 /rift 로 매칭 구간 조회",
   });
   setInterval(healthLoop, CHECK_INTERVAL_MS);
   patchLoop().catch(() => {});

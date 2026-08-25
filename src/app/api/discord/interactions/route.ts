@@ -104,14 +104,12 @@ async function handleRift(token: string, summoner: string): Promise<void> {
     const name = `${stored.account.gameName}#${stored.account.tagLine}`;
     const est = stored.estimatedRank?.label ?? "표본 부족";
     const cur = stored.currentRank?.label ?? "언랭크";
-    const gap =
-      stored.gap !== null ? `${stored.gap > 0 ? "+" : ""}${stored.gap}pt` : "-";
     await followUp(token, {
       content: "", // 분석 중 안내 문구 제거
       embeds: [
         {
-          title: `${name} 의 매칭 실력대`,
-          description: `**${est}**\n현재 티어 ${cur} · 갭 ${gap}`,
+          title: `${name} 의 최근 매칭 구간`,
+          description: `**${est}** (최근 솔로랭크 로비 평균 랭크)\n현재 티어 ${cur}`,
           url: `${SITE}/summoner/${PLATFORM}/${encodeURIComponent(name)}`,
           color: BLUE,
           image: { url: cardImage(name) },
@@ -153,20 +151,22 @@ async function handleTeam(token: string, raw: string): Promise<void> {
   }
   const line = (ps: typeof valid) =>
     ps.map((p) => `• ${p.name} — ${p.label}`).join("\n");
-  const sum = (ps: typeof valid) =>
-    ps.reduce((s, p) => s + p.points, 0).toLocaleString();
+  const total = (ps: typeof valid) => ps.reduce((s, p) => s + p.points, 0);
+  const all = total(part.a) + total(part.b);
+  const pctA = all > 0 ? ((total(part.a) / all) * 100).toFixed(1) : "50.0";
+  const pctB = all > 0 ? (100 - Number(pctA)).toFixed(1) : "50.0";
   await followUp(token, {
     embeds: [
       {
         title: "내전 팀 밸런싱 결과",
-        description: `**🔵 블루팀** (합계 ${sum(part.a)}pt)\n${line(part.a)}\n\n**🔴 레드팀** (합계 ${sum(part.b)}pt)\n${line(part.b)}\n\n전력차 **${part.diff.toLocaleString()}pt**${
+        description: `**🔵 블루팀** (${pctA}%)\n${line(part.a)}\n\n**🔴 레드팀** (${pctB}%)\n${line(part.b)}${
           failed.length
             ? `\n\n⚠️ 조회 실패: ${failed.map((f) => f.input).join(", ")}`
             : ""
         }`,
         color: BLUE,
         url: `${SITE}/team`,
-        footer: { text: "Rift Lens · 매칭 실력대 기준" },
+        footer: { text: "Rift Lens · 로비 평균 랭크 기준" },
       },
     ],
   });

@@ -12,7 +12,7 @@ export const revalidate = 30;
 
 export const metadata = {
   title: "최근 검색",
-  description: "Rift Lens에서 최근 조회된 소환사들의 티어와 매칭 실력대 목록",
+  description: "Rift Lens에서 최근 조회된 소환사들의 티어와 매칭 구간 목록",
 };
 
 function timeAgo(ts: number): string {
@@ -89,11 +89,6 @@ export default async function RecentPage() {
                   >
                     {e.estimatedLabel ?? "표본 부족"}
                   </span>
-                  {e.estimatedPoints !== null && (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {Math.round(e.estimatedPoints).toLocaleString()}pt
-                    </span>
-                  )}
                 </div>
                 <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:ml-0" />
               </div>

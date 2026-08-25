@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   keywords: [
     "롤 전적 검색",
-    "롤 매칭 실력대",
+    "롤 매칭 구간",
     "롤 티어 분석",
     "롤 랭크 조회",
     "롤 로비 평균 티어",
@@ -152,7 +152,7 @@ export default function RootLayout({
                 개인정보처리방침
               </Link>
             </div>
-            Rift Lens는 Riot Games의 공식 서비스가 아니며, 추정치는 참고용입니다.
+            Rift Lens는 Riot Games의 공식 서비스가 아니며, 집계 수치는 참고용입니다.
           </footer>
           <Toaster />
         </ThemeProvider>

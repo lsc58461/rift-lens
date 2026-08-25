@@ -39,7 +39,7 @@ export default async function SharePage({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imageUrl}
-        alt={`${decoded} 실력대 분석 결과 카드`}
+        alt={`${decoded} 매칭 구간 분석 결과 카드`}
         className="w-full rounded-xl border shadow-lg"
       />
 

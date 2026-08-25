@@ -11,9 +11,9 @@ export const metadata = {
 const FEATURES = [
   {
     icon: Gauge,
-    title: "실력대 조회",
+    title: "매칭 구간 조회",
     command: "/rift",
-    description: "닉네임#태그를 입력하면 매칭 로비 기반 추정 실력대와 현재 랭크를 카드로 보여줘요.",
+    description: "닉네임#태그를 입력하면 최근 솔로랭크 로비의 평균 랭크(매칭 구간)와 현재 랭크를 카드로 보여줘요.",
     tile: "bg-primary/12 text-primary",
   },
   {

@@ -90,8 +90,8 @@ export async function generateMetadata({
     notFound();
   }
   const decoded = decodeURIComponent(riotId);
-  const title = `${decoded} 숨은 실력대`;
-  const description = `${decoded}의 숨은 실력대 — 최근 솔로랭크 경기 로비 랭크 역추적 기반 추정치를 확인해 보세요.`;
+  const title = `${decoded} 매칭 구간`;
+  const description = `${decoded}의 최근 매칭 구간 — 최근 솔로랭크 경기 로비의 평균 랭크와 전적을 확인해 보세요.`;
   const image = `/api/share-image?region=${region}&riotId=${encodeURIComponent(decoded)}`;
   return {
     title,
@@ -111,28 +111,34 @@ const CONFIDENCE_LABELS = {
   low: "신뢰도 낮음",
 } as const;
 
+// 표현 원칙: "최근 로비 평균 랭크가 현재 티어보다 높다/낮다"는 사실만 말한다.
+// 시스템이 실력을 어떻게 평가한다거나 LP·티어 전망 같은 해석은 붙이지 않는다
+// (라이엇 API 정책 — 공식 랭킹 시스템의 대체물(MMR/ELO 계산기) 금지).
 function gapVerdict(gap: number): {
   text: string;
   tone: "up" | "down" | "flat";
 } {
   if (gap >= 150)
     return {
-      text: "티어보다 훨씬 높은 실력대에서 매칭되고 있어요. 곧 티어가 따라 올라갈 거예요.",
+      text: "최근 매칭 로비의 평균 랭크가 현재 티어보다 한 티어 이상 높은 구간이에요.",
       tone: "up",
     };
   if (gap >= 50)
     return {
-      text: "티어보다 한 단계 높은 매칭이에요. LP를 잘 받고 있을 거예요.",
+      text: "최근 매칭 로비의 평균 랭크가 현재 티어보다 조금 높은 구간이에요.",
       tone: "up",
     };
   if (gap <= -150)
     return {
-      text: "현재 티어보다 낮은 실력대에서 매칭되고 있어요. LP 효율이 나쁠 수 있어요.",
+      text: "최근 매칭 로비의 평균 랭크가 현재 티어보다 한 티어 이상 낮은 구간이에요.",
       tone: "down",
     };
   if (gap <= -50)
-    return { text: "티어보다 약간 낮은 매칭이에요.", tone: "down" };
-  return { text: "티어와 실제 실력대가 잘 맞아떨어져요.", tone: "flat" };
+    return {
+      text: "최근 매칭 로비의 평균 랭크가 현재 티어보다 조금 낮은 구간이에요.",
+      tone: "down",
+    };
+  return { text: "최근 매칭 로비의 평균 랭크가 현재 티어와 비슷한 구간이에요.", tone: "flat" };
 }
 
 function timeAgo(ts: number): string {
@@ -353,7 +359,7 @@ export default async function SummonerPage({
     return (
       <ErrorCard
         title="아직 분석된 적 없는 소환사예요"
-        description="사이트에서 검색하면 숨은 실력대 분석이 시작됩니다."
+        description="사이트에서 검색하면 매칭 구간 분석이 시작됩니다."
       />
     );
   }
@@ -507,7 +513,7 @@ export default async function SummonerPage({
         </div>
       </div>
 
-      {/* 본문 2단 — 좌: 실력대 요약 / 우: 추이·전적.
+      {/* 본문 2단 — 좌: 매칭 구간 요약 / 우: 추이·전적.
           넓은 화면에서 스크롤을 줄이려고 정보 카드를 옆으로 세운다. */}
       <HistorySummaryProvider>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -527,7 +533,7 @@ export default async function SummonerPage({
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 space-y-1.5">
                   <CardDescription className="flex flex-wrap items-center gap-2">
-                    매칭 실력대
+                    최근 매칭 구간
                     <Badge
                       variant="outline"
                       className="bg-background/60 font-normal"
@@ -541,10 +547,9 @@ export default async function SummonerPage({
                   >
                     {estimatedRank?.label ?? "표본 부족"}
                   </CardTitle>
-                  {estimatedPoints !== null && (
+                  {estimatedRank && (
                     <p className="text-sm text-muted-foreground">
-                      {Math.round(estimatedPoints).toLocaleString()}pt
-                      {errorMargin !== null && ` · 오차범위 ±${errorMargin}pt`}
+                      최근 솔로랭크 경기 로비의 평균 랭크
                     </p>
                   )}
                 </div>
@@ -574,12 +579,6 @@ export default async function SummonerPage({
                     <Minus className="size-4 shrink-0 text-muted-foreground" />
                   )}
                   <span>{verdict.text}</span>
-                  {gap !== null && (
-                    <span className="ml-auto shrink-0 font-semibold tabular-nums">
-                      {gap > 0 ? "+" : ""}
-                      {gap}pt
-                    </span>
-                  )}
                 </div>
               </CardContent>
             )}
@@ -703,7 +702,7 @@ export default async function SummonerPage({
           {/* 추이 차트 */}
           <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-backwards">
             <CardHeader>
-              <CardTitle className="text-base">경기별 실력대 추이</CardTitle>
+              <CardTitle className="text-base">경기별 매칭 구간 추이</CardTitle>
               <CardDescription>
                 분석에 사용된 최근 {analyzedCount}경기 기준
                 {duoExcludedCount > 0 &&

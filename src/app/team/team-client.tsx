@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { TIER_COLORS } from "@/lib/mmr/rank";
+import { TIER_COLORS, pointsToRank } from "@/lib/mmr/rank";
 
 interface Player {
   input: string;
@@ -26,7 +26,7 @@ interface Player {
 }
 
 const SOURCE_LABELS = {
-  analysis: "매칭 실력대",
+  analysis: "매칭 구간",
   rank: "현재 랭크",
   unranked: "기본값",
 } as const;
@@ -120,9 +120,10 @@ export function TeamClient() {
       idx.map((i) => `${valid[i].name} (${valid[i].label})`).join("\n");
     const sumA = current.a.reduce((s, i) => s + valid[i].points, 0);
     const sumB = current.b.reduce((s, i) => s + valid[i].points, 0);
+    const pctA = sumA + sumB > 0 ? ((sumA / (sumA + sumB)) * 100).toFixed(1) : "50.0";
     navigator.clipboard
       .writeText(
-        `[블루팀] 합계 ${sumA.toLocaleString()}pt\n${line(current.a)}\n\n[레드팀] 합계 ${sumB.toLocaleString()}pt\n${line(current.b)}\n\n전력차 ${current.diff.toLocaleString()}pt · Rift Lens 팀 밸런서`,
+        `[블루팀] ${pctA}%\n${line(current.a)}\n\n[레드팀] ${(100 - Number(pctA)).toFixed(1)}%\n${line(current.b)}\n\n로비 평균 랭크 기준 · Rift Lens 팀 밸런서`,
       )
       .then(() => toast.success("팀 구성을 복사했어요"))
       .catch(() => toast.error("복사에 실패했어요"));
@@ -141,8 +142,8 @@ export function TeamClient() {
           }`}
         >
           <span className="text-sm font-semibold">{title}</span>
-          <span className="text-xs tabular-nums opacity-80">
-            평균 {avg.toLocaleString()}pt
+          <span className="text-xs opacity-80">
+            평균 {pointsToRank(avg).label}
           </span>
         </div>
         <div className="divide-y divide-border/60">
@@ -172,9 +173,6 @@ export function TeamClient() {
             </div>
           ))}
         </div>
-        <div className="border-t px-4 py-2 text-right text-xs text-muted-foreground tabular-nums">
-          합계 {sum.toLocaleString()}pt
-        </div>
       </div>
     );
   };
@@ -189,7 +187,7 @@ export function TeamClient() {
             참가자 입력
           </CardTitle>
           <CardDescription>
-            게임명#태그로 입력 (2·4·6·8·10명) · 실력 점수는 저장된 매칭 실력대 →
+            게임명#태그로 입력 (2·4·6·8·10명) · 기준값은 저장된 매칭 구간(로비 평균 랭크) →
             현재 랭크 순으로 사용해요
           </CardDescription>
         </CardHeader>
@@ -267,12 +265,7 @@ export function TeamClient() {
           {/* 전력 밸런스 — 두 팀 합계의 비율을 그대로 폭으로 */}
           <div className="rounded-xl border bg-card p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-sm font-semibold">
-                전력차{" "}
-                <span className="tabular-nums">
-                  {current.diff.toLocaleString()}pt
-                </span>
-              </span>
+              <span className="text-sm font-semibold">전력 밸런스</span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 조합 {(comboIndex % combos.length) + 1} / {combos.length}
               </span>
@@ -292,10 +285,10 @@ export function TeamClient() {
                   </div>
                   <div className="mt-1.5 flex justify-between text-[11px] tabular-nums">
                     <span className="text-blue-600 dark:text-blue-400">
-                      블루 {pct.toFixed(1)}% · {sumA.toLocaleString()}pt
+                      블루 {pct.toFixed(1)}%
                     </span>
                     <span className="text-red-600 dark:text-red-400">
-                      {(100 - pct).toFixed(1)}% 레드 · {sumB.toLocaleString()}pt
+                      {(100 - pct).toFixed(1)}% 레드
                     </span>
                   </div>
                 </div>
@@ -330,8 +323,8 @@ export function TeamClient() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            표시 없는 참가자는 저장된 매칭 실력대 기준이고, &quot;현재 랭크&quot;
-            ·&quot;기본값&quot;은 분석 기록이 없어 대체한 점수예요.
+            표시 없는 참가자는 저장된 매칭 구간(로비 평균 랭크) 기준이고, &quot;현재 랭크&quot;
+            ·&quot;기본값&quot;은 분석 기록이 없어 대체한 값이에요.
           </p>
         </>
       )}

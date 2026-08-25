@@ -15,9 +15,9 @@ export const TOOLS: ToolDef[] = [
   {
     icon: Swords,
     label: "내전 팀 밸런서",
-    desc: "10명을 실력대 기준으로 균형 있게 나눠요",
+    desc: "10명을 매칭 구간 기준으로 균형 있게 나눠요",
     detail:
-      "참가자 닉네임만 넣으면 매칭 실력대를 추정해 전력 차가 가장 적은 5:5를 찾아드려요.",
+      "참가자 닉네임만 넣으면 각자의 매칭 구간(로비 평균 랭크)으로 전력 차가 가장 적은 5:5를 찾아드려요.",
     href: "/team",
     tile: "bg-sky-500/15 text-sky-500 dark:text-sky-400",
     accent: "hover:border-sky-500/40",
