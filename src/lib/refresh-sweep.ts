@@ -33,7 +33,7 @@ const goneKey = (region: string, g: string, t: string) =>
 // 백그라운드 갱신은 하루 1회(새벽 크론 주기)면 충분하다 — 그 사이 새 경기는
 // 유저가 직접 검색할 때 즉시 반영된다. 6h였을 땐 한 바퀴가 하루를 넘기면
 // 앞부분 정밀 스킵이 풀려 다음 바퀴가 다시 느려졌다.
-const RECENT_DEEP_MS = 24 * 60 * 60_000;
+const RECENT_DEEP_MS = 36 * 60 * 60_000; // 한 바퀴가 하루를 넘겨도 앞부분 스킵이 유지되도록 여유
 async function deepAnalyzedWithin(
   platform: string,
   gameName: string,
