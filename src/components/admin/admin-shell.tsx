@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowUpRight,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -16,6 +17,7 @@ const NAV = [
   { href: "/admin", label: "대시보드", icon: LayoutDashboard },
   { href: "/admin/summoners", label: "소환사", icon: Users },
   { href: "/admin/updates", label: "업데이트 내역", icon: Megaphone },
+  { href: "/admin/feedback", label: "문의함", icon: Inbox },
   { href: "/admin/maintenance", label: "점검", icon: Wrench },
 ] as const;
 

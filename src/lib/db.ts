@@ -215,6 +215,24 @@ const SCHEMA_SQL = `
     ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS puuid text;
     CREATE INDEX IF NOT EXISTS recent_searches_puuid_idx ON recent_searches (puuid);
 
+    -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 디스코드 봇 알림 여부.
+    CREATE TABLE IF NOT EXISTS feedback (
+      id bigserial PRIMARY KEY,
+      kind text NOT NULL,
+      email text NOT NULL,
+      message text NOT NULL,
+      summoner text,
+      page text,
+      user_agent text,
+      ip text,
+      status text NOT NULL DEFAULT 'new',
+      note text,
+      notified boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+
     -- 디스코드 연동 제거(2026-08-20): verified_summoners 테이블은 생성·사용하지
     -- 않으며, 기존 배포에 남아 있던 테이블도 DROP 완료.
 `;

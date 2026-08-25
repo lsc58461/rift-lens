@@ -140,6 +140,10 @@ export default function RootLayout({
                 디스코드 봇
               </Link>
               <span aria-hidden>·</span>
+              <Link href="/feedback" className="hover:text-foreground hover:underline">
+                문의·버그 신고
+              </Link>
+              <span aria-hidden>·</span>
               <Link href="/terms" className="hover:text-foreground hover:underline">
                 이용약관
               </Link>
