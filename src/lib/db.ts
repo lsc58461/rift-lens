@@ -9,17 +9,9 @@ const globalForDb = globalThis as unknown as {
   __mmrTick?: { last: number };
 };
 
-async function initSchema(sql: Sql): Promise<void> {
-  // 콜드 스타트 비용을 줄이기 위해 전체 DDL을 단일 왕복으로 실행한다.
-  // 파라미터가 없으므로 simple 프로토콜 = 배치 전체가 하나의 암묵적 트랜잭션이고,
-  // 첫 줄의 advisory lock이 커밋까지 유지된다.
-  //
-  // 이 락이 필요한 이유: 빌드 시 프리렌더 워커 15개, 서버리스에선 콜드 스타트가
-  // 동시에 같은 DDL을 돌린다. CREATE/ALTER가 잡는 테이블 락이 세션마다 엇갈려
-  // 데드락이 났다(build 로그의 DeadLockReport). 직렬화하면 뒤 세션은 이미
-  // 반영된 멱등 DDL을 빠르게 통과한다.
-  await sql.unsafe(`
-    SELECT pg_advisory_xact_lock(4919, 1);
+// DDL 본문 — 아래 해시가 이 문자열로부터 계산되므로 내용이 바뀌면 자동으로
+// 새 버전이 되어 다음 부팅에서 한 번 실행된다.
+const SCHEMA_SQL = `
 
     -- 범용 KV — 잡 상태·락·대기열·쿨다운·점검 플래그 등 휘발성 데이터 전용
     CREATE TABLE IF NOT EXISTS cache_entries (
@@ -225,6 +217,42 @@ async function initSchema(sql: Sql): Promise<void> {
 
     -- 디스코드 연동 제거(2026-08-20): verified_summoners 테이블은 생성·사용하지
     -- 않으며, 기존 배포에 남아 있던 테이블도 DROP 완료.
+`;
+
+/** FNV-1a 32bit — 스키마 문자열 지문 (암호학적 강도 불필요) */
+function fnv1a(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+const SCHEMA_VERSION = `v1-${fnv1a(SCHEMA_SQL)}`;
+
+async function initSchema(sql: Sql): Promise<void> {
+  // 같은 스키마가 이미 적용돼 있으면 DDL을 통째로 건너뛴다.
+  // ALTER TABLE ... ADD COLUMN IF NOT EXISTS는 컬럼이 있어도 ACCESS EXCLUSIVE 락을
+  // 잡아서, 매치 테이블을 오래 읽는 쿼리(시드 후보 조회 등)가 있으면 부팅이
+  // 그 뒤에 줄을 서고 advisory lock을 쥔 채 멈춰 다른 인스턴스까지 막았다.
+  // (테이블이 아직 없으면 조회가 실패하므로 그때는 전체 실행)
+  const applied = await sql`
+    SELECT value FROM app_settings WHERE key = 'schema:version'`
+    .then((r) => r[0]?.value as string | undefined)
+    .catch(() => undefined);
+  if (applied === SCHEMA_VERSION) return;
+
+  // 콜드 스타트 비용을 줄이기 위해 전체 DDL을 단일 왕복으로 실행한다.
+  // 파라미터가 없으므로 simple 프로토콜 = 배치 전체가 하나의 암묵적 트랜잭션이고,
+  // 첫 줄의 advisory lock이 커밋까지 유지된다. lock_timeout으로 무한 대기 대신
+  // 실패시키고(컨테이너가 재시작하며 재시도) 버전 기록도 같은 트랜잭션에 넣는다.
+  await sql.unsafe(`
+    SELECT pg_advisory_xact_lock(4919, 1);
+    SET LOCAL lock_timeout = '120s';
+    ${SCHEMA_SQL}
+    INSERT INTO app_settings (key, value)
+    VALUES ('schema:version', '"${SCHEMA_VERSION}"'::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
   `);
 }
 
