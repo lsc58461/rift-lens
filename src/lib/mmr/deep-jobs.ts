@@ -236,22 +236,30 @@ interface RunnerLock {
 interface QueueEntry {
   key: string;
   at: number;
+  /** 백그라운드(전체 갱신·크론) 요청 — 사용자 검색보다 항상 뒤에 선다 */
+  bg?: boolean;
 }
 
+// 대기열은 "사용자 검색 먼저, 백그라운드는 뒤"로 정렬해 돌려준다. 전체 갱신이
+// 러너 락을 잡고 대기열에 시드 소환사를 줄줄이 넣으면, 직접 검색한 사람이 그
+// 뒤에서 몇 분씩 기다리던 문제 — 같은 그룹 안에서는 선착순(안정 정렬).
+// 백그라운드 항목은 상위 순번 보존(QUEUE_TOP_KEEP)도 받지 않는다: 갱신 스윕은
+// 다시 폴링하지 않으므로 1분 뒤 자연 소멸하고, 다음 라운드가 다시 시도한다.
 async function getQueue(): Promise<QueueEntry[]> {
   const q = (await cache.get<QueueEntry[]>(QUEUE_KEY)) ?? [];
   const now = Date.now();
   const kept: QueueEntry[] = [];
+  let topKept = 0;
   for (const e of q) {
     const age = now - e.at;
-    if (
-      age < QUEUE_ENTRY_TTL_MS ||
-      (kept.length < QUEUE_TOP_KEEP && age < QUEUE_ENTRY_MAX_MS)
-    ) {
+    if (age < QUEUE_ENTRY_TTL_MS) {
       kept.push(e);
+    } else if (!e.bg && topKept < QUEUE_TOP_KEEP && age < QUEUE_ENTRY_MAX_MS) {
+      kept.push(e);
+      topKept++;
     }
   }
-  return kept;
+  return kept.sort((a, b) => Number(!!a.bg) - Number(!!b.bg));
 }
 
 // "deepjob:kr:이름#태그" → 분석 파라미터 (스케줄러가 헤드의 잡을 대신 시작할 때 사용)
@@ -280,17 +288,27 @@ export async function ensureQueuedAndSchedule(
   gameName: string,
   tagLine: string,
   startJob: (p: PlatformRegion, g: string, t: string) => void,
+  opts: { background?: boolean } = {},
 ): Promise<{ selfStarted: boolean; ahead: number }> {
   const selfKey = jobKey(platform, gameName, tagLine);
   const now = Date.now();
   let queue = await getQueue();
+  const bg = opts.background === true;
 
   let index = queue.findIndex((e) => e.key === selfKey);
   if (index === -1) {
-    queue.push({ key: selfKey, at: now });
-    index = queue.length - 1;
+    queue.push({ key: selfKey, at: now, ...(bg ? { bg: true } : {}) });
+    // 백그라운드는 맨 뒤(사용자 뒤)에 붙는다 — 정렬을 다시 적용
+    queue.sort((a, b) => Number(!!a.bg) - Number(!!b.bg));
+    index = queue.findIndex((e) => e.key === selfKey);
   } else {
     queue[index].at = now; // 폴링 생존 신호
+    // 갱신이 넣어둔 항목을 사용자가 직접 검색하면 사용자 우선순위로 승격
+    if (!bg && queue[index].bg) {
+      delete queue[index].bg;
+      queue.sort((a, b) => Number(!!a.bg) - Number(!!b.bg));
+      index = queue.findIndex((e) => e.key === selfKey);
+    }
   }
 
   const holder = await cache.get<RunnerLock>(RUNNER_LOCK_KEY);

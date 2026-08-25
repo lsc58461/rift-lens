@@ -167,12 +167,18 @@ export async function runRefreshSweep(opts: {
       // 2) 이어서 정밀 분석 — 완료까지 기다린 뒤 다음 소환사로 (러너 락 존중)
       if (!deepBlocked && elapsed() < opts.deepDeadlineMs) {
         let deepRun: Promise<void> | null = null;
-        await ensureQueuedAndSchedule(r.region, r.gameName, r.tagLine, (p, g, t) => {
-          // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
-          // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=30) 빌드를 한 번에 다
-          // 수확해 백필거리를 남기지 않는다 (인터랙티브 검색은 기본 10 유지).
-          deepRun = runDeepAnalysis(p, g, t, 30);
-        });
+        await ensureQueuedAndSchedule(
+          r.region,
+          r.gameName,
+          r.tagLine,
+          (p, g, t) => {
+            // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
+            // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=30) 빌드를 한 번에 다
+            // 수확해 백필거리를 남기지 않는다 (인터랙티브 검색은 기본 10 유지).
+            deepRun = runDeepAnalysis(p, g, t, 30);
+          },
+          { background: true }, // 사용자 검색이 항상 먼저
+        );
         if (deepRun) {
           await deepRun;
           deepCompleted++;
