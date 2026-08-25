@@ -274,7 +274,7 @@ export function ChampionsTable({
             <span className="w-9 shrink-0 text-center">티어</span>
             <span className="flex-1">챔피언</span>
             <span className="flex items-center justify-end gap-3">
-              <span className="w-16 text-right normal-case">
+              <span className="text-right whitespace-nowrap normal-case">
                 {lane === "all" ? "표본·주포지션" : "표본·점유"}
               </span>
               <span className="w-14 text-right">점수</span>

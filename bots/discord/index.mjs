@@ -7,7 +7,6 @@ import postgres from "postgres";
 const SITE = "https://rift-lens.xyz";
 const CHECK_INTERVAL_MS = 60_000;
 const PATCH_CHECK_INTERVAL_MS = 30 * 60_000; // 새 패치 감지 주기(30분)
-const FEEDBACK_CHECK_INTERVAL_MS = 60_000; // 새 문의 접수 확인 주기
 const FAIL_THRESHOLD = 3; // 연속 실패 N회부터 다운으로 판정 (일시 오류 오탐 방지)
 
 const sql = postgres(process.env.DATABASE_URL, { max: 2, connect_timeout: 10 });
@@ -182,50 +181,6 @@ async function patchLoop() {
   await setLastAnnouncedPatch(latest);
 }
 
-// ── 문의 접수 알림 ───────────────────────────────────────
-// 사이트 /feedback 으로 들어온 문의·버그 신고를 운영자 길드(DISCORD_GUILD_ID)의
-// 알림 채널에만 올린다 — 다른 길드에는 절대 보내지 않는다(이메일 등 개인정보).
-const FEEDBACK_KIND = { inquiry: "문의", bug: "버그 신고", data: "데이터 요청" };
-async function feedbackLoop() {
-  const guildId = process.env.DISCORD_GUILD_ID;
-  if (!guildId) return;
-  const rows = await sql`
-    SELECT id, kind, email, message, summoner, page, created_at
-    FROM feedback WHERE NOT notified ORDER BY id LIMIT 5`.catch(() => []);
-  if (rows.length === 0) return;
-  const target = await sql`
-    SELECT channel_id FROM discord_alert_channels WHERE guild_id = ${guildId}`.catch(() => []);
-  const channelId = target[0]?.channel_id;
-  if (!channelId) return; // 운영자 길드에 /rift-alerts 설정 전이면 다음에
-  let ch;
-  try {
-    ch = await client.channels.fetch(channelId);
-  } catch (e) {
-    console.error("[feedback] 채널 조회 실패:", e?.message);
-    return;
-  }
-  for (const r of rows) {
-    const embed = new EmbedBuilder()
-      .setColor(r.kind === "bug" ? 0xef4444 : r.kind === "data" ? 0xf59e0b : 0x3b82f6)
-      .setTitle(`📨 새 ${FEEDBACK_KIND[r.kind] ?? r.kind} #${r.id}`)
-      .setDescription(r.message.length > 900 ? r.message.slice(0, 900) + "…" : r.message)
-      .addFields(
-        { name: "이메일", value: r.email, inline: true },
-        ...(r.summoner ? [{ name: "소환사", value: r.summoner, inline: true }] : []),
-        ...(r.page ? [{ name: "페이지", value: r.page }] : []),
-      )
-      .setURL(`${SITE}/admin/feedback`)
-      .setTimestamp(new Date(r.created_at));
-    try {
-      await ch.send({ embeds: [embed] });
-      await sql`UPDATE feedback SET notified = true WHERE id = ${r.id}`;
-    } catch (e) {
-      console.error(`[feedback] #${r.id} 알림 실패:`, e?.message);
-      return; // 다음 주기에 다시
-    }
-  }
-}
-
 client.once("clientReady", () => {
   console.log(`[bot] 로그인: ${client.user.tag}, 길드 ${client.guilds.cache.size}개`);
   // 상태에 링크는 클릭이 안 되므로 커맨드 안내를 띄운다 (주소는 봇 프로필 소개에)
@@ -237,8 +192,6 @@ client.once("clientReady", () => {
   setInterval(healthLoop, CHECK_INTERVAL_MS);
   patchLoop().catch(() => {});
   setInterval(() => patchLoop().catch(() => {}), PATCH_CHECK_INTERVAL_MS);
-  feedbackLoop().catch(() => {});
-  setInterval(() => feedbackLoop().catch(() => {}), FEEDBACK_CHECK_INTERVAL_MS);
 });
 
 // 길드에서 쫓겨나면 등록된 알림 채널도 정리

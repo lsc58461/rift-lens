@@ -45,6 +45,12 @@ const STATUS_LABEL: Record<Status, string> = {
   in_progress: "처리 중",
   done: "완료",
 };
+// 상태 전환 버튼 문구 — "처리 중로" 같은 어색한 조사 결합을 피해 동작 서술형으로
+const STATUS_ACTION: Record<Status, string> = {
+  new: "신규로 되돌리기",
+  in_progress: "처리 시작",
+  done: "완료 처리",
+};
 const FILTERS: { value: Status | "all"; label: string }[] = [
   { value: "new", label: "신규" },
   { value: "in_progress", label: "처리 중" },
@@ -113,7 +119,9 @@ export function FeedbackInbox() {
           ? list.filter((e) => e.id !== id)
           : list.map((e) => (e.id === id ? entry : e)),
       );
-      toast.success(body.status ? `${STATUS_LABEL[body.status]}로 바꿨어요` : "메모를 저장했어요");
+      toast.success(
+        body.status ? `상태를 '${STATUS_LABEL[body.status]}'(으)로 바꿨어요` : "메모를 저장했어요",
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "실패했어요");
     } finally {
@@ -160,8 +168,8 @@ export function FeedbackInbox() {
         </CardTitle>
         <CardDescription>
           /feedback 으로 접수된 문의·버그 신고·데이터 요청. 답장은 &quot;메일로 답장&quot;을 눌러
-          지메일에서 직접 보내고, 끝나면 상태를 완료로 바꿔 두세요. 새 접수는 디스코드 알림 채널로도
-          와요.
+          지메일에서 직접 보내고, 끝나면 상태를 완료로 바꿔 두세요. 알림은 따로 없으니 가끔 들러
+          확인하세요.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -265,7 +273,7 @@ export function FeedbackInbox() {
                         disabled={busy === e.id}
                         onClick={() => void patch(e.id, { status: s })}
                       >
-                        {STATUS_LABEL[s]}로
+                        {STATUS_ACTION[s]}
                       </Button>
                     ))}
                   <Button

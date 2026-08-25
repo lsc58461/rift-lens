@@ -215,7 +215,7 @@ const SCHEMA_SQL = `
     ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS puuid text;
     CREATE INDEX IF NOT EXISTS recent_searches_puuid_idx ON recent_searches (puuid);
 
-    -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 디스코드 봇 알림 여부.
+    -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,
       kind text NOT NULL,
