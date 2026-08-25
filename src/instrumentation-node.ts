@@ -10,6 +10,7 @@
 // continue는 멱등이라(라운드가 살아 있으면 무시) 두 인스턴스가 겹쳐도 안전하다.
 // NEXT_MANUAL_SIG_HANDLE=true 여야 Next가 SIGTERM에 즉시 exit하지 않고 우리 훅이 돈다.
 import { getCrawlState, releaseCrawlRound } from "@/lib/crawl-seed";
+import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { getRefreshAllState, releaseRefreshAllRound } from "@/lib/refresh-all";
 import { getRunefillState, releaseRunefillRound } from "@/lib/rune-backfill";
 
@@ -65,11 +66,19 @@ export function registerNode(): void {
     shuttingDown = true;
     try {
       const released = await Promise.race([
-        Promise.all([releaseRefreshAllRound(), releaseRunefillRound(), releaseCrawlRound()]),
+        Promise.all([
+          releaseRefreshAllRound(),
+          releaseRunefillRound(),
+          releaseCrawlRound(),
+          releaseDeepRunnerOnShutdown().then((k) => {
+            if (k) console.log(`[${signal}] 정밀 잡 놓음: ${k} → 대기열 맨 앞`);
+            return !!k;
+          }),
+        ]),
         new Promise<boolean[]>((r) => setTimeout(() => r([]), 5_000)),
       ]);
       if (released.some(Boolean)) {
-        console.log(`[${signal}] 진행 중 라운드 놓음 → 새 인스턴스가 이어받음`);
+        console.log(`[${signal}] 진행 중 작업 놓음 → 새 인스턴스가 이어받음`);
       }
     } finally {
       process.exit(0);

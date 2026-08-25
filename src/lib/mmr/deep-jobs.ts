@@ -404,6 +404,24 @@ async function releaseDeepRunner(key: string): Promise<void> {
   }
 }
 
+/** 프로세스 종료(배포) 직전 — 이 프로세스가 돌리던 정밀 잡은 여기서 죽는다.
+ *  러너 락을 즉시 놓고 잡 상태를 지워, 페이지 폴링이 5분 스테일을 기다리지 않고
+ *  바로 다시 대기열에 넣어 새 인스턴스에서 처음부터(캐시된 매치라 빠름) 돌게 한다.
+ *  반환: 놓은 잡 키(없으면 null). */
+export async function releaseDeepRunnerOnShutdown(): Promise<string | null> {
+  const holder = await cache.get<RunnerLock>(RUNNER_LOCK_KEY).catch(() => null);
+  if (!holder || holder.at === 0) return null;
+  await cache.set<RunnerLock>(RUNNER_LOCK_KEY, { key: holder.key, at: 0 }, 1).catch(() => {});
+  await cache.delete(holder.key).catch(() => {});
+  // 대기열 맨 앞에 다시 세워 다음 폴링(누구의 것이든)이 바로 이어 돌리게 한다
+  const queue = await getQueue().catch(() => [] as QueueEntry[]);
+  if (!queue.some((e) => e.key === holder.key)) {
+    queue.unshift({ key: holder.key, at: Date.now() });
+    await cache.set(QUEUE_KEY, queue, 60 * 15).catch(() => {});
+  }
+  return holder.key;
+}
+
 export function isJobStale(job: DeepJob): boolean {
   return Date.now() - job.updatedAt > JOB_STALE_MS;
 }
