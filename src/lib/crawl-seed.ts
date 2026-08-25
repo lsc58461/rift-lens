@@ -1,32 +1,25 @@
 // 소환사 시드 크롤 — 이미 저장된 매치의 참가자 중 아직 기록되지 않은 소환사를
-// 찾아 빠른 분석을 돌리고 사이트에 등록한다. 외부 도구로 페이지를 순회하던
-// 작업을 관리자 버튼으로 옮긴 것.
+// 찾아 사이트에 "등록만" 한다(라이엇 호출 0). 이름·puuid·티어는 매치 참가자와
+// 랭크 스냅샷에 이미 있으므로 DB만으로 충분하다.
 //
-// 정밀 분석은 돌리지 않는다 — 새벽 크론이 스테일 판정으로 알아서 채운다.
-// 라이엇 호출은 저우선순위라 유저 검색이 들어오면 자동으로 뒤로 밀린다.
+// 전적(빠른 추정 → 정밀 분석 → 빌드 수확)은 전체 유저 데이터 갱신·새벽 크론이
+// 스테일 판정으로 채운다 — 같은 일을 두 곳에서 하지 않는다. 등록 시각은 먼
+// 과거로 박아 갱신 순회에서 실제 유저 뒤에 오게 하고 홈 최근 검색에도 안 섞이게 한다.
 
 import "server-only";
-import {
-  ensureQueuedAndSchedule,
-  runDeepAnalysis,
-  runQuickAnalysis,
-} from "@/lib/mmr/deep-jobs";
-import { recordSearch } from "@/lib/recent";
+import { pointsToRank, rankToPoints } from "@/lib/mmr/rank";
 import { riotKeyFp } from "@/lib/riot/client";
-import { withLowPriority } from "@/lib/riot/limiter";
 import { getSql } from "@/lib/db";
 import { chainNextRound } from "@/lib/round-chain";
-import { getSetting, setSetting } from "@/lib/store";
-import { canon } from "@/lib/identity";
+import { getSetting, setSetting, upsertRecentSearch } from "@/lib/store";
 
 const STATE_KEY = "crawl:state";
 const MAX_TARGET = 10_000; // 한 번에 수집할 최대 소환사 수
-const PER_ROUND = 3; // 라운드당 분석할 후보 수
+const PER_ROUND = 200; // 라운드당 등록 수 — DB만 쓰므로 크게 잡아도 된다
 // 라운드 상한은 목표를 채우는 데 필요한 만큼 + 여유 — 폭주 방지용일 뿐
-// 목표 상한(10000명 ÷ 라운드당 3명 ≈ 3334라운드) 기준으로 넉넉히 잡는다
-const MAX_ROUNDS = 4000;
+// 목표 상한(10000명 ÷ 라운드당 200명 = 50라운드) 기준으로 넉넉히 잡는다
+const MAX_ROUNDS = 400;
 const ROUND_STALE_MS = 300_000;
-const SKIP_TTL = "7 days"; // 실패한 후보를 다시 시도하기까지의 유예
 
 export type CrawlMode = "balanced" | "recent";
 
@@ -36,8 +29,8 @@ export interface CrawlState {
   done: boolean;
   target: number; // 이번 실행에서 수집할 소환사 수
   mode: CrawlMode; // balanced = 표본이 부족한 티어 우선
-  withDeep: boolean; // 수집 직후 정밀 분석까지 실행할지
-  deepDone: number; // 정밀까지 끝낸 수
+  withDeep: boolean; // (구버전 호환, 미사용 — 등록만 하므로 정밀은 갱신이 담당)
+  deepDone: number; // (구버전 호환, 미사용)
   lastTier: string | null; // 직전 라운드가 타깃한 티어 (balanced 전용)
   rounds: number;
   analyzed: number;
@@ -107,6 +100,23 @@ export async function releaseCrawlRound(): Promise<boolean> {
 interface Candidate {
   name: string;
   tag: string;
+  puuid: string;
+  tier: string | null;
+  rank: string | null;
+  lp: number | null;
+}
+
+/** 등록 시각 — 갱신 순회(최근 검색순)에서 실제 유저 뒤로, 홈 최근 검색 밖으로 */
+const SEED_SEARCHED_AT = new Date("2000-01-01T00:00:00Z");
+
+/** 스냅샷 랭크로 표시용 라벨을 만든다 (정밀 갱신 전까지의 임시 값) */
+function snapshotLabel(c: Candidate): string | null {
+  if (!c.tier) return null;
+  try {
+    return pointsToRank(rankToPoints(c.tier, c.rank ?? "IV", c.lp ?? 0)).label;
+  } catch {
+    return null;
+  }
 }
 
 const TIER_LADDER = [
@@ -175,7 +185,7 @@ async function pickTargetTier(): Promise<string | null> {
   return best;
 }
 
-/** 특정 티어(스냅샷 기준)의 미수집 소환사를 매치 묶음 순서로 뽑는다 */
+/** 특정 티어(최신 스냅샷 기준)의 미등록 소환사를 매치 묶음 순서로 뽑는다 */
 async function findTierCandidates(
   tier: string,
   limit: number,
@@ -183,29 +193,31 @@ async function findTierCandidates(
   const sql = await getSql();
   const fp = riotKeyFp();
   const rows = await sql`
-    SELECT name, tag FROM (
+    SELECT name, tag, puuid, tier, rank, lp FROM (
       SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
              p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
+             p->>'puuid' AS puuid,
+             ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp,
              m.match_id AS mid, m.game_creation AS gc
       FROM matches m
       CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
+      INNER JOIN LATERAL (
+        SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
+        WHERE l.fp = m.fp AND l.platform = m.platform AND l.puuid = p->>'puuid'
+          AND l.solo_tier IS NOT NULL
+        ORDER BY l.created_at DESC LIMIT 1) ls ON true
       WHERE m.fp = ${fp}
         AND coalesce(p->>'riotIdGameName', '') <> ''
         AND coalesce(p->>'riotIdTagline', '') <> ''
-        AND EXISTS (
-          SELECT 1 FROM league_snapshots ls
-          WHERE ls.fp = m.fp AND ls.puuid = p->>'puuid'
-            AND ls.solo_tier = ${tier})
+        AND coalesce(p->>'puuid', '') <> ''
+        AND ls.solo_tier = ${tier}
         AND NOT EXISTS (
           SELECT 1 FROM recent_searches r
           WHERE r.platform = m.platform
             AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
             AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
         AND NOT EXISTS (
-          SELECT 1 FROM cache_entries c
-          WHERE c.key = 'crawl-skip:' || lower(trim(p->>'riotIdGameName'))
-                        || '#' || lower(trim(p->>'riotIdTagline'))
-            AND c.expires_at > now())
+          SELECT 1 FROM recent_searches r WHERE r.puuid = p->>'puuid')
       ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
                m.game_creation DESC
     ) s
@@ -214,32 +226,36 @@ async function findTierCandidates(
   return rows as unknown as Candidate[];
 }
 
-/** 저장된 매치의 참가자 중 미기록·미실패 소환사를 뽑는다.
- * 같은 경기 참가자를 연달아 처리하면 서로의 로비·최근 경기가 겹쳐 랭크 캐시
- * 적중이 올라간다(=라이엇 호출 절약) — 그래서 무작위 대신 최신 매치 순으로 묶는다. */
+/** 저장된 매치의 참가자 중 미등록 소환사를 최신 매치 순으로 뽑는다
+ * (같은 경기 참가자가 묶여 나오면 나중에 갱신할 때 로비·경기가 겹쳐 캐시 적중이 오른다) */
 async function findCandidates(limit: number): Promise<Candidate[]> {
   const sql = await getSql();
   const fp = riotKeyFp();
   const rows = await sql`
-    SELECT name, tag FROM (
+    SELECT name, tag, puuid, tier, rank, lp FROM (
       SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
              p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
+             p->>'puuid' AS puuid,
+             ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp,
              m.match_id AS mid, m.game_creation AS gc
       FROM matches m
       CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
+      LEFT JOIN LATERAL (
+        SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
+        WHERE l.fp = m.fp AND l.platform = m.platform AND l.puuid = p->>'puuid'
+          AND l.solo_tier IS NOT NULL
+        ORDER BY l.created_at DESC LIMIT 1) ls ON true
       WHERE m.fp = ${fp}
         AND coalesce(p->>'riotIdGameName', '') <> ''
         AND coalesce(p->>'riotIdTagline', '') <> ''
+        AND coalesce(p->>'puuid', '') <> ''
         AND NOT EXISTS (
           SELECT 1 FROM recent_searches r
           WHERE r.platform = m.platform
             AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
             AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
         AND NOT EXISTS (
-          SELECT 1 FROM cache_entries c
-          WHERE c.key = 'crawl-skip:' || lower(trim(p->>'riotIdGameName'))
-                        || '#' || lower(trim(p->>'riotIdTagline'))
-            AND c.expires_at > now())
+          SELECT 1 FROM recent_searches r WHERE r.puuid = p->>'puuid')
       ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
                m.game_creation DESC
     ) s
@@ -248,17 +264,7 @@ async function findCandidates(limit: number): Promise<Candidate[]> {
   return rows as unknown as Candidate[];
 }
 
-/** 실패한 후보는 한동안 다시 뽑지 않는다 (닉변·삭제 계정이 무한 재시도되는 것 방지) */
-async function markSkip(c: Candidate): Promise<void> {
-  const sql = await getSql();
-  const key = `crawl-skip:${canon(c.name)}#${canon(c.tag)}`;
-  await sql`
-    INSERT INTO cache_entries (key, value, expires_at)
-    VALUES (${key}, ${sql.json({ at: Date.now() })}, now() + ${SKIP_TTL}::interval)
-    ON CONFLICT (key) DO UPDATE SET expires_at = EXCLUDED.expires_at`;
-}
-
-/** 한 라운드: 후보 몇 명을 빠른 분석하고 최근 검색에 등록한다.
+/** 한 라운드: 후보를 DB 정보만으로 최근 검색에 등록한다 (라이엇 호출 없음).
  * origin이 있으면 라운드 후 서버가 스스로 다음 라운드를 잇는다. */
 export async function runCrawlRound(origin?: string): Promise<void> {
   let state = await getCrawlState();
@@ -292,44 +298,26 @@ export async function runCrawlRound(origin?: string): Promise<void> {
 
     let analyzed = 0;
     let failed = 0;
-    let deepDone = 0;
-    const roundStart = Date.now();
+    let i = 0;
     for (const c of candidates) {
-      // 정밀까지 돌리면 명당 시간이 길다 — 함수 제한 안에서 안전하게 중단
-      if (Date.now() - roundStart > 200_000) break;
-      // 후보 하나(~30초)마다 취소 확인
-      const live = await getCrawlState();
-      if (!live?.running) break;
+      // 20명마다 취소 확인
+      if (i++ % 20 === 0 && !((await getCrawlState())?.running ?? false)) break;
       try {
-        const result = await withLowPriority(() =>
-          runQuickAnalysis("kr", c.name, c.tag),
-        );
-        await recordSearch({
-          region: "kr",
-          gameName: result.account.gameName,
-          tagLine: result.account.tagLine,
-          currentLabel: result.currentRank?.label ?? null,
-          currentTier: result.currentRank?.tier ?? null,
-          estimatedLabel: result.estimatedRank?.label ?? null,
-          estimatedTier: result.estimatedRank?.tier ?? null,
-          estimatedPoints: result.estimatedPoints,
+        await upsertRecentSearch({
+          platform: "kr",
+          gameName: c.name.trim(),
+          tagLine: c.tag.trim(),
+          currentLabel: snapshotLabel(c),
+          currentTier: c.tier,
+          estimatedLabel: null,
+          estimatedTier: null,
+          estimatedPoints: null,
+          puuid: c.puuid,
+          searchedAt: SEED_SEARCHED_AT,
         });
         analyzed++;
-        // 옵션: 정밀 분석까지 — 러너 락이 비어 있을 때만 즉시 실행하고,
-        // 막혀 있으면 건너뛴다(새벽 갱신이 이어받음)
-        if (state.withDeep) {
-          let deepRun: Promise<void> | null = null;
-          await ensureQueuedAndSchedule("kr", c.name, c.tag, (p, g, t) => {
-            deepRun = runDeepAnalysis(p, g, t);
-          }).catch(() => {});
-          if (deepRun) {
-            await withLowPriority(() => deepRun as Promise<void>);
-            deepDone++;
-          }
-        }
       } catch {
         failed++;
-        await markSkip(c).catch(() => {});
       }
     }
 
@@ -341,7 +329,6 @@ export async function runCrawlRound(origin?: string): Promise<void> {
       rounds: state.rounds + 1,
       analyzed: state.analyzed + analyzed,
       failed: state.failed + failed,
-      deepDone: (state.deepDone ?? 0) + deepDone,
       lastTier: pickedTier,
       lastError: null,
     });

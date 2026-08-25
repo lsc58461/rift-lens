@@ -55,7 +55,6 @@ export function CrawlCard() {
   const [state, setState] = useState<State | null>(null);
   const [target, setTarget] = useState<number>(30);
   const [mode, setMode] = useState<"balanced" | "recent">("balanced");
-  const [withDeep, setWithDeep] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -94,7 +93,7 @@ export function CrawlCard() {
     try {
       const qs =
         action === "start"
-          ? `action=start&target=${target}&mode=${mode}&deep=${withDeep ? 1 : 0}`
+          ? `action=start&target=${target}&mode=${mode}`
           : "action=stop";
       const res = await fetch(`/api/admin/crawl?${qs}`, { method: "POST" });
       if (!res.ok) {
@@ -143,10 +142,10 @@ export function CrawlCard() {
           )}
         </CardTitle>
         <CardDescription>
-          저장된 경기의 참가자 중 아직 기록되지 않은 소환사를 찾아 빠른 분석으로
-          등록합니다. 균형 모드는 랭크 스냅샷을 참고해 표본이 부족한 티어부터
-          채워요. 라이엇 호출은 저우선순위라 유저 검색이 먼저 처리되고,
-          시작해두면 탭을 닫아도 서버가 알아서 완주합니다.
+          저장된 경기의 참가자 중 아직 기록되지 않은 소환사를 찾아 등록만
+          합니다 — 라이엇 호출 없이 DB 정보(이름·puuid·스냅샷 티어)만 쓰므로
+          빠르고, 전적·정밀 분석은 전체 유저 데이터 갱신과 새벽 크론이 이어서
+          채워요. 균형 모드는 표본이 부족한 티어부터 채웁니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -159,7 +158,6 @@ export function CrawlCard() {
                 <span className="text-xs font-normal text-muted-foreground">
                   {" "}
                   / {state.target}
-                  {state.withDeep && ` · 정밀 ${state.deepDone ?? 0}`}
                 </span>
               </div>
             </div>
@@ -189,20 +187,6 @@ export function CrawlCard() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {!state?.running && (
-            <button
-              type="button"
-              onClick={() => setWithDeep(!withDeep)}
-              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                withDeep
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent"
-              }`}
-              title="켜면 수집 직후 정밀 분석까지 실행해요 — 명당 시간이 약 2분으로 늘어납니다"
-            >
-              정밀 분석까지 {withDeep ? "ON" : "OFF"}
-            </button>
-          )}
           {!state?.running && (
             <div className="flex items-center gap-1 rounded-md border p-0.5">
               {(

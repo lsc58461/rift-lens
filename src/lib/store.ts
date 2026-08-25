@@ -455,6 +455,8 @@ export interface RecentSearchInput {
   estimatedTier: string | null;
   estimatedPoints: number | null;
   puuid?: string | null; // 닉변 승계용
+  /** 등록 시각 지정 — 시드 수집이 먼 과거로 박아 실제 검색 뒤에 오게 한다 */
+  searchedAt?: Date;
 }
 
 export async function upsertRecentSearch(r: RecentSearchInput): Promise<void> {
@@ -467,13 +469,14 @@ export async function upsertRecentSearch(r: RecentSearchInput): Promise<void> {
     VALUES (${r.platform}, ${canon(r.gameName)}, ${canon(r.tagLine)},
             ${r.gameName}, ${r.tagLine}, ${r.currentLabel}, ${r.currentTier},
             ${r.estimatedLabel}, ${r.estimatedTier}, ${r.estimatedPoints},
-            ${r.puuid ?? null}, now())
+            ${r.puuid ?? null}, ${r.searchedAt ?? new Date()})
     ON CONFLICT (platform, game_name_lower, tag_line_lower) DO UPDATE
     SET game_name = EXCLUDED.game_name, tag_line = EXCLUDED.tag_line,
         current_label = EXCLUDED.current_label, current_tier = EXCLUDED.current_tier,
         estimated_label = EXCLUDED.estimated_label, estimated_tier = EXCLUDED.estimated_tier,
         estimated_points = EXCLUDED.estimated_points,
-        puuid = COALESCE(EXCLUDED.puuid, recent_searches.puuid), searched_at = now()`;
+        puuid = COALESCE(EXCLUDED.puuid, recent_searches.puuid),
+        searched_at = GREATEST(recent_searches.searched_at, EXCLUDED.searched_at)`;
 }
 
 export interface RecentSearchRow {
