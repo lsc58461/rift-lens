@@ -32,12 +32,18 @@ export interface RefreshAllState {
   failed: number;
   /** 연속으로 아무 일도 못 한 라운드 수 — 이게 쌓이면 종료한다 */
   idleRounds: number;
-  /** 이번 라운드에서 훑은 소환사 수 (실시간 진행 표시용) */
+  /** 현재 바퀴에서 훑은 위치 (목록 전체 기준 절대 위치, 실시간 진행 표시용) */
   scanned: number;
   /** 전체 순회 대상 소환사 수 */
   target: number;
-  /** 라운드를 통틀어 도달한 최고 스캔 위치 — 남은 시간 추정용(라운드마다 재스캔하므로) */
-  peakScanned: number;
+  /** 다음 라운드가 이어서 볼 목록 위치 — 라운드는 처음부터가 아니라 여기서부터 */
+  cursor: number;
+  /** 완료한 바퀴 수 */
+  passes: number;
+  /** 현재 바퀴에서 한 일(빠른 갱신+정밀) — 한 바퀴 다 돌았는데 0이면 끝 */
+  passWork: number;
+  /** 현재 바퀴 시작 시각 — 남은 시간 추정은 바퀴 단위 속도로 */
+  passStartedAt: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -55,7 +61,10 @@ function empty(): RefreshAllState {
     idleRounds: 0,
     scanned: 0,
     target: 0,
-    peakScanned: 0,
+    cursor: 0,
+    passes: 0,
+    passWork: 0,
+    passStartedAt: Date.now(),
     startedAt: Date.now(),
     updatedAt: Date.now(),
     lastError: null,
@@ -104,7 +113,10 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   }
 
   // 라운드 시작 표시 (하트비트 겸용) — 원자적 점유라 동시 트리거는 하나만 통과
-  const claimed = await claimRound<RefreshAllState>(STATE_KEY, ROUND_STALE_MS, { scanned: 0 });
+  const cursor = state.cursor ?? 0;
+  const claimed = await claimRound<RefreshAllState>(STATE_KEY, ROUND_STALE_MS, {
+    scanned: cursor,
+  });
   if (!claimed) return;
   state = claimed;
 
@@ -129,18 +141,14 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
+      startIndex: cursor,
       shouldContinue,
       onProgress: async (p) => {
         if (Date.now() - lastProgressSave < 2_000) return;
         lastProgressSave = Date.now();
         const cur = await getRefreshAllState();
         if (!cur?.running) return;
-        await save({
-          ...cur,
-          scanned: p.scanned,
-          target: p.total,
-          peakScanned: Math.max(cur.peakScanned ?? 0, p.scanned),
-        });
+        await save({ ...cur, scanned: p.scanned, target: p.total });
       },
     });
 
@@ -153,6 +161,8 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       if (fresh) await save({ ...fresh, roundActive: false });
       return;
     }
+    const didWork = refreshed > 0 || deep > 0;
+    const passWork = (fresh.passWork ?? 0) + refreshed + deep;
     state = {
       ...fresh,
       roundActive: false,
@@ -160,6 +170,12 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       refreshed: state.refreshed + refreshed,
       deepCompleted: state.deepCompleted + deep,
       failed: state.failed + d.failed,
+      target: d.total,
+      scanned: d.nextIndex,
+      cursor: d.reachedEnd ? 0 : d.nextIndex,
+      passes: fresh.passes ?? 0,
+      passWork,
+      passStartedAt: fresh.passStartedAt ?? fresh.startedAt,
       // 실패가 있으면 첫 몇 건의 사유를 남겨 진단 가능하게 한다
       lastError: d.failures.length
         ? d.failures
@@ -168,16 +184,21 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
             .join(" | ")
         : null,
     };
-    // 한 라운드가 놀았다고 곧장 끝내면 안 된다 — 목록 앞쪽이 최신이라 건너뛰었을
-    // 뿐이거나, 러너 락이 잡혀 정밀을 못 돌린 것일 수 있다. 크론이 "남은 작업 없음"을
-    // 알려주고 연속으로 놀았을 때만 종료한다.
-    const didWork = refreshed > 0 || deep > 0;
-    state.idleRounds = didWork ? 0 : state.idleRounds + 1;
-    if (!didWork && !d.remaining && state.idleRounds >= 2) {
-      state.running = false;
-      state.done = true;
-    } else if (state.idleRounds >= 5) {
-      // 남은 작업이 있다고 하는데도 계속 진전이 없으면(락 점유 등) 멈춘다
+    // 진전 없는 라운드 카운트 — 러너 락이 다른 분석에 잡혀 계속 못 도는 경우 감지
+    state.idleRounds = didWork ? 0 : (fresh.idleRounds ?? 0) + 1;
+    if (d.reachedEnd) {
+      // 한 바퀴 완료. 바퀴 내내 한 일이 없고 정밀 대기도 없으면 더 할 게 없다
+      if (passWork === 0 && !d.deepPending) {
+        state.running = false;
+        state.done = true;
+      } else {
+        state.passes = (fresh.passes ?? 0) + 1;
+        state.passWork = 0;
+        state.passStartedAt = Date.now();
+        state.scanned = 0;
+      }
+    } else if (state.idleRounds >= 8) {
+      // 이어서 돌 목록은 남았는데 8라운드 연속 아무것도 못 했으면(락 점유 등) 멈춘다
       state.running = false;
       state.done = true;
       state.lastError = "진전이 없어 종료했어요 (다른 분석이 실행 중일 수 있음)";

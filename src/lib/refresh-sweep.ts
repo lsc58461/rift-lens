@@ -59,6 +59,12 @@ export interface SweepResult {
   failures: { who: string; error: string }[];
   /** brokeEarly 또는 deepPending — 다음 스윕이 이어받을 작업이 남음 */
   remaining: boolean;
+  /** 다음 스윕이 이어서 볼 목록 위치 (끝까지 돌았으면 목록 길이) */
+  nextIndex: number;
+  /** 목록 끝까지 훑었는지 — false면 예산/취소로 중간에 멈춘 것 */
+  reachedEnd: boolean;
+  /** 목록 전체 길이 */
+  total: number;
 }
 
 export async function runRefreshSweep(opts: {
@@ -70,7 +76,11 @@ export async function runRefreshSweep(opts: {
   deepDeadlineMs: number;
   /** false를 돌려주면 다음 소환사로 넘어가지 않고 즉시 중단 (취소 반영) */
   shouldContinue?: () => Promise<boolean>;
-  /** 소환사 하나를 처리할 때마다 호출 — 라운드 중 실시간 진행 표시용 */
+  /** 목록에서 이어서 볼 시작 위치 — 라운드마다 처음부터 재스캔하면 앞쪽
+   *  소환사들의 최신 매치 확인(라이엇 콜)에 예산을 다 써서 뒤로 못 간다 */
+  startIndex?: number;
+  /** 소환사 하나를 처리할 때마다 호출 — 라운드 중 실시간 진행 표시용.
+   *  scanned는 목록 전체 기준 절대 위치 */
   onProgress?: (p: {
     scanned: number;
     total: number;
@@ -81,13 +91,15 @@ export async function runRefreshSweep(opts: {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
   // 상한을 두면 그 뒤 소환사는 자동 갱신에서 영영 빠진다 — 전량 순회한다
-  const recent = await getRecentSearches(Infinity); // 최근 검색 순
-  let scanned = 0;
+  const all = await getRecentSearches(Infinity); // 최근 검색 순
+  const startIndex = Math.min(Math.max(0, opts.startIndex ?? 0), all.length);
+  const recent = all.slice(startIndex);
+  let scanned = 0; // 이번 스윕에서 처리(또는 건너뜀)한 수
   const reportProgress = async () => {
     scanned++;
     await opts.onProgress?.({
-      scanned,
-      total: recent.length,
+      scanned: startIndex + scanned,
+      total: all.length,
       refreshed: quickRefreshed.length,
       deepCompleted,
     });
@@ -202,5 +214,8 @@ export async function runRefreshSweep(opts: {
     failed,
     failures,
     remaining: brokeEarly || deepPending,
+    nextIndex: startIndex + scanned,
+    reachedEnd: !brokeEarly,
+    total: all.length,
   };
 }

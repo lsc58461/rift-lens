@@ -29,7 +29,9 @@ interface State {
   lastError: string | null;
   scanned?: number;
   target?: number;
-  peakScanned?: number;
+  cursor?: number;
+  passes?: number;
+  passStartedAt?: number;
   startedAt?: number;
 }
 
@@ -107,14 +109,15 @@ export function RefreshAllCard() {
               진행 중
               {state.target ? (
                 <span className="tabular-nums">
-                  · {state.rounds + 1}라운드 스캔 {state.scanned ?? 0}/{state.target}
-                  {state.startedAt ? (
+                  · {(state.passes ?? 0) + 1}바퀴 {state.rounds + 1}라운드 · {state.scanned ?? 0}/
+                  {state.target}
+                  {state.passStartedAt ?? state.startedAt ? (
                     <>
                       {" · 남은 시간 "}
                       {formatEta(
                         estimateEtaMs({
-                          startedAt: state.startedAt,
-                          done: Math.max(state.peakScanned ?? 0, state.scanned ?? 0),
+                          startedAt: state.passStartedAt ?? state.startedAt!,
+                          done: state.scanned ?? 0,
                           total: state.target,
                         }),
                       )}

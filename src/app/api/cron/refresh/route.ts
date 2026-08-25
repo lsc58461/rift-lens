@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
   let failed = 0;
   let cycles = 0;
   let last: SweepResult | null = null;
+  let cursor = 0; // 사이클마다 처음부터가 아니라 이어서 훑는다
 
   // 새벽 창 안에서 작업이 남아 있는 동안 반복. 창 밖(수동 호출)에선 1회만.
   do {
@@ -71,7 +72,9 @@ export async function GET(req: NextRequest) {
       limit,
       budgetMs: SWEEP_BUDGET_MS,
       deepDeadlineMs: DEEP_START_DEADLINE_MS,
+      startIndex: cursor,
     });
+    cursor = last.reachedEnd ? 0 : last.nextIndex;
     quickRefreshed.push(...last.quickRefreshed);
     deepCompleted += last.deepCompleted;
     skipped += last.skipped;
