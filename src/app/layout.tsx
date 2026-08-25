@@ -135,6 +135,14 @@ export default function RootLayout({
               <Link href="/faq" className="hover:text-foreground hover:underline">
                 자주 묻는 질문
               </Link>
+              <span aria-hidden>·</span>
+              <Link href="/terms" className="hover:text-foreground hover:underline">
+                이용약관
+              </Link>
+              <span aria-hidden>·</span>
+              <Link href="/privacy" className="hover:text-foreground hover:underline">
+                개인정보처리방침
+              </Link>
             </div>
             Rift Lens는 Riot Games의 공식 서비스가 아니며, 추정치는 참고용입니다.
           </footer>
