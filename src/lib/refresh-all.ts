@@ -175,7 +175,8 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       cursor: d.reachedEnd ? 0 : d.nextIndex,
       passes: fresh.passes ?? 0,
       passWork,
-      passStartedAt: fresh.passStartedAt ?? fresh.startedAt,
+      // 커서 도입 전에 시작된 작업은 첫 커서 라운드를 바퀴 시작으로 본다(ETA 과대 방지)
+      passStartedAt: fresh.passStartedAt ?? Date.now(),
       // 실패가 있으면 첫 몇 건의 사유를 남겨 진단 가능하게 한다
       lastError: d.failures.length
         ? d.failures
