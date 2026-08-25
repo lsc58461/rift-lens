@@ -34,6 +34,21 @@ const FILTERS: { key: "all" | AnalysisState; label: string }[] = [
   { key: "none", label: "캐시 만료" },
 ];
 
+const TIER_OPTIONS: { key: string; label: string }[] = [
+  { key: "all", label: "모든 티어" },
+  { key: "CHALLENGER", label: "챌린저" },
+  { key: "GRANDMASTER", label: "그랜드마스터" },
+  { key: "MASTER", label: "마스터" },
+  { key: "DIAMOND", label: "다이아몬드" },
+  { key: "EMERALD", label: "에메랄드" },
+  { key: "PLATINUM", label: "플래티넘" },
+  { key: "GOLD", label: "골드" },
+  { key: "SILVER", label: "실버" },
+  { key: "BRONZE", label: "브론즈" },
+  { key: "IRON", label: "아이언" },
+  { key: "none", label: "티어 없음" },
+];
+
 const PAGE_SIZE = 50;
 
 export function SummonersPanel() {
@@ -41,6 +56,7 @@ export function SummonersPanel() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [filter, setFilter] = useState<"all" | AnalysisState>("all");
+  const [tier, setTier] = useState("all");
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(true);
 
@@ -53,7 +69,7 @@ export function SummonersPanel() {
   // 검색어·필터가 바뀌면 첫 페이지로
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ, filter]);
+  }, [debouncedQ, filter, tier]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -63,6 +79,7 @@ export function SummonersPanel() {
         size: PAGE_SIZE,
         q: debouncedQ,
         filter,
+        tier,
       });
       if (d) setData(d);
     } catch {
@@ -70,7 +87,7 @@ export function SummonersPanel() {
     } finally {
       setBusy(false);
     }
-  }, [page, debouncedQ, filter]);
+  }, [page, debouncedQ, filter, tier]);
 
   useEffect(() => {
     load();
@@ -111,6 +128,24 @@ export function SummonersPanel() {
             className="pl-9"
           />
         </div>
+        <select
+          value={tier}
+          onChange={(e) => setTier(e.target.value)}
+          className="h-9 shrink-0 rounded-md border bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          aria-label="티어 필터"
+        >
+          {TIER_OPTIONS.map((t) => {
+            const n =
+              t.key === "all"
+                ? Object.values(data?.tierCounts ?? {}).reduce((a, b) => a + b, 0)
+                : (data?.tierCounts?.[t.key] ?? 0);
+            return (
+              <option key={t.key} value={t.key}>
+                {t.label} ({n.toLocaleString()})
+              </option>
+            );
+          })}
+        </select>
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {total}명 중 {from}–{to} · 전체 {data?.totalAll ?? 0}명
         </span>

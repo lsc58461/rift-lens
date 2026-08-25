@@ -55,6 +55,7 @@ export interface SummonerPage {
   total: number;
   totalAll: number;
   counts: Record<AnalysisState, number>;
+  tierCounts?: Record<string, number>;
   page: number;
   size: number;
 }
@@ -64,12 +65,14 @@ export async function fetchSummonerPage(params: {
   size: number;
   q: string;
   filter: AnalysisState | "all";
+  tier?: string;
 }): Promise<SummonerPage | null> {
   const qs = new URLSearchParams({
     page: String(params.page),
     size: String(params.size),
     q: params.q,
     filter: params.filter,
+    tier: params.tier ?? "all",
   });
   const res = await fetch(`/api/admin/summoners?${qs}`);
   return res.ok ? ((await res.json()) as SummonerPage) : null;

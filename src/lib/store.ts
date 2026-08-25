@@ -931,10 +931,31 @@ const AGG_SQL = `
      AND a.game_name_lower = r.game_name_lower
      AND a.tag_line_lower = r.tag_line_lower`;
 
-/** 상태별 개수 (검색어만 반영) */
+// 티어 필터 조건 — 'all' 전체, 'none' 티어 없음(언랭·미수집), 그 외 current_tier 일치
+const TIER_WHERE = (param: string) =>
+  `(${param} = 'all' OR (${param} = 'none' AND r.current_tier IS NULL) OR r.current_tier = ${param})`;
+
+/** 티어별 개수 (검색어만 반영) — 관리자 티어 필터 드롭다운용 */
+export async function adminTierCounts(q: string): Promise<Record<string, number>> {
+  const sql = await getSql();
+  const like = `%${q.toLowerCase()}%`;
+  const rows = await sql.unsafe(
+    `SELECT coalesce(r.current_tier, 'none') AS tier, count(*)::int AS n
+     FROM recent_searches r
+     WHERE ($1 = '%%' OR lower(r.game_name || '#' || r.tag_line) LIKE $1)
+     GROUP BY 1`,
+    [like],
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows as unknown as { tier: string; n: number }[]) out[r.tier] = r.n;
+  return out;
+}
+
+/** 상태별 개수 (검색어·티어 반영) */
 export async function adminSummonerCounts(
   algoVersion: number,
   q: string,
+  tier = "all",
 ): Promise<Record<string, number>> {
   const sql = await getSql();
   const like = `%${q.toLowerCase()}%`;
@@ -942,8 +963,9 @@ export async function adminSummonerCounts(
     `SELECT ${STATE_SQL} AS state, count(*)::int AS n
      FROM recent_searches r ${AGG_SQL}
      WHERE ($2 = '%%' OR lower(r.game_name || '#' || r.tag_line) LIKE $2)
+       AND ${TIER_WHERE("$3")}
      GROUP BY 1`,
-    [algoVersion, like],
+    [algoVersion, like, tier],
   );
   const out: Record<string, number> = {};
   for (const r of rows as unknown as { state: string; n: number }[]) {
@@ -957,25 +979,27 @@ export async function adminSummonerPage(
   algoVersion: number,
   q: string,
   filter: string,
+  tier: string,
   limit: number,
   offset: number,
 ): Promise<{ rows: AdminSummonerRow[]; total: number }> {
   const sql = await getSql();
   const like = `%${q.toLowerCase()}%`;
   const where = `WHERE ($2 = '%%' OR lower(r.game_name || '#' || r.tag_line) LIKE $2)
-      AND ($3 = 'all' OR ${STATE_SQL} = $3)`;
+      AND ($3 = 'all' OR ${STATE_SQL} = $3)
+      AND ${TIER_WHERE("$4")}`;
 
   const [rows, totalRows] = await Promise.all([
     sql.unsafe(
       `SELECT r.platform, r.game_name, r.tag_line, r.current_label,
               r.estimated_label, r.searched_at, ${STATE_SQL} AS state
        FROM recent_searches r ${AGG_SQL} ${where}
-       ORDER BY r.searched_at DESC LIMIT $4 OFFSET $5`,
-      [algoVersion, like, filter, limit, offset],
+       ORDER BY r.searched_at DESC LIMIT $5 OFFSET $6`,
+      [algoVersion, like, filter, tier, limit, offset],
     ),
     sql.unsafe(
       `SELECT count(*)::int AS n FROM recent_searches r ${AGG_SQL} ${where}`,
-      [algoVersion, like, filter],
+      [algoVersion, like, filter, tier],
     ),
   ]);
 

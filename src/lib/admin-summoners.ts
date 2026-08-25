@@ -8,6 +8,7 @@ import { ALGO_VERSION } from "@/lib/mmr/estimate";
 import {
   adminSummonerCounts,
   adminSummonerPage,
+  adminTierCounts,
   hourlyVisitStats,
   tierDistribution,
   type AdminAnalysisState,
@@ -22,6 +23,8 @@ export interface SummonerPage {
   total: number; // 검색·필터 적용 후 개수
   totalAll: number; // 검색만 적용한 전체 개수
   counts: Record<string, number>;
+  /** 티어별 인원 (검색어만 반영, 'none' = 티어 없음) */
+  tierCounts: Record<string, number>;
   page: number;
   size: number;
 }
@@ -31,22 +34,26 @@ export async function getSummonerPage(opts: {
   size?: number;
   q?: string;
   filter?: AnalysisState | "all";
+  tier?: string;
 }): Promise<SummonerPage> {
   const size = Math.min(100, Math.max(10, Math.floor(opts.size ?? 50)));
   const page = Math.max(1, Math.floor(opts.page ?? 1));
   const q = (opts.q ?? "").trim();
   const filter = opts.filter ?? "all";
+  const tier = opts.tier ?? "all";
 
-  const [{ rows, total }, counts] = await Promise.all([
-    adminSummonerPage(ALGO_VERSION, q, filter, size, (page - 1) * size),
-    adminSummonerCounts(ALGO_VERSION, q),
+  const [{ rows, total }, counts, tierCounts] = await Promise.all([
+    adminSummonerPage(ALGO_VERSION, q, filter, tier, size, (page - 1) * size),
+    adminSummonerCounts(ALGO_VERSION, q, tier),
+    adminTierCounts(q),
   ]);
 
   return {
     items: rows,
     total,
-    totalAll: Object.values(counts).reduce((a, b) => a + b, 0),
+    totalAll: Object.values(tierCounts).reduce((a, b) => a + b, 0),
     counts,
+    tierCounts,
     page,
     size,
   };
