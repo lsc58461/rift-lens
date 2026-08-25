@@ -15,10 +15,13 @@ import { getSetting, setSetting, upsertRecentSearch } from "@/lib/store";
 
 const STATE_KEY = "crawl:state";
 const MAX_TARGET = 10_000; // 한 번에 수집할 최대 소환사 수
-const PER_ROUND = 200; // 라운드당 등록 수 — DB만 쓰므로 크게 잡아도 된다
+// 후보 쿼리는 매치 전체(참가자 백만 행+)를 훑어 LIMIT과 무관하게 ~30초가 든다.
+// 그래서 라운드마다 한 번만 크게 받아(FETCH_LIMIT) JS에서 티어 균형을 맞춰 고른다.
+const PER_ROUND = 2000; // 라운드당 등록 수 (DB 인서트만이라 빠르다)
+const FETCH_LIMIT = 10000; // 라운드당 후보 조회 수 (희귀 티어도 섞이도록 넉넉히)
 // 라운드 상한은 목표를 채우는 데 필요한 만큼 + 여유 — 폭주 방지용일 뿐
-// 목표 상한(10000명 ÷ 라운드당 200명 = 50라운드) 기준으로 넉넉히 잡는다
-const MAX_ROUNDS = 400;
+// 목표 상한(10000명 ÷ 라운드당 2000명 = 5라운드) 기준으로 넉넉히 잡는다
+const MAX_ROUNDS = 100;
 const ROUND_STALE_MS = 300_000;
 
 export type CrawlMode = "balanced" | "recent";
@@ -136,94 +139,75 @@ const TIER_LADDER = [
 // 일반 티어와 같은 인원까지 수집돼 표본이 왜곡된다(챌린저 폭증 문제).
 // 수집량은 (수집 수 / 가중치)가 가장 작은 티어부터 채워지므로,
 // 가중치 0.1이면 일반 티어의 10% 수준에서 수렴한다.
-// 아이언은 래더 비중(~5%)도 검색 수요도 낮아 일반 티어의 40%로 억제한다.
 const TIER_WEIGHT: Record<string, number> = {
-  IRON: 0.4,
-  BRONZE: 1,
-  SILVER: 1,
+  // OP.GG KR 솔랭 티어 분포(2026-08-25 기준)를 골드(23.6%)=1로 정규화한 값.
+  // 아이언 3.2 · 브론즈 15.3 · 실버 21.3 · 골드 23.6 · 플래 18.6 · 에메 13.9 · 다이아 3.5
+  IRON: 0.14,
+  BRONZE: 0.65,
+  SILVER: 0.9,
   GOLD: 1,
-  PLATINUM: 1,
-  EMERALD: 1,
-  DIAMOND: 1,
-  MASTER: 0.4,
-  GRANDMASTER: 0.1,
-  CHALLENGER: 0.1,
+  PLATINUM: 0.79,
+  EMERALD: 0.59,
+  DIAMOND: 0.15,
+  // 마스터 이상은 실제 비율(0.97/0.02/0.01%)대로면 표본이 수십 명뿐이라
+  // "마스터+" 통계 구간이 비어 버린다 — 바닥값을 둬 최소 표본을 확보한다.
+  MASTER: 0.12,
+  GRANDMASTER: 0.03,
+  CHALLENGER: 0.03,
 };
 
-/** 표본이 가장 부족한 티어를 고른다 — 후보 풀(스냅샷)에 미수집 인원이
- * 있는 티어 중에서 수집된 소환사 수가 가장 적은 티어. */
-async function pickTargetTier(): Promise<string | null> {
+/** 이미 등록된 소환사의 티어별 인원 */
+async function collectedByTier(): Promise<Map<string, number>> {
   const sql = await getSql();
-  const fp = riotKeyFp();
-  const [collected, available] = await Promise.all([
-    sql`SELECT current_tier AS tier, count(*)::int AS n
-        FROM recent_searches WHERE current_tier IS NOT NULL GROUP BY 1`,
-    sql`SELECT ls.solo_tier AS tier, count(DISTINCT ls.puuid)::int AS n
-        FROM league_snapshots ls
-        WHERE ls.fp = ${fp} AND ls.solo_tier IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM recent_searches r WHERE r.puuid = ls.puuid)
-        GROUP BY 1`,
-  ]);
-  const have = new Map(
-    (collected as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
+  const rows = await sql`
+    SELECT current_tier AS tier, count(*)::int AS n
+    FROM recent_searches WHERE current_tier IS NOT NULL GROUP BY 1`;
+  return new Map(
+    (rows as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
   );
-  const pool = new Map(
-    (available as unknown as { tier: string; n: number }[]).map((r) => [r.tier, r.n]),
-  );
-  let best: string | null = null;
-  let bestScore = Infinity;
-  for (const tier of TIER_LADDER) {
-    if ((pool.get(tier) ?? 0) < 1) continue; // 후보가 없는 티어는 건너뜀
-    // 가중치 보정 점수 — 상위 티어는 낮은 목표로 수렴
-    const score = (have.get(tier) ?? 0) / (TIER_WEIGHT[tier] ?? 1);
-    if (score < bestScore) {
-      best = tier;
-      bestScore = score;
-    }
-  }
-  return best;
 }
 
-/** 특정 티어(최신 스냅샷 기준)의 미등록 소환사를 매치 묶음 순서로 뽑는다 */
-async function findTierCandidates(
-  tier: string,
-  limit: number,
-): Promise<Candidate[]> {
-  const sql = await getSql();
-  const fp = riotKeyFp();
-  const rows = await sql`
-    SELECT name, tag, puuid, tier, rank, lp FROM (
-      SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
-             p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
-             p->>'puuid' AS puuid,
-             ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp,
-             m.match_id AS mid, m.game_creation AS gc
-      FROM matches m
-      CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
-      INNER JOIN LATERAL (
-        SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
-        WHERE l.fp = m.fp AND l.platform = m.platform AND l.puuid = p->>'puuid'
-          AND l.solo_tier IS NOT NULL
-        ORDER BY l.created_at DESC LIMIT 1) ls ON true
-      WHERE m.fp = ${fp}
-        AND coalesce(p->>'riotIdGameName', '') <> ''
-        AND coalesce(p->>'riotIdTagline', '') <> ''
-        AND coalesce(p->>'puuid', '') <> ''
-        AND ls.solo_tier = ${tier}
-        AND NOT EXISTS (
-          SELECT 1 FROM recent_searches r
-          WHERE r.platform = m.platform
-            AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
-            AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
-        AND NOT EXISTS (
-          SELECT 1 FROM recent_searches r WHERE r.puuid = p->>'puuid')
-      ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
-               m.game_creation DESC
-    ) s
-    ORDER BY gc DESC, mid
-    LIMIT ${limit}`;
-  return rows as unknown as Candidate[];
+/** 후보 풀에서 티어 균형을 맞춰 want명을 고른다 — 매번 (등록 수 ÷ 가중치)가
+ * 가장 작은 티어에서 한 명씩. 풀에 그 티어가 없으면 다음으로 부족한 티어.
+ * 스냅샷이 없어 티어를 모르는 후보는 맨 마지막에 채운다. */
+function pickBalanced(
+  pool: Candidate[],
+  want: number,
+  have: Map<string, number>,
+): { picked: Candidate[]; topTier: string | null } {
+  const byTier = new Map<string, Candidate[]>();
+  const unknown: Candidate[] = [];
+  for (const c of pool) {
+    if (!c.tier) unknown.push(c);
+    else {
+      const arr = byTier.get(c.tier) ?? [];
+      arr.push(c);
+      byTier.set(c.tier, arr);
+    }
+  }
+  const counts = new Map(have);
+  const pickedPerTier = new Map<string, number>();
+  const picked: Candidate[] = [];
+  while (picked.length < want) {
+    let best: string | null = null;
+    let bestScore = Infinity;
+    for (const tier of TIER_LADDER) {
+      if (!byTier.get(tier)?.length) continue;
+      const score = (counts.get(tier) ?? 0) / (TIER_WEIGHT[tier] ?? 1);
+      if (score < bestScore) {
+        best = tier;
+        bestScore = score;
+      }
+    }
+    if (!best) break;
+    picked.push(byTier.get(best)!.shift()!);
+    counts.set(best, (counts.get(best) ?? 0) + 1);
+    pickedPerTier.set(best, (pickedPerTier.get(best) ?? 0) + 1);
+  }
+  while (picked.length < want && unknown.length) picked.push(unknown.shift()!);
+  const topTier =
+    [...pickedPerTier.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return { picked, topTier };
 }
 
 /** 저장된 매치의 참가자 중 미등록 소환사를 최신 매치 순으로 뽑는다
@@ -279,21 +263,19 @@ export async function runCrawlRound(origin?: string): Promise<void> {
 
   try {
     const want = Math.min(PER_ROUND, state.target - state.analyzed);
-    let candidates: Candidate[] = [];
-    let pickedTier: string | null = null;
-    if (state.mode === "balanced") {
-      pickedTier = await pickTargetTier();
-      if (pickedTier) {
-        candidates = await findTierCandidates(pickedTier, want);
-      }
-    }
-    if (candidates.length === 0) {
-      pickedTier = null;
-      candidates = await findCandidates(want);
-    }
-    if (candidates.length === 0) {
+    const pool = await findCandidates(FETCH_LIMIT);
+    if (pool.length === 0) {
       await save({ ...state, running: false, roundActive: false, done: true });
       return;
+    }
+    let candidates: Candidate[];
+    let pickedTier: string | null = null;
+    if (state.mode === "balanced") {
+      const r = pickBalanced(pool, want, await collectedByTier());
+      candidates = r.picked;
+      pickedTier = r.topTier;
+    } else {
+      candidates = pool.slice(0, want);
     }
 
     let analyzed = 0;
