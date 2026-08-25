@@ -479,6 +479,33 @@ export async function upsertRecentSearch(r: RecentSearchInput): Promise<void> {
         searched_at = GREATEST(recent_searches.searched_at, EXCLUDED.searched_at)`;
 }
 
+/** 갱신(스윕)이 계산한 최신 랭크로 최근 검색 행의 티어·추정치만 고친다.
+ *  searched_at은 건드리지 않는다(검색 순서·홈 칩에 영향 없음). 행이 없으면 no-op —
+ *  등록은 유저 검색·시드 수집만 한다. */
+export async function updateRecentSearchRank(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+  r: {
+    currentLabel: string | null;
+    currentTier: string | null;
+    estimatedLabel: string | null;
+    estimatedTier: string | null;
+    estimatedPoints: number | null;
+    puuid?: string | null;
+  },
+): Promise<void> {
+  const sql = await getSql();
+  await sql`
+    UPDATE recent_searches
+    SET current_label = ${r.currentLabel}, current_tier = ${r.currentTier},
+        estimated_label = ${r.estimatedLabel}, estimated_tier = ${r.estimatedTier},
+        estimated_points = ${r.estimatedPoints},
+        puuid = COALESCE(${r.puuid ?? null}, puuid)
+    WHERE platform = ${platform}
+      AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}`;
+}
+
 export interface RecentSearchRow {
   platform: PlatformRegion;
   game_name: string;

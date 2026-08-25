@@ -16,6 +16,7 @@ import {
 import { getRecentSearches } from "@/lib/recent";
 import { recomputeRankPtsBatch } from "@/lib/rank-pts";
 import { cache } from "@/lib/cache";
+import { updateRecentSearchRank } from "@/lib/store";
 import { getSql } from "@/lib/db";
 import { canon } from "@/lib/identity";
 import { RiotApiError } from "@/lib/riot/types";
@@ -138,10 +139,18 @@ export async function runRefreshSweep(opts: {
         r.tagLine,
         latest,
       );
-      if (!quickFresh) {
-        await runQuickAnalysis(r.region, r.gameName, r.tagLine);
-        quickRefreshed.push(`${r.gameName}#${r.tagLine}`);
-      }
+      const quick =
+        quickFresh ?? (await runQuickAnalysis(r.region, r.gameName, r.tagLine));
+      if (!quickFresh) quickRefreshed.push(`${r.gameName}#${r.tagLine}`);
+      // 최근 검색 행의 티어·추정치를 최신으로 — 등록 당시 값이 굳어 있으면
+      // (챌린저 300명 상한인데 742명처럼) 통계·시드 균형이 왜곡된다
+      await updateRecentSearchRank(r.region, r.gameName, r.tagLine, {
+        currentLabel: quick.currentRank?.label ?? null,
+        currentTier: quick.currentRank?.tier ?? null,
+        estimatedLabel: quick.estimatedRank?.label ?? null,
+        estimatedTier: quick.estimatedRank?.tier ?? null,
+        estimatedPoints: quick.estimatedPoints,
+      }).catch(() => {});
 
       // 2) 이어서 정밀 분석 — 완료까지 기다린 뒤 다음 소환사로 (러너 락 존중)
       if (!deepBlocked && elapsed() < opts.deepDeadlineMs) {
