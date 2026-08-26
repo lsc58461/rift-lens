@@ -154,6 +154,11 @@ class RedisStore implements CacheStore {
     const c = await this.client;
     await c.del(key);
   }
+
+  /** 원시 클라이언트 — 레이트리미터의 Lua 원자 스크립트처럼 KV 이상이 필요할 때 */
+  raw(): Promise<import("redis").RedisClientType> {
+    return this.client;
+  }
 }
 
 const globalForCache = globalThis as unknown as { __mmrCache?: CacheStore };
@@ -165,6 +170,12 @@ export const cache: CacheStore =
     : process.env.DATABASE_URL
       ? new PostgresStore()
       : new MemoryStore());
+
+/** Redis 백엔드일 때만 원시 클라이언트를 돌려준다 (아니면 null) */
+export function getRedisClient(): Promise<import("redis").RedisClientType> | null {
+  const c = cache as unknown as { raw?: () => Promise<import("redis").RedisClientType> };
+  return typeof c.raw === "function" ? c.raw() : null;
+}
 
 /** 캐시에 있으면 반환, 없으면 fn 실행 후 저장 */
 export async function cached<T>(
