@@ -22,6 +22,7 @@ import {
   recordNameChange,
   saveMatchRow,
   updateSummonerProfile,
+  recentSearchPuuid,
   upsertSummonerNames,
   type LeagueSnapRow,
 } from "@/lib/store";
@@ -126,8 +127,12 @@ export async function getAccountByRiotId(
         tagLine,
         Number.POSITIVE_INFINITY, // 오래된 행이어도 puuid만 있으면 된다
       );
-      if (known?.puuid) {
-        const current = await getAccountByPuuid(platform, known.puuid);
+      // 시드 수집으로 등록된 계정은 summoners엔 없고 recent_searches에만 puuid가 있다
+      const knownPuuid =
+        known?.puuid ??
+        (await recentSearchPuuid(platform, gameName, tagLine).catch(() => null));
+      if (knownPuuid) {
+        const current = await getAccountByPuuid(platform, knownPuuid);
         if (
           current &&
           (canon(current.gameName) !== canon(gameName) ||

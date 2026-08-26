@@ -479,6 +479,23 @@ export async function upsertRecentSearch(r: RecentSearchInput): Promise<void> {
         searched_at = GREATEST(recent_searches.searched_at, EXCLUDED.searched_at)`;
 }
 
+/** 최근 검색 행에 저장된 puuid — 시드 수집으로 등록된 계정은 summoners 테이블엔
+ *  없고 여기에만 puuid가 있다(매치 참가자에서 가져온 값). 닉변 폴백의 2차 소스. */
+export async function recentSearchPuuid(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+): Promise<string | null> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT puuid FROM recent_searches
+    WHERE platform = ${platform}
+      AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}
+      AND puuid IS NOT NULL
+    LIMIT 1`;
+  return (rows[0]?.puuid as string | undefined) ?? null;
+}
+
 /** 갱신(스윕)이 계산한 최신 랭크로 최근 검색 행의 티어·추정치만 고친다.
  *  searched_at은 건드리지 않는다(검색 순서·홈 칩에 영향 없음). 행이 없으면 no-op —
  *  등록은 유저 검색·시드 수집만 한다. */
