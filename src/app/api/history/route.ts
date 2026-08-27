@@ -187,6 +187,29 @@ export async function POST(req: NextRequest) {
           1,
           ...m.participants.map((p) => p.damage ?? 0),
         );
+        // 팀 내 기여도 — 경기 안 상대 비교라 별도 조회 없음. 승팀 1위 MVP, 패팀 1위 ACE.
+        // KDA(팀 내 최고 대비)·딜 비중·킬관여·골드 비중의 가중합 (OP Score식 단순 버전)
+        type P = (typeof m.participants)[number];
+        const bestOf = (team: P[]): P | null => {
+          if (team.length === 0) return null;
+          const tKills = Math.max(1, team.reduce((a, q) => a + q.kills, 0));
+          const tDmg = Math.max(1, team.reduce((a, q) => a + (q.damage ?? 0), 0));
+          const tGold = Math.max(1, team.reduce((a, q) => a + (q.goldEarned ?? 0), 0));
+          const kdaOf = (q: P) => (q.kills + q.assists) / Math.max(1, q.deaths);
+          const maxKda = Math.max(0.01, ...team.map(kdaOf));
+          const score = (q: P) =>
+            (kdaOf(q) / maxKda) * 0.35 +
+            ((q.damage ?? 0) / tDmg) * 0.3 +
+            ((q.kills + q.assists) / tKills) * 0.2 +
+            ((q.goldEarned ?? 0) / tGold) * 0.15;
+          return team.reduce((best, q) => (score(q) > score(best) ? q : best), team[0]);
+        };
+        const winners = m.participants.filter((q) => q.win);
+        const losers = m.participants.filter((q) => !q.win);
+        const mvp = bestOf(winners);
+        const ace = bestOf(losers);
+        const badgeOf = (q: P): "MVP" | "ACE" | undefined =>
+          q === mvp ? "MVP" : q === ace ? "ACE" : undefined;
         const player = (p: (typeof m.participants)[number]) => ({
           name:
             nameMap.get(p.puuid) ??
@@ -204,6 +227,7 @@ export async function POST(req: NextRequest) {
           spells: [p.spell1Id ?? 0, p.spell2Id ?? 0],
           items: p.items ?? [],
           self: isSelf(p),
+          badge: badgeOf(p),
         });
         return {
           matchId: m.matchId,
@@ -225,6 +249,7 @@ export async function POST(req: NextRequest) {
           subStyle: self.subStyle ?? null,
           items: self.items ?? [],
           // 멀티킬 (확장 필드 미수집 매치는 0)
+          badge: badgeOf(self) ?? null,
           multikills: {
             double: self.doubleKills ?? 0,
             triple: self.tripleKills ?? 0,

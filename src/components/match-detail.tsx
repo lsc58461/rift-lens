@@ -31,6 +31,26 @@ export interface DetailPlayer {
   spells: number[];
   items: number[];
   self?: boolean;
+  /** 팀 내 최고 기여 — 승팀 MVP / 패팀 ACE */
+  badge?: "MVP" | "ACE";
+}
+
+export function PlayerBadge({ badge, small = false }: { badge?: "MVP" | "ACE"; small?: boolean }) {
+  if (!badge) return null;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded px-1 font-bold leading-4 tracking-wide ${
+        small ? "text-[9px]" : "text-[10px]"
+      } ${
+        badge === "MVP"
+          ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+          : "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+      }`}
+      title={badge === "MVP" ? "승리 팀에서 기여도 1위" : "패배 팀에서 기여도 1위"}
+    >
+      {badge}
+    </span>
+  );
 }
 
 interface TimelineData {
@@ -244,6 +264,7 @@ function Scoreboard({
                 >
                   {p.name.split("#")[0]}
                 </Link>
+                <PlayerBadge badge={p.badge} small />
               </span>
               <span className="text-right tabular-nums">
                 {p.kills}/{p.deaths}/{p.assists}

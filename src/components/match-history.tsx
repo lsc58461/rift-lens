@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useHistorySummary } from "@/components/history-summary";
-import { MatchDetail, type DetailPlayer } from "@/components/match-detail";
+import { MatchDetail, PlayerBadge, type DetailPlayer } from "@/components/match-detail";
 import type { RuneInfo } from "@/lib/ddragon";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { MatchSummary, type Summary } from "@/components/match-summary";
@@ -50,6 +50,7 @@ interface Game {
   subStyle: number | null;
   items: number[];
   multikills?: { double: number; triple: number; quadra: number; penta: number };
+  badge?: "MVP" | "ACE" | null;
   teamKills: number;
   maxDamage: number;
   team: Player[];
@@ -192,6 +193,7 @@ function TeamColumn({
           >
             {p.name.split("#")[0]}
           </Link>
+          <PlayerBadge badge={p.badge} small />
         </div>
       ))}
     </div>
@@ -434,6 +436,7 @@ export function MatchHistory({
                     </span>
                     {kp !== null && <span>킬관여 {kp}%</span>}
                     <span className="sm:hidden">{timeAgo(g.gameCreation)}</span>
+                    {g.badge && <PlayerBadge badge={g.badge} />}
                     {g.multikills && <MultikillChips m={g.multikills} />}
                     {lobbyByMatch[g.matchId] && <LobbyChip info={lobbyByMatch[g.matchId]} />}
                   </div>
