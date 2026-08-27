@@ -54,7 +54,7 @@ export async function countMissingRunes(): Promise<number> {
     `SELECT count(*)::int AS n FROM matches WHERE fp = $1 AND ${PENDING_WHERE}`,
     [riotKeyFp()],
   );
-  return ((r[0] as { n: number } | undefined)?.n as number) ?? 0;
+  return (r as unknown as { n: number }[])[0]?.n ?? 0;
 }
 
 export async function beginRunefill(turbo = false): Promise<RunefillState> {
