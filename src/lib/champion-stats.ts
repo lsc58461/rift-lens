@@ -162,6 +162,9 @@ async function buildStats(
   patch: string | null,
   bracket: RankBracketKey = "all",
 ): Promise<ChampionStatsPayload> {
+  // 재집계 소요 시간 기록 — 패치당 매치가 늘면 느려진다. 10초를 넘기 시작하면
+  // 참가자 정규화 테이블(match_participants)로 옮길 시점이다.
+  const startedAt = Date.now();
   const sql = await getSql();
   const fp = riotKeyFp();
   // 기본 보기(patch=null)는 '최근 2개 패치 합산' — 옛 패치 매치는 집계에서만
@@ -424,8 +427,13 @@ async function buildStats(
     });
   }
 
+  const tookMs = Date.now() - startedAt;
+  const totalGames = (meta as unknown as { games: number }[])[0]?.games ?? 0;
+  (tookMs > 10_000 ? console.warn : console.log)(
+    `[champstats] 재집계 patch=${patch ?? "recent2"} bracket=${bracket} games=${totalGames} took=${(tookMs / 1000).toFixed(1)}s${tookMs > 10_000 ? " — 느려짐: 참가자 테이블 전환 검토" : ""}`,
+  );
   return {
-    totalGames: (meta as unknown as { games: number }[])[0]?.games ?? 0,
+    totalGames,
     computedAt: Date.now(),
     totalParticipants: champions.reduce((a, c) => a + c.games, 0),
     bansMatchTotal, // 밴이 캡처된 매치 수(밴률 분모)
