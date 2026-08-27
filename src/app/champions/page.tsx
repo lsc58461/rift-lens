@@ -10,6 +10,15 @@ import {
 } from "@/lib/ddragon";
 import { ChampionsTable } from "./champions-table";
 
+/** 집계 시각 표시 — "방금", "N분 전", "N시간 전" */
+function computedAgo(ts: number): string {
+  const m = Math.floor((Date.now() - ts) / 60_000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}시간 전` : `${Math.floor(h / 24)}일 전`;
+}
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -51,7 +60,7 @@ export default async function ChampionsPage({
       <PageHeader
         icon={BarChart3}
         title="챔피언 통계"
-        description={`${patch ? `패치 ${patchLabel(patch)}` : "전체"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준 · 챔피언을 누르면 상세 통계가 열려요`}
+        description={`${patch ? `패치 ${patchLabel(patch)}` : "전체"} · 수집된 솔로랭크 ${stats.totalGames.toLocaleString()}경기 표본 기준${stats.computedAt ? ` · ${computedAgo(stats.computedAt)} 집계 (6시간마다 갱신)` : ""} · 챔피언을 누르면 상세 통계가 열려요`}
       />
       <ChampionsTable
         stats={stats}

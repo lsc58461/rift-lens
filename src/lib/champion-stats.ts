@@ -83,6 +83,7 @@ export interface ChampionStat {
 
 export interface ChampionStatsPayload {
   totalGames: number; // 집계에 쓰인 매치 수
+  computedAt?: number; // 집계 시각(ms) — 캐시된 결과가 언제 것인지 표시용
   totalParticipants: number;
   bansMatchTotal?: number; // 밴이 캡처된 매치 수 (밴률 분모)
   patch: string | null; // null = 전체 패치
@@ -425,6 +426,7 @@ async function buildStats(
 
   return {
     totalGames: (meta as unknown as { games: number }[])[0]?.games ?? 0,
+    computedAt: Date.now(),
     totalParticipants: champions.reduce((a, c) => a + c.games, 0),
     bansMatchTotal, // 밴이 캡처된 매치 수(밴률 분모)
     patch,
