@@ -3,6 +3,7 @@ import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
 import {
   beginRefreshAll,
   getRefreshAllState,
+  resumeRefreshAll,
   runRefreshAllRound,
   stopRefreshAll,
 } from "@/lib/refresh-all";
@@ -45,7 +46,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ state: await getRefreshAllState() });
   }
 
-  // 이어하기(continue)는 상태를 초기화하지 않는다
+  // 이어하기(continue)는 상태를 초기화하지 않는다.
+  // resume은 중단/종료된 자리(커서)에서 다시 running으로 켠다.
+  if (action === "resume") {
+    await resumeRefreshAll();
+  }
   if (action === "start") {
     // 대량 백그라운드 작업은 한 번에 하나만
     const crawl = await getCrawlState();

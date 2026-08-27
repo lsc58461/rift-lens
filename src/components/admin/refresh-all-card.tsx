@@ -76,7 +76,7 @@ export function RefreshAllCard() {
     return () => clearInterval(id);
   }, [state?.running, load]);
 
-  async function act(action: "start" | "stop") {
+  async function act(action: "start" | "stop" | "resume") {
     setBusy(true);
     try {
       const res = await fetch(`/api/admin/refresh-all?action=${action}`, {
@@ -87,7 +87,11 @@ export function RefreshAllCard() {
         throw new Error(d?.error ?? "요청에 실패했어요");
       }
       toast.success(
-        action === "start" ? "전체 갱신을 시작했어요" : "갱신을 중지했어요",
+        action === "start"
+          ? "전체 갱신을 처음부터 시작했어요"
+          : action === "resume"
+            ? "멈춘 자리에서 이어서 시작했어요"
+            : "갱신을 중지했어요",
       );
       await load();
     } catch (e) {
@@ -183,17 +187,32 @@ export function RefreshAllCard() {
               중지
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => act("start")}
-              disabled={busy}
-              className="gap-1.5"
-            >
-              <Play className="size-3.5" />
-              전체 갱신 시작
-            </Button>
+            <>
+              {(state?.cursor ?? 0) > 0 && (
+                <Button
+                  size="sm"
+                  onClick={() => act("resume")}
+                  disabled={busy}
+                  className="gap-1.5"
+                  title={`위치 ${state?.cursor}/${state?.target}부터 이어서`}
+                >
+                  <Play className="size-3.5" />
+                  이어서 시작 ({state?.cursor?.toLocaleString()}부터)
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={(state?.cursor ?? 0) > 0 ? "outline" : "default"}
+                onClick={() => act("start")}
+                disabled={busy}
+                className="gap-1.5"
+              >
+                <Play className="size-3.5" />
+                {(state?.cursor ?? 0) > 0 ? "처음부터" : "전체 갱신 시작"}
+              </Button>
+            </>
           )}
-          {state?.done && !state.running && (
+          {state?.done && !state.running && (state?.cursor ?? 0) === 0 && (
             <span className="text-sm text-muted-foreground">
               갱신할 대상이 남지 않았어요 ✅
             </span>

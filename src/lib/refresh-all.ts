@@ -13,7 +13,10 @@ import { chainNextRound } from "@/lib/round-chain";
 import { claimRound, getSetting, setSetting } from "@/lib/store";
 
 const STATE_KEY = "refresh-all:state";
-const MAX_ROUNDS = 400; // 폭주 방지 상한 (소환사 수백 명 규모 대응)
+// 라운드 상한 — 커서 방식에선 한 바퀴(2.5만 명)에 650라운드+가 들고 바퀴는 여러 번
+// 돌 수 있으므로 사실상 무제한. 종료 판정은 "한 바퀴 내내 한 일 없음"이 담당한다.
+// (400이던 시절 커서 도입 후 9,718명에서 상한에 걸려 '완료'로 끝난 사고 있음)
+const MAX_ROUNDS = 1_000_000;
 const ROUND_STALE_MS = 300_000; // 이 시간 넘게 갱신이 없으면 죽은 라운드로 간주
 // 라운드당 처리량 — 한때 응답 지연의 범인으로 보고 2로 줄였으나, 실제 원인은
 // 동결된 인스턴스의 죽은 DB 소켓 재사용이었다(db.ts 헬스체크로 해결). 라이엇
@@ -81,6 +84,27 @@ async function save(s: RefreshAllState): Promise<void> {
 
 export async function beginRefreshAll(): Promise<RefreshAllState> {
   const next: RefreshAllState = { ...empty(), running: true };
+  await save(next);
+  return next;
+}
+
+/** 중단/상한 종료된 자리(커서)에서 이어서 시작 — 상태가 없으면 처음부터 */
+export async function resumeRefreshAll(): Promise<RefreshAllState> {
+  const s = await getRefreshAllState();
+  if (!s) return beginRefreshAll();
+  const next: RefreshAllState = {
+    ...s,
+    running: true,
+    done: false,
+    roundActive: false,
+    idleRounds: 0,
+    lastError: null,
+    // 커서 도입 전 상태엔 없을 수 있는 필드 보정
+    cursor: s.cursor ?? 0,
+    passes: s.passes ?? 0,
+    passWork: s.passWork ?? 0,
+    passStartedAt: s.passStartedAt ?? Date.now(),
+  };
   await save(next);
   return next;
 }
