@@ -10,6 +10,7 @@
 // continue는 멱등이라(라운드가 살아 있으면 무시) 두 인스턴스가 겹쳐도 안전하다.
 // NEXT_MANUAL_SIG_HANDLE=true 여야 Next가 SIGTERM에 즉시 exit하지 않고 우리 훅이 돈다.
 import { getCrawlState, releaseCrawlRound } from "@/lib/crawl-seed";
+import { warmChampionStats } from "@/lib/champion-stats";
 import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { getRefreshAllState, releaseRefreshAllRound } from "@/lib/refresh-all";
 import { getRunefillState, releaseRunefillRound } from "@/lib/rune-backfill";
@@ -57,6 +58,13 @@ export function registerNode(): void {
   // 강제 kill) 첫 확인 시점엔 하트비트가 아직 신선해 보일 수 있어서, 하트비트가
   // 죽었다고 판정 가능한 시점에 한 번 더 본다.
   setTimeout(() => void resumeOrphans(1), BOOT_DELAY_MS).unref();
+  // 챔피언 통계 캐시 워밍 — 배포 직후 첫 방문자가 재집계를 기다리지 않게.
+  // 캐시가 이미 있으면 즉시 끝나고(오래됐으면 뒤에서 갱신), 없을 때만 집계한다.
+  setTimeout(() => {
+    warmChampionStats()
+      .then(() => console.log("[boot] 챔피언 통계 캐시 워밍 완료"))
+      .catch((e) => console.error("[boot] 챔피언 통계 워밍 실패:", (e as Error)?.message));
+  }, BOOT_DELAY_MS + 10_000).unref();
   setTimeout(() => void resumeOrphans(2), BOOT_DELAY_MS + DEAD_HEARTBEAT_MS + 10_000).unref();
 
   // ① 종료 직전: 돌던 라운드를 놓고 나서 종료한다

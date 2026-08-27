@@ -2,18 +2,18 @@
 // 집계는 무겁기 때문에(참가자 수만 행 × 4개 쿼리) 결과를 KV에 6시간 캐시.
 
 import "server-only";
-import { cached } from "@/lib/cache";
+import { cache, cached } from "@/lib/cache";
 import {
   getChampionKeyToId,
   getCompletedItemIds,
   getDDragonVersion,
 } from "@/lib/ddragon";
 import { getSql } from "@/lib/db";
-import { bracketOf, type RankBracketKey } from "@/lib/rank-pts";
+import { bracketOf, RANK_BRACKETS, type RankBracketKey } from "@/lib/rank-pts";
 import { riotKeyFp } from "@/lib/riot/client";
 
 const MIN_CHAMP_GAMES = 10; // 이보다 표본이 적은 챔피언은 목록에서 제외
-const TTL_SECONDS = 6 * 60 * 60;
+const TTL_SECONDS = 24 * 60 * 60; // 캐시 보존(만료) — 실제 갱신 주기는 REFRESH_AFTER_MS
 
 // 슬롯 0~5에 등장하지만 빌드가 아닌 소모품·와드류
 const NON_BUILD_ITEMS = new Set([
@@ -91,15 +91,67 @@ export interface ChampionStatsPayload {
   builtAt: number;
 }
 
-export function getChampionStats(
+// 캐시 전략: stale-while-revalidate. 캐시가 있으면 나이와 무관하게 즉시 돌려주고,
+// REFRESH_AFTER보다 오래됐으면 뒤에서 다시 집계해 갈아 끼운다. 유저가 재집계를
+// 기다리는 건 캐시가 아예 없을 때뿐인데, 그건 부팅 워밍(warmChampionStats)이 막는다.
+// TTL은 길게(하루) — 갱신 실패나 장시간 무방문에도 낡은 결과나마 즉시 나가게.
+const REFRESH_AFTER_MS = 60 * 60_000;
+const statsKey = (patch: string | null, bracket: RankBracketKey) =>
+  `champstats:v8:${patch ?? "recent2"}:${bracket}`;
+const refreshing = new Map<string, Promise<void>>();
+
+function refreshInBackground(
+  key: string,
+  patch: string | null,
+  bracket: RankBracketKey,
+): void {
+  if (refreshing.has(key)) return;
+  const job = (async () => {
+    // 인스턴스 2개가 같은 키를 동시에 재집계하지 않게 짧은 공유 마커
+    const lockKey = `${key}:refreshing`;
+    if (await cache.get<number>(lockKey).catch(() => null)) return;
+    await cache.set(lockKey, Date.now(), 180).catch(() => {});
+    try {
+      const fresh = await buildStats(patch, bracket);
+      await cache.set(key, fresh, TTL_SECONDS);
+    } catch (e) {
+      console.error(`[champstats] 백그라운드 재집계 실패 ${key}:`, (e as Error)?.message);
+    } finally {
+      await cache.delete(lockKey).catch(() => {});
+    }
+  })().finally(() => refreshing.delete(key));
+  refreshing.set(key, job);
+}
+
+export async function getChampionStats(
   patch: string | null = null,
   bracket: RankBracketKey = "all",
 ): Promise<ChampionStatsPayload> {
-  return cached(
-    `champstats:v8:${patch ?? "recent2"}:${bracket}`,
-    TTL_SECONDS,
-    () => buildStats(patch, bracket),
-  );
+  const key = statsKey(patch, bracket);
+  const hit = await cache.get<ChampionStatsPayload>(key).catch(() => null);
+  if (hit) {
+    if (!hit.computedAt || Date.now() - hit.computedAt > REFRESH_AFTER_MS) {
+      refreshInBackground(key, patch, bracket);
+    }
+    return hit;
+  }
+  const fresh = await buildStats(patch, bracket);
+  await cache.set(key, fresh, TTL_SECONDS).catch(() => {});
+  return fresh;
+}
+
+/** 자주 보는 조합을 미리 집계해 둔다 — 부팅 직후·캐시 비움 직후 호출.
+ *  최신 패치 × 모든 랭크 구간 + 직전 패치 × 기본 구간(에메랄드). */
+export async function warmChampionStats(): Promise<void> {
+  const patches = (await listPatches().catch(() => [])).slice(0, 2);
+  const latest = patches[0]?.patch ?? null;
+  const targets: [string | null, RankBracketKey][] = [
+    ...RANK_BRACKETS.map((b): [string | null, RankBracketKey] => [latest, b.key]),
+  ];
+  if (patches[1]) targets.push([patches[1].patch, "emerald"]);
+  for (const [patch, bracket] of targets) {
+    await getChampionStats(patch, bracket).catch(() => {});
+  }
 }
 
 /** 표본이 충분한 패치 목록 (최신순) */
