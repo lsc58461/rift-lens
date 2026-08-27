@@ -215,6 +215,12 @@ const SCHEMA_SQL = `
     ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS puuid text;
     CREATE INDEX IF NOT EXISTS recent_searches_puuid_idx ON recent_searches (puuid);
 
+    -- 백필 대상(룬·빌드·확장 필드 미수집) 부분 인덱스 — 카운트와 라운드 선별이
+    -- 33만 건 전체 스캔 대신 여기만 본다 (rune-backfill.ts PENDING_WHERE와 동일 조건)
+    CREATE INDEX IF NOT EXISTS matches_backfill_pending_idx
+    ON matches (fp, game_creation DESC)
+    WHERE patch IS NULL OR NOT build_harvested OR NOT fields_captured;
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,

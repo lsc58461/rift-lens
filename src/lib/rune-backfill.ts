@@ -41,16 +41,20 @@ async function save(s: RunefillState): Promise<void> {
   await setSetting(STATE_KEY, { ...s, updatedAt: Date.now() });
 }
 
-/** 룬이 없는 저장 매치 수 */
+// 백필 대상 판정은 플래그 컬럼만 본다 — 예전엔 participants->0 ? 'keystone'
+// (JSON 파싱)도 조건에 있었는데 매치 33만 건에서 카드 폴링마다 4.7초가 걸렸다.
+// 룬 누락 매치는 fields_captured=false로도 잡히고, 404로 영구 제외된 매치는
+// 플래그가 true라 의도대로 빠진다. 같은 조건의 부분 인덱스(db.ts)를 탄다.
+const PENDING_WHERE = `(patch IS NULL OR NOT build_harvested OR NOT fields_captured)`;
+
+/** 룬·빌드·확장 필드가 비어 있는 저장 매치 수 */
 export async function countMissingRunes(): Promise<number> {
   const sql = await getSql();
-  const r = await sql`
-    SELECT count(*)::int AS n FROM matches
-    WHERE fp = ${riotKeyFp()}
-      AND jsonb_array_length(participants) > 0
-      AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
-           OR NOT build_harvested OR NOT fields_captured)`;
-  return (r[0]?.n as number) ?? 0;
+  const r = await sql.unsafe(
+    `SELECT count(*)::int AS n FROM matches WHERE fp = $1 AND ${PENDING_WHERE}`,
+    [riotKeyFp()],
+  );
+  return ((r[0] as { n: number } | undefined)?.n as number) ?? 0;
 }
 
 export async function beginRunefill(turbo = false): Promise<RunefillState> {
@@ -112,16 +116,15 @@ export async function runRunefillRound(origin?: string): Promise<void> {
     const runAt = <T>(fn: () => Promise<T>): Promise<T> =>
       turbo ? fn() : withLowPriority(fn);
     const perRound = turbo ? TURBO_PER_ROUND : PER_ROUND;
-    const rows = await sql`
-      SELECT match_id, platform,
-             ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok,
-             build_harvested, fields_captured
-      FROM matches
-      WHERE fp = ${fp}
-        AND jsonb_array_length(participants) > 0
-        AND (NOT (participants->0 ? 'keystone') OR patch IS NULL
-             OR NOT build_harvested OR NOT fields_captured)
-      ORDER BY game_creation DESC LIMIT ${perRound}`;
+    const rows = await sql.unsafe(
+      `SELECT match_id, platform,
+              ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok,
+              build_harvested, fields_captured
+       FROM matches
+       WHERE fp = $1 AND ${PENDING_WHERE}
+       ORDER BY game_creation DESC LIMIT $2`,
+      [fp, perRound],
+    );
 
     if (rows.length === 0) {
       await save({ ...state, running: false, roundActive: false, done: true });
