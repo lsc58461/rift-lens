@@ -126,33 +126,31 @@ export default function RootLayout({
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
             {children}
           </main>
-          <footer className="border-t py-4 text-center text-xs text-muted-foreground">
-            <div className="mb-1.5 flex items-center justify-center gap-3">
-              <Link href="/updates" className="hover:text-foreground hover:underline">
+          <footer className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
+            {/* 링크는 글자 단위로 꺾이지 않게 항목 단위로 줄바꿈 — 좁은 화면에선 두 줄로 */}
+            <nav className="mx-auto mb-2 flex max-w-lg flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+              <Link href="/updates" className="whitespace-nowrap hover:text-foreground hover:underline">
                 업데이트 내역
               </Link>
-              <span aria-hidden>·</span>
-              <Link href="/faq" className="hover:text-foreground hover:underline">
+              <Link href="/faq" className="whitespace-nowrap hover:text-foreground hover:underline">
                 자주 묻는 질문
               </Link>
-              <span aria-hidden>·</span>
-              <Link href="/discord" className="hover:text-foreground hover:underline">
+              <Link href="/discord" className="whitespace-nowrap hover:text-foreground hover:underline">
                 디스코드 봇
               </Link>
-              <span aria-hidden>·</span>
-              <Link href="/feedback" className="hover:text-foreground hover:underline">
+              <Link href="/feedback" className="whitespace-nowrap hover:text-foreground hover:underline">
                 문의·버그 신고
               </Link>
-              <span aria-hidden>·</span>
-              <Link href="/terms" className="hover:text-foreground hover:underline">
+              <Link href="/terms" className="whitespace-nowrap hover:text-foreground hover:underline">
                 이용약관
               </Link>
-              <span aria-hidden>·</span>
-              <Link href="/privacy" className="hover:text-foreground hover:underline">
+              <Link href="/privacy" className="whitespace-nowrap hover:text-foreground hover:underline">
                 개인정보처리방침
               </Link>
-            </div>
-            Rift Lens는 Riot Games의 공식 서비스가 아니며, 집계 수치는 참고용입니다.
+            </nav>
+            <p className="mx-auto max-w-md leading-relaxed [text-wrap:balance]">
+              Rift Lens는 Riot Games의 공식 서비스가 아니며, 집계 수치는 참고용입니다.
+            </p>
           </footer>
           <Toaster />
         </ThemeProvider>
