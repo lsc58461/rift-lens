@@ -40,7 +40,8 @@ export default async function ChampionsPage({
     : "emerald";
   // 최근 패치 몇 개를 선택지로 제공하고, 기본은 최신 패치.
   // 옛 패치 데이터는 삭제하지 않고 선택하면 볼 수 있다.
-  const patches = (await listPatches()).slice(0, 6);
+  // 패치 선택은 현재 패치 포함 최근 2개만 노출 (UI 필터만 — 집계 데이터는 그대로)
+  const patches = (await listPatches()).slice(0, 2);
   // 목록에 있는 패치만 허용(캐시 키 오염 방지) — 없으면 최신 패치 기본 선택
   const patch =
     rawPatch && patches.some((p) => p.patch === rawPatch)
