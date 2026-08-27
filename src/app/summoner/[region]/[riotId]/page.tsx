@@ -16,8 +16,7 @@ import {
   MatchSummaryCard,
 } from "@/components/history-summary";
 import { LobbyDistribution } from "@/components/lobby-distribution";
-import { type MatchRow } from "@/components/match-list";
-import { MatchTabs } from "@/components/match-tabs";
+import { MatchSection, type LobbyInfoMap } from "@/components/match-section";
 import { MmrChart, type MmrChartPoint } from "@/components/mmr-chart";
 import { SearchForm } from "@/components/search-form";
 import { ShareButton } from "@/components/share-button";
@@ -30,8 +29,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  championIconUrl,
-  championNameKo,
   getChampionNamesKo,
   getRuneMapKo,
   getDDragonVersion,
@@ -139,15 +136,6 @@ function gapVerdict(gap: number): {
       tone: "down",
     };
   return { text: "최근 매칭 로비의 평균 랭크가 현재 티어와 비슷한 구간이에요.", tone: "flat" };
-}
-
-function timeAgo(ts: number): string {
-  const hours = Math.floor((Date.now() - ts) / 3_600_000);
-  if (hours < 1) return "방금 전";
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}일 전`;
-  return `${Math.floor(days / 30)}개월 전`;
 }
 
 function WinrateRing({ pct, games }: { pct: number; games: number }) {
@@ -425,8 +413,6 @@ export default async function SummonerPage({
     currentRank,
     currentPoints,
     estimatedRank,
-    estimatedPoints,
-    errorMargin,
     gap,
     recentWinrate,
     matches,
@@ -727,33 +713,24 @@ export default async function SummonerPage({
             region={region}
           />
 
-          {/* 경기 목록 — 최근 전적 / 분석 근거를 탭으로 (세로 길이 절감) */}
-          <MatchTabs
+          {/* 경기 목록 — 최근 전적 한 개. 집계에 쓰인 경기는 로비 랭크 칩으로 표시 */}
+          <MatchSection
             runeMap={runeMap}
             region={region}
             riotId={decoded}
             ddVersion={ddVersion}
             champNames={champNames}
-            rows={matches.map((m): MatchRow => {
-              const lobby =
-                m.lobbyPoints !== null
-                  ? pointsToRank(Math.round(m.lobbyPoints))
-                  : null;
-              return {
-                id: m.matchId,
-                win: m.win,
-                iconUrl: m.championName
-                  ? championIconUrl(ddVersion, m.championName)
-                  : null,
-                champName: championNameKo(champNames, m.championName),
-                kda: m.kda,
-                when: timeAgo(m.gameCreation),
-                lobbyLabel: lobby?.label ?? null,
-                lobbyTier: lobby?.tier ?? null,
-                sampleSize: m.sampleSize,
-                suspectedDuo: m.suspectedDuo ?? false,
-              };
-            })}
+            analyzedCount={matches.length}
+            lobbyByMatch={Object.fromEntries(
+              matches.map((m) => {
+                const lobby =
+                  m.lobbyPoints !== null ? pointsToRank(Math.round(m.lobbyPoints)) : null;
+                return [
+                  m.matchId,
+                  { label: lobby?.label ?? null, tier: lobby?.tier ?? null, duo: m.suspectedDuo ?? false },
+                ];
+              }),
+            ) satisfies LobbyInfoMap}
           />
         </div>
       </div>

@@ -19,6 +19,7 @@ import {
 import { useHistorySummary } from "@/components/history-summary";
 import { MatchDetail, type DetailPlayer } from "@/components/match-detail";
 import type { RuneInfo } from "@/lib/ddragon";
+import { TIER_COLORS } from "@/lib/mmr/rank";
 import { MatchSummary, type Summary } from "@/components/match-summary";
 import {
   championIconUrl,
@@ -166,12 +167,43 @@ function TeamColumn({
   );
 }
 
+/** 매칭 구간 집계에 쓰인 경기의 로비 정보 — 행에 칩으로 표시한다 */
+export interface LobbyInfo {
+  label: string | null; // "에메랄드 II" (로비 평균 랭크)
+  tier: string | null;
+  duo: boolean; // 듀오 추정으로 집계에서 제외됨
+}
+
+function LobbyChip({ info }: { info: LobbyInfo }) {
+  if (info.duo) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-dashed px-1.5 py-px text-[10px] text-muted-foreground"
+        title="같은 팀에 반복 등장한 플레이어가 있어 듀오로 보고 집계에서 제외한 경기"
+      >
+        듀오 · 집계 제외
+      </span>
+    );
+  }
+  if (!info.label) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border bg-background/60 px-1.5 py-px text-[10px] font-medium"
+      style={info.tier ? { color: TIER_COLORS[info.tier], borderColor: `${TIER_COLORS[info.tier]}55` } : undefined}
+      title="이 경기 로비(참가자)의 평균 랭크 — 매칭 구간 집계에 쓰인 경기"
+    >
+      로비 {info.label}
+    </span>
+  );
+}
+
 export function MatchHistory({
   region,
   riotId,
   ddVersion,
   champNames = {},
   runeMap = {},
+  lobbyByMatch = {},
   bare = false,
 }: {
   region: string;
@@ -179,6 +211,8 @@ export function MatchHistory({
   ddVersion: string;
   champNames?: Record<string, string>;
   runeMap?: Record<number, RuneInfo>;
+  /** matchId → 로비 평균 랭크(집계에 쓰인 경기만). 없으면 칩을 그리지 않는다 */
+  lobbyByMatch?: Record<string, LobbyInfo>;
   /** 탭 안에 넣을 때처럼 바깥에서 Card를 감쌀 경우 자체 Card·헤더를 생략한다 */
   bare?: boolean;
 }) {
@@ -369,6 +403,7 @@ export function MatchHistory({
                     </span>
                     {kp !== null && <span>킬관여 {kp}%</span>}
                     <span className="sm:hidden">{timeAgo(g.gameCreation)}</span>
+                    {lobbyByMatch[g.matchId] && <LobbyChip info={lobbyByMatch[g.matchId]} />}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] tabular-nums text-muted-foreground">
                     {POSITION_LABEL[g.position] && (
