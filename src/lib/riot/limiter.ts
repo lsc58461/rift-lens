@@ -57,19 +57,37 @@ export interface LimiterSnapshot {
   shared: boolean;
 }
 
-// KEYS = 버킷 키들, ARGV = [now, member, cap1, win1, cap2, win2, ...]
+// 인스턴스 간 우선순위: 대기 큐는 프로세스 로컬이라 다른 인스턴스의 유저 요청이
+// 이쪽 백그라운드 작업에 밀릴 수 있다. 그래서 high 예약은 "최근 유저 트래픽 있음"
+// 마커(hot)를 남기고, 마커가 살아 있는 동안 low 예약은 용량의 일부(RESERVE)를
+// 유저 몫으로 비워 둔다. 유저가 없으면 마커가 사라져 백그라운드가 전량을 쓴다.
+const HOT_KEY = "riot:rl:hot";
+const HOT_TTL_MS = 30_000;
+const LOW_RESERVE_RATIO = 0.4; // hot일 때 low가 못 쓰는 비율
+
+// KEYS = [hot, 버킷 키들...], ARGV = [now, member, isHigh(0/1), reserveRatio, hotTtl, cap1, win1, cap2, win2, ...]
 // 반환 = [waitMs, used1, used2, ...] (waitMs가 0이면 예약 완료)
 const ACQUIRE_LUA = `
 local now = tonumber(ARGV[1])
 local member = ARGV[2]
+local isHigh = ARGV[3] == '1'
+local reserve = tonumber(ARGV[4])
+local hotTtl = tonumber(ARGV[5])
+local hotKey = KEYS[1]
+if isHigh then
+  redis.call('SET', hotKey, '1', 'PX', hotTtl)
+end
+local hot = (not isHigh) and (redis.call('EXISTS', hotKey) == 1)
 local wait = 0
 local used = {}
-for i, key in ipairs(KEYS) do
-  local cap = tonumber(ARGV[2*i+1])
-  local win = tonumber(ARGV[2*i+2])
+for i = 2, #KEYS do
+  local key = KEYS[i]
+  local cap = tonumber(ARGV[2*i+2])
+  local win = tonumber(ARGV[2*i+3])
+  if hot then cap = math.floor(cap * (1 - reserve)) end
   redis.call('ZREMRANGEBYSCORE', key, 0, now - win)
   local n = redis.call('ZCARD', key)
-  used[i] = n
+  used[i-1] = n
   if n >= cap then
     local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
     local w = tonumber(oldest[2]) + win - now + 20
@@ -78,15 +96,16 @@ for i, key in ipairs(KEYS) do
 end
 if wait > 0 then
   local out = {wait}
-  for i = 1, #KEYS do out[#out+1] = used[i] end
+  for i = 1, #KEYS - 1 do out[#out+1] = used[i] end
   return out
 end
 local out = {0}
-for i, key in ipairs(KEYS) do
-  local win = tonumber(ARGV[2*i+2])
+for i = 2, #KEYS do
+  local key = KEYS[i]
+  local win = tonumber(ARGV[2*i+3])
   redis.call('ZADD', key, now, member)
   redis.call('PEXPIRE', key, win + 1000)
-  out[#out+1] = used[i] + 1
+  out[#out+1] = used[i-1] + 1
 end
 return out
 `;
@@ -144,7 +163,7 @@ class RateLimiter {
   }
 
   /** Redis 공유 버킷에서 슬롯 예약 시도. 반환: 대기 ms(0이면 예약됨), Redis 불가면 null */
-  private async acquireShared(): Promise<number | null> {
+  private async acquireShared(priority: Priority): Promise<number | null> {
     if (Date.now() - this.sharedBroken < 10_000) return null; // 최근 실패 → 잠시 로컬
     const client = getRedisClient();
     if (!client) return null;
@@ -152,10 +171,16 @@ class RateLimiter {
       const c = await client;
       const now = Date.now();
       const member = `${now}-${process.pid}-${this.seq++}`;
-      const args = [String(now), member];
+      const args = [
+        String(now),
+        member,
+        priority === "high" ? "1" : "0",
+        String(LOW_RESERVE_RATIO),
+        String(HOT_TTL_MS),
+      ];
       for (const b of this.buckets) args.push(String(b.capacity), String(b.windowMs));
       const res = (await c.eval(ACQUIRE_LUA, {
-        keys: this.buckets.map(bucketKey),
+        keys: [HOT_KEY, ...this.buckets.map(bucketKey)],
         arguments: args,
       })) as number[];
       const wait = Number(res[0] ?? 0);
@@ -173,10 +198,13 @@ class RateLimiter {
     this.pumping = true;
     try {
       while (this.high.length > 0 || this.low.length > 0) {
-        const shared = await this.acquireShared();
+        // 다음에 슬롯을 받을 대기자의 우선순위로 예약한다 (high가 항상 먼저)
+        const nextPriority: Priority = this.high.length > 0 ? "high" : "low";
+        const shared = await this.acquireShared(nextPriority);
         if (shared !== null) {
           if (shared > 0) {
-            await sleep(Math.min(shared, 2_000));
+            // low가 유저 예약분에 막힌 경우는 짧게 재시도 (유저 트래픽이 끊기면 바로 풀린다)
+            await sleep(Math.min(shared, nextPriority === "low" ? 500 : 2_000));
             continue;
           }
           // 예약 완료 — 로컬 버킷에도 기록해 폴백 시 연속성을 유지한다

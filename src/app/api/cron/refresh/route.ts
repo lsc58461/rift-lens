@@ -3,6 +3,7 @@ import { getCrawlState } from "@/lib/crawl-seed";
 import { getRefreshAllState } from "@/lib/refresh-all";
 import { runRefreshSweep, type SweepResult } from "@/lib/refresh-sweep";
 import { getRunefillState } from "@/lib/rune-backfill";
+import { withLowPriority } from "@/lib/riot/limiter";
 import { purgeExpiredCache } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -68,12 +69,14 @@ export async function GET(req: NextRequest) {
 
   // 새벽 창 안에서 작업이 남아 있는 동안 반복. 창 밖(수동 호출)에선 1회만.
   do {
-    last = await runRefreshSweep({
-      limit,
-      budgetMs: SWEEP_BUDGET_MS,
-      deepDeadlineMs: DEEP_START_DEADLINE_MS,
-      startIndex: cursor,
-    });
+    last = await withLowPriority(() =>
+      runRefreshSweep({
+        limit,
+        budgetMs: SWEEP_BUDGET_MS,
+        deepDeadlineMs: DEEP_START_DEADLINE_MS,
+        startIndex: cursor,
+      }),
+    );
     cursor = last.reachedEnd ? 0 : last.nextIndex;
     quickRefreshed.push(...last.quickRefreshed);
     deepCompleted += last.deepCompleted;

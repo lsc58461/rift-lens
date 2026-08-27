@@ -224,6 +224,13 @@ export async function POST(req: NextRequest) {
           keystone: self.keystone ?? null,
           subStyle: self.subStyle ?? null,
           items: self.items ?? [],
+          // 멀티킬 (확장 필드 미수집 매치는 0)
+          multikills: {
+            double: self.doubleKills ?? 0,
+            triple: self.tripleKills ?? 0,
+            quadra: self.quadraKills ?? 0,
+            penta: self.pentaKills ?? 0,
+          },
           teamKills,
           maxDamage,
           team: mine.map(player),

@@ -9,6 +9,7 @@
 
 import "server-only";
 import { runRefreshSweep } from "@/lib/refresh-sweep";
+import { withLowPriority } from "@/lib/riot/limiter";
 import { chainNextRound } from "@/lib/round-chain";
 import { claimRound, getSetting, setSetting } from "@/lib/store";
 
@@ -161,7 +162,9 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     // 라운드 중 실시간 진행 저장 (2초 스로틀) — 중지 클릭을 덮어쓰지 않도록
     // 매번 최신 상태를 읽고 그 위에 얹는다
     let lastProgressSave = 0;
-    const d = await runRefreshSweep({
+    // 스윕 전체(최신 매치 확인·빠른 추정·정밀)를 저우선순위로 — 예전엔 정밀만
+    // 저우선순위라 빠른 추정·매치 확인 콜이 유저 검색과 동등하게 경쟁했다
+    const d = await withLowPriority(() => runRefreshSweep({
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
@@ -174,7 +177,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
         if (!cur?.running) return;
         await save({ ...cur, scanned: p.scanned, target: p.total });
       },
-    });
+    }));
 
     const refreshed = d.quickRefreshed.length;
     const deep = d.deepCompleted;

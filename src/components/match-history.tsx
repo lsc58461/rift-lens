@@ -49,10 +49,41 @@ interface Game {
   keystone: number | null;
   subStyle: number | null;
   items: number[];
+  multikills?: { double: number; triple: number; quadra: number; penta: number };
   teamKills: number;
   maxDamage: number;
   team: Player[];
   enemy: Player[];
+}
+
+// 멀티킬 칩 — 높은 등급부터 최대 2개. 펜타는 눈에 띄게, 더블은 조용하게.
+const MULTIKILL_CHIPS: {
+  key: "penta" | "quadra" | "triple" | "double";
+  label: string;
+  cls: string;
+}[] = [
+  { key: "penta", label: "펜타킬", cls: "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold" },
+  { key: "quadra", label: "쿼드라킬", cls: "border-violet-500/40 bg-violet-500/12 text-violet-600 dark:text-violet-400 font-medium" },
+  { key: "triple", label: "트리플킬", cls: "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400" },
+  { key: "double", label: "더블킬", cls: "border-foreground/15 bg-foreground/5 text-muted-foreground" },
+];
+
+function MultikillChips({ m }: { m: NonNullable<Game["multikills"]> }) {
+  const chips = MULTIKILL_CHIPS.filter((c) => m[c.key] > 0).slice(0, 2);
+  if (chips.length === 0) return null;
+  return (
+    <>
+      {chips.map((c) => (
+        <span
+          key={c.key}
+          className={`inline-flex items-center rounded-full border px-1.5 py-px text-[10px] ${c.cls}`}
+        >
+          {c.label}
+          {m[c.key] > 1 && <span className="ml-0.5 tabular-nums">×{m[c.key]}</span>}
+        </span>
+      ))}
+    </>
+  );
 }
 
 const POSITION_LABEL: Record<string, string> = {
@@ -403,6 +434,7 @@ export function MatchHistory({
                     </span>
                     {kp !== null && <span>킬관여 {kp}%</span>}
                     <span className="sm:hidden">{timeAgo(g.gameCreation)}</span>
+                    {g.multikills && <MultikillChips m={g.multikills} />}
                     {lobbyByMatch[g.matchId] && <LobbyChip info={lobbyByMatch[g.matchId]} />}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] tabular-nums text-muted-foreground">
