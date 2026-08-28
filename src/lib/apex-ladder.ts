@@ -105,21 +105,37 @@ export async function pollApexLadder(platform: PlatformRegion = "kr"): Promise<b
     });
   }
 
-  // 이름 보충 — summoners에 없는 puuid 일부를 저우선순위로 조회
-  const unknown = await sql`
-    SELECT a.puuid FROM apex_ladder a
-    LEFT JOIN summoners s ON s.fp = a.fp AND s.puuid = a.puuid
-    WHERE a.fp = ${fp} AND a.platform = ${platform} AND s.puuid IS NULL
-    ORDER BY a.tier = 'CHALLENGER' DESC, a.rank_no
-    LIMIT ${NAMES_PER_POLL}`;
-  if (unknown.length > 0) {
+  await fillApexNames(platform, NAMES_PER_POLL);
+  return true;
+}
+
+const NAMES_LOCK_KEY = "apex:names:lock";
+
+/** 래더 명단 중 이름(summoners) 없는 puuid를 저우선순위로 조회해 채운다.
+ *  폴링과 별개로 10분마다도 돌린다 — 배포가 잦아 30분 폴링이 자주 끊겨도 이름은 채워지게. */
+export async function fillApexNames(platform: PlatformRegion = "kr", limit = 100): Promise<number> {
+  if (await cache.get<number>(NAMES_LOCK_KEY).catch(() => null)) return 0;
+  await cache.set(NAMES_LOCK_KEY, Date.now(), 8 * 60).catch(() => {});
+  try {
+    const sql = await getSql();
+    const fp = riotKeyFp();
+    const unknown = (await sql`
+      SELECT a.puuid FROM apex_ladder a
+      LEFT JOIN summoners s ON s.fp = a.fp AND s.puuid = a.puuid
+      WHERE a.fp = ${fp} AND a.platform = ${platform} AND s.puuid IS NULL
+      ORDER BY a.tier = 'CHALLENGER' DESC, a.rank_no
+      LIMIT ${limit}`) as unknown as { puuid: string }[];
+    if (unknown.length === 0) return 0;
+    let ok = 0;
     await withLowPriority(async () => {
-      for (const r of unknown as unknown as { puuid: string }[]) {
-        await getAccountByPuuid(platform, r.puuid); // 성공 시 summoners에 이름 저장됨
+      for (const r of unknown) {
+        if (await getAccountByPuuid(platform, r.puuid)) ok++; // 성공 시 summoners에 이름 저장됨
       }
     });
+    return ok;
+  } finally {
+    await cache.delete(NAMES_LOCK_KEY).catch(() => {});
   }
-  return true;
 }
 
 /** 랭킹 페이지용 명단 (이름은 summoners 테이블에서 조인) */

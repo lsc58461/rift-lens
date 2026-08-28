@@ -10,7 +10,7 @@
 // continue는 멱등이라(라운드가 살아 있으면 무시) 두 인스턴스가 겹쳐도 안전하다.
 // NEXT_MANUAL_SIG_HANDLE=true 여야 Next가 SIGTERM에 즉시 exit하지 않고 우리 훅이 돈다.
 import { getCrawlState, releaseCrawlRound } from "@/lib/crawl-seed";
-import { getApexCutoffs, pollApexLadder } from "@/lib/apex-ladder";
+import { fillApexNames, getApexCutoffs, pollApexLadder } from "@/lib/apex-ladder";
 import { warmChampionStats } from "@/lib/champion-stats";
 import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { setApexCutoffs } from "@/lib/mmr/rank";
@@ -85,6 +85,13 @@ export function registerNode(): void {
   setTimeout(() => void refreshApexCutoffs(), 5_000).unref();
   setTimeout(() => void pollLadder(), 45_000).unref();
   setInterval(() => void pollLadder(), 30 * 60_000).unref();
+  // 래더 이름 보충 — 폴링 잠금과 무관하게 10분마다 100명
+  const fillNames = () =>
+    fillApexNames()
+      .then((n) => n > 0 && console.log(`[apex] 이름 보충 ${n}명`))
+      .catch((e) => console.error("[apex] 이름 보충 실패:", (e as Error)?.message));
+  setTimeout(() => void fillNames(), 90_000).unref();
+  setInterval(() => void fillNames(), 10 * 60_000).unref();
   // 시즌 마감 랭크 확정 — 예약이 있고 수집 창 안일 때만 일한다(아니면 즉시 반환)
   setInterval(
     () => runSeasonArchiveTick().catch((e) => console.error("[season] 틱 실패:", (e as Error)?.message)),
