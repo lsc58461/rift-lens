@@ -1,11 +1,14 @@
 import { canon } from "@/lib/identity";
 import { NextResponse, type NextRequest } from "next/server";
+import { after } from "next/server";
 import {
   getAccountByRiotId,
+  getLeagueEntries,
   getMatch,
   getRankedMatchIds,
   riotKeyFp,
 } from "@/lib/riot/client";
+import { withLowPriority } from "@/lib/riot/limiter";
 import { currentNamesByPuuid, nearestRankSnapshots } from "@/lib/store";
 import { pointsToShortLabel, rankToPoints, TIER_LABELS, TIER_SHORT } from "@/lib/mmr/rank";
 import {
@@ -175,8 +178,44 @@ export async function POST(req: NextRequest) {
       platform,
       known.flatMap((m) => m.participants.map((p) => ({ puuid: p.puuid, at: m.gameCreation }))),
     ).catch(() => new Map());
+    // 스냅샷이 없는 참가자는 지금 조회해서 채운다 — 한 번 받으면 스냅샷으로
+    // 저장돼 다음부턴 공짜. 시간 예산(3초) 안에서 병렬로 받고, 못 받은 나머지는
+    // 응답 뒤 저우선순위로 마저 받아 다음 조회부터 나오게 한다.
+    const allPuuids = [...new Set(known.flatMap((m) => m.participants.map((p) => p.puuid)))];
+    const missing = allPuuids.filter(
+      (id) => !known.some((m) => rankAt.has(`${id}|${m.gameCreation}`)),
+    );
+    const fetchedNow = new Map<string, { tier: string; rank: string | null; lp: number | null }>();
+    const solo = (entries: Awaited<ReturnType<typeof getLeagueEntries>>) =>
+      entries.find((e) => e.queueType === "RANKED_SOLO_5x5") ?? null;
+    const fillDeadline = Date.now() + 3_000;
+    const queue = [...missing];
+    while (queue.length > 0 && Date.now() < fillDeadline) {
+      const batch = queue.splice(0, 5);
+      await Promise.all(
+        batch.map(async (id) => {
+          const e = solo(await getLeagueEntries(platform, id).catch(() => []));
+          if (e) fetchedNow.set(id, { tier: e.tier, rank: e.rank, lp: e.leaguePoints });
+        }),
+      );
+    }
+    if (queue.length > 0) {
+      const rest = [...queue];
+      after(() =>
+        withLowPriority(async () => {
+          for (const id of rest) await getLeagueEntries(platform, id).catch(() => {});
+        }),
+      );
+    }
+    const now = Date.now();
+
     const rankOf = (puuid: string, at: number) => {
-      const r = rankAt.get(`${puuid}|${at}`);
+      const r =
+        rankAt.get(`${puuid}|${at}`) ??
+        (() => {
+          const f = fetchedNow.get(puuid);
+          return f ? { tier: f.tier, rank: f.rank, lp: f.lp, snapAt: now } : null;
+        })();
       if (!r) return null;
       const apex = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(r.tier);
       const label = apex
