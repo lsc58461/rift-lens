@@ -62,7 +62,7 @@ export function AnnouncementBanner() {
   const inner = (
     <span className="flex min-w-0 items-center gap-2">
       <Megaphone className="announce-icon size-3.5 shrink-0" />
-      <span className="truncate">{a.text}</span>
+      <span className="min-w-0 flex-1 whitespace-normal break-keep leading-snug">{a.text}</span>
       {a.href && (
         <ArrowRight className="size-3 shrink-0 opacity-60 transition-transform group-hover/announce:translate-x-0.5" />
       )}
