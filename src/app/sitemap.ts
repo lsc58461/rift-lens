@@ -5,11 +5,12 @@ import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
 //   /sitemap/0.xml : 정적 페이지  (인덱스는 /sitemap-index.xml — /sitemap.xml은 Next 예약 경로)
 //   /sitemap/1.xml … : 소환사 페이지 10,000개씩 (최근 분석순)
 // 소환사 페이지가 수만 개라 한 파일(5만 URL 상한)에 몰아넣지 않고 쪼갠다.
-// 1시간 캐시 — 검색엔진이 자주 긁어도 DB를 매번 훑지 않게.
+// 요청 시 생성(force-dynamic) — 빌드 환경엔 DB가 없어 프리렌더하면 빈 결과가 캐시된다.
+// 크롤러 방문 빈도는 낮고 쿼리도 가벼워(count 1회 / 1만 행) 매 요청 계산으로 충분.
 
 const BASE = "https://rift-lens.xyz";
 export const SUMMONERS_PER_SITEMAP = 10_000;
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function generateSitemaps(): Promise<{ id: number }[]> {
   const total = await countQuickAnalysisPages().catch(() => 0);
@@ -44,10 +45,11 @@ function staticPages(): MetadataRoute.Sitemap {
   ];
 }
 
-export default async function sitemap({ id }: { id: number }): Promise<MetadataRoute.Sitemap> {
-  if (id === 0) return staticPages();
+export default async function sitemap({ id }: { id: number | string }): Promise<MetadataRoute.Sitemap> {
+  const n = Number(id); // 런타임엔 문자열("0")로 들어온다
+  if (!Number.isFinite(n) || n === 0) return staticPages();
   try {
-    const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (id - 1) * SUMMONERS_PER_SITEMAP);
+    const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
     return pages.map((p) => ({
       url: `${BASE}/summoner/${p.platform}/${encodeURIComponent(`${p.game_name}#${p.tag_line}`)}`,
       lastModified: p.analyzed_at ? new Date(p.analyzed_at) : undefined,
