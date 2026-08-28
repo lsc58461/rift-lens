@@ -512,12 +512,21 @@ export interface QuickAnalysisPage {
   analyzed_at: string | null;
 }
 
-export async function listQuickAnalysisPages(): Promise<QuickAnalysisPage[]> {
+export async function listQuickAnalysisPages(limit = 50_000, offset = 0): Promise<QuickAnalysisPage[]> {
   const sql = await getSql();
   const rows = await sql`
     SELECT platform, game_name, tag_line, analyzed_at
-    FROM analyses WHERE kind = 'quick'`;
+    FROM analyses WHERE kind = 'quick'
+    ORDER BY analyzed_at DESC NULLS LAST
+    LIMIT ${limit} OFFSET ${offset}`;
   return rows as unknown as QuickAnalysisPage[];
+}
+
+/** 사이트맵 분할용 — 색인 대상 소환사 페이지 수 */
+export async function countQuickAnalysisPages(): Promise<number> {
+  const sql = await getSql();
+  const r = await sql`SELECT count(*)::int AS n FROM analyses WHERE kind = 'quick'`;
+  return (r[0]?.n as number) ?? 0;
 }
 
 // ── 최근 검색 ───────────────────────────────────────────
