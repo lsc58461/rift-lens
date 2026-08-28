@@ -1,47 +1,52 @@
 import {
-  Bot,
-  Activity,
   ArrowRight,
   BarChart3,
+  Bot,
+  Crown,
   Gauge,
+  Radar,
   Sparkles,
+  TrendingUp,
+  Trophy,
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { InteractiveBackground } from "@/components/home/interactive-bg";
+import { SpotlightCard } from "@/components/home/spotlight-card";
 import { SearchForm } from "@/components/search-form";
-import { Badge } from "@/components/ui/badge";
+import { getApexCutoffs, getApexLadder } from "@/lib/apex-ladder";
 import { getHomeStats } from "@/lib/home-stats";
 import { getRecentSearches } from "@/lib/recent";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { TOOLS } from "@/lib/tools";
 
-// 라이브 지표·최근 검색을 보여주므로 요청 시 렌더 (지표는 10분 캐시)
+// 라이브 지표·최근 검색·랭킹을 보여주므로 요청 시 렌더 (지표는 10분 캐시, 랭킹은 30분 갱신)
 export const dynamic = "force-dynamic";
 
 const FEATURES = [
   {
+    icon: Radar,
+    title: "매칭 구간",
+    description:
+      "최근 솔로랭크 경기에서 실제로 만난 플레이어들의 랭크를 모아, 요즘 어느 구간의 로비에서 게임이 잡히는지 보여줘요.",
+    spot: "var(--color-primary)",
+    tile: "bg-primary/15 text-primary",
+  },
+  {
     icon: Gauge,
-    title: "전적 · 매치 히스토리",
+    title: "전적 · 스코어보드",
     description:
-      "최근 솔로랭크 경기의 KDA·딜량·CS·아이템·팀 구성을 한 화면에서 확인하고, 참가자 이름을 눌러 바로 이동할 수 있어요.",
-    tile: "bg-primary/12 text-primary",
-    hover: "hover:border-primary/40",
+      "KDA·딜량·CS·아이템·룬은 물론 경기 당시 참가자 랭크, MVP·ACE, 멀티킬까지 한 화면에서. 참가자 이름을 누르면 바로 이동해요.",
+    spot: "oklch(0.72 0.17 200)",
+    tile: "bg-sky-500/15 text-sky-500 dark:text-sky-400",
   },
   {
-    icon: Users,
-    title: "매칭 랭크 분석",
+    icon: TrendingUp,
+    title: "랭크 추이 · LP 흐름",
     description:
-      "최근 경기에서 만난 플레이어들의 현재 랭크 분포를 모아, 요즘 어떤 랭크 구간에서 게임이 잡히는지 보여줘요.",
-    tile: "bg-sky-500/12 text-sky-500 dark:text-sky-400",
-    hover: "hover:border-sky-500/40",
-  },
-  {
-    icon: Activity,
-    title: "랭크 추이 그래프",
-    description:
-      "경기별 로비 평균 랭크와 LP 흐름을 그래프로 담아 상승세인지 하락세인지 한눈에 확인할 수 있어요.",
-    tile: "bg-violet-500/12 text-violet-500 dark:text-violet-400",
-    hover: "hover:border-violet-500/40",
+      "경기별 로비 평균 랭크와 LP 득실을 그래프로 담아 상승세인지 하락세인지, 시즌 최고 티어는 어디였는지 한눈에.",
+    spot: "oklch(0.7 0.2 300)",
+    tile: "bg-violet-500/15 text-violet-500 dark:text-violet-400",
   },
 ] as const;
 
@@ -62,195 +67,216 @@ const JSON_LD = {
   },
 };
 
-function StatBlock({ value, label }: { value: string; label: string }) {
+function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="text-center">
-      <div className="text-xl font-bold tabular-nums tracking-tight sm:text-2xl">
-        {value}
-      </div>
-      <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">
-        {label}
-      </div>
+    <div className="flex items-baseline gap-1.5 rounded-full border border-white/10 bg-card/50 px-3.5 py-1.5 backdrop-blur-sm dark:border-white/8">
+      <span className="text-sm font-bold tabular-nums tracking-tight">{value}</span>
+      <span className="text-[11px] text-muted-foreground">{label}</span>
     </div>
   );
 }
 
 export default async function Home() {
-  // 지표·최근 검색은 장식 — 실패해도 홈은 떠야 한다
-  const [stats, recent] = await Promise.all([
+  // 전부 장식 데이터 — 실패해도 홈은 떠야 한다
+  const [stats, recent, ladder, cutoffs] = await Promise.all([
     getHomeStats().catch(() => null),
-    getRecentSearches(10).catch(() => []),
+    getRecentSearches(8).catch(() => []),
+    getApexLadder("CHALLENGER").catch(() => ({ rows: [], fetchedAt: null })),
+    getApexCutoffs().catch(() => null),
   ]);
+  const top = ladder.rows.filter((r) => r.name).slice(0, 3);
 
   return (
-    <div className="relative flex flex-col items-center gap-12 py-10 sm:gap-14 sm:py-16">
+    <div className="relative">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
+      <InteractiveBackground />
 
-      {/* 배경 글로우 */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 overflow-hidden"
-      >
-        <div className="mx-auto h-72 max-w-3xl bg-primary/12 blur-[110px] sm:h-96" />
-      </div>
-
-      {/* 히어로 */}
-      <div className="max-w-2xl space-y-5 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
-        <Badge
-          variant="outline"
-          className="gap-1.5 rounded-full border-primary/30 bg-primary/5 px-3 py-1 text-primary"
-        >
-          <Sparkles className="size-3.5" />
-          한국 서버 전용 · 라이엇 공식 API
-        </Badge>
-        <h1 className="text-3xl font-bold tracking-tight text-balance sm:text-4xl sm:whitespace-nowrap lg:text-5xl">
-          내 경기, 어느{" "}
-          <span className="bg-linear-to-r from-primary via-primary to-chart-2 bg-clip-text text-transparent">
-            랭크
+      {/* ── 히어로 ─────────────────────────────────────────── */}
+      <section className="mx-auto flex min-h-[calc(100dvh-9.5rem)] max-w-3xl flex-col items-center justify-center gap-7 py-14 text-center sm:gap-8 sm:py-20">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/8 px-3.5 py-1 text-xs font-medium text-primary backdrop-blur-sm animate-in fade-in slide-in-from-bottom-2 duration-700">
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/70" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
           </span>
-          에서 잡힐까?
-        </h1>
-        <p className="text-muted-foreground text-pretty sm:text-lg">
-          최근 솔로랭크 전적과 함께, 같은 경기에 잡힌 플레이어들의 현재 랭크
-          분포까지 — 전적을 한층 깊게 보여드립니다.
-        </p>
-      </div>
+          한국 서버 · 라이엇 공식 API · 무료
+        </span>
 
-      {/* 검색 */}
-      <div className="w-full max-w-xl space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-700 delay-150 fill-mode-backwards">
-        <div className="rounded-2xl border bg-card/80 p-5 shadow-lg shadow-primary/5 ring-1 ring-primary/10 backdrop-blur-sm sm:p-6">
-          <SearchForm />
+        <h1 className="text-4xl font-bold tracking-tight text-balance sm:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-75 fill-mode-backwards">
+          내 게임은 지금
+          <br />
+          <span className="bg-linear-to-r from-primary via-sky-400 to-amber-400 bg-clip-text text-transparent">
+            어느 랭크
+          </span>
+          에서 잡힐까
+        </h1>
+
+        <p className="max-w-xl text-pretty text-muted-foreground sm:text-lg animate-in fade-in slide-in-from-bottom-3 duration-700 delay-150 fill-mode-backwards">
+          최근 솔로랭크 전적에 같은 경기를 뛴 플레이어들의 랭크까지 얹어 보여드려요.
+          닉네임#태그만 넣으면 끝.
+        </p>
+
+        <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-200 fill-mode-backwards">
+          <SpotlightCard className="p-4 shadow-2xl shadow-primary/10 sm:p-5">
+            <SearchForm />
+          </SpotlightCard>
+          {recent.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">방금 조회</span>
+              {recent.slice(0, 6).map((r) => (
+                <Link
+                  key={`${r.gameName}#${r.tagLine}`}
+                  href={`/summoner/kr/${encodeURIComponent(`${r.gameName}#${r.tagLine}`)}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-card/50 px-2.5 py-1 text-xs backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
+                >
+                  <span
+                    className="size-1.5 rounded-full"
+                    style={{
+                      background: r.estimatedTier
+                        ? TIER_COLORS[r.estimatedTier]
+                        : "var(--color-muted-foreground)",
+                    }}
+                  />
+                  <span className="max-w-28 truncate">{r.gameName}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 최근 검색 티저 — 지금 막 조회된 소환사 */}
-        {recent.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">최근 검색</span>
-            {recent.slice(0, 6).map((r) => (
-              <Link
-                key={`${r.gameName}#${r.tagLine}`}
-                href={`/summoner/kr/${encodeURIComponent(`${r.gameName}#${r.tagLine}`)}`}
-                className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs transition-colors hover:border-primary/40 hover:text-primary"
-              >
-                <span
-                  className="size-1.5 rounded-full"
-                  style={{
-                    background: r.estimatedTier
-                      ? TIER_COLORS[r.estimatedTier]
-                      : "var(--color-muted-foreground)",
-                  }}
-                />
-                <span className="max-w-28 truncate">{r.gameName}</span>
-              </Link>
-            ))}
+        {(stats || cutoffs) && (
+          <div className="flex flex-wrap items-center justify-center gap-2 animate-in fade-in duration-700 delay-300 fill-mode-backwards">
+            {stats && (
+              <>
+                <Stat value={stats.totalMatches.toLocaleString()} label="수집 경기" />
+                <Stat value={stats.totalSummoners.toLocaleString()} label="소환사" />
+                <Stat value={stats.visits24h.toLocaleString()} label="24시간 조회" />
+              </>
+            )}
+            {cutoffs && (
+              <Stat value={`${cutoffs.challenger.toLocaleString()} LP`} label="챌린저 컷" />
+            )}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* 라이브 지표 */}
-      {stats && (
-        <div className="grid w-full max-w-xl grid-cols-3 gap-3 rounded-2xl border bg-card/60 px-4 py-4 animate-in fade-in slide-in-from-bottom-3 duration-700 delay-300 fill-mode-backwards">
-          <StatBlock
-            value={stats.totalMatches.toLocaleString()}
-            label="수집된 경기"
-          />
-          <StatBlock
-            value={stats.totalSummoners.toLocaleString()}
-            label="기록된 소환사"
-          />
-          <StatBlock
-            value={stats.visits24h.toLocaleString()}
-            label="24시간 조회"
-          />
-        </div>
-      )}
-
-      {/* 기능 */}
-      <div className="grid w-full gap-4 sm:grid-cols-3 animate-in fade-in slide-in-from-bottom-3 duration-700 delay-300 fill-mode-backwards">
-        {FEATURES.map(({ icon: Icon, title, description, tile, hover }) => (
-          <div
-            key={title}
-            className={`group rounded-xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-md ${hover}`}
-          >
-            <span
-              className={`mb-3 flex size-9 items-center justify-center rounded-lg ${tile}`}
-            >
-              <Icon className="size-4.5" />
+      {/* ── 기능 ───────────────────────────────────────────── */}
+      <section className="mx-auto grid max-w-6xl gap-4 sm:grid-cols-3">
+        {FEATURES.map(({ icon: Icon, title, description, spot, tile }) => (
+          <SpotlightCard key={title} spot={spot} className="p-6">
+            <span className={`mb-4 flex size-10 items-center justify-center rounded-xl ${tile}`}>
+              <Icon className="size-5" />
             </span>
-            <h2 className="mb-1.5 text-sm font-semibold">{title}</h2>
+            <h2 className="mb-1.5 text-base font-semibold">{title}</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+          </SpotlightCard>
+        ))}
+      </section>
+
+      {/* ── 랭킹 · 챔피언 통계 ─────────────────────────────── */}
+      <section className="mx-auto mt-4 grid max-w-6xl gap-4 lg:grid-cols-2">
+        <SpotlightCard href="/ranking" spot="oklch(0.8 0.16 85)" className="p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="flex items-center gap-2 text-base font-semibold">
+              <Trophy className="size-4.5 text-amber-400" />
+              챌린저 TOP 3
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors group-hover/spot:text-foreground">
+              전체 랭킹
+              <ArrowRight className="size-3.5 transition-transform group-hover/spot:translate-x-0.5" />
+            </span>
+          </div>
+          {top.length === 0 ? (
+            <p className="text-sm text-muted-foreground">래더를 불러오는 중이에요.</p>
+          ) : (
+            <ol className="space-y-2">
+              {top.map((r) => (
+                <li key={r.puuid} className="flex items-center gap-3 text-sm">
+                  <span className="w-5 text-right font-bold tabular-nums text-amber-400">{r.rankNo}</span>
+                  <Crown className={`size-3.5 ${r.rankNo === 1 ? "text-amber-400" : "text-muted-foreground/50"}`} />
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {r.name!.split("#")[0]}
+                    <span className="font-normal text-muted-foreground">#{r.name!.split("#")[1]}</span>
+                  </span>
+                  <span className="font-semibold tabular-nums" style={{ color: TIER_COLORS.CHALLENGER }}>
+                    {r.lp.toLocaleString()} LP
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {cutoffs && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              챌린저 컷 {cutoffs.challenger.toLocaleString()}LP · 그랜드마스터 컷{" "}
+              {cutoffs.grandmaster.toLocaleString()}LP · 30분마다 갱신
+            </p>
+          )}
+        </SpotlightCard>
+
+        <SpotlightCard href="/champions" spot="oklch(0.8 0.16 85)" className="flex flex-col justify-between p-6">
+          <div>
+            <span className="mb-4 flex size-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 dark:text-amber-400">
+              <BarChart3 className="size-5" />
+            </span>
+            <h2 className="mb-1.5 text-base font-semibold">챔피언 통계</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {description}
+              라인별 1~5티어와 승률·픽률·밴률, 스펠·아이템·룬 조합까지. 랭크 구간별로 걸러서 지금 강한
+              챔피언을 확인하세요.
             </p>
           </div>
-        ))}
-      </div>
-
-      {/* 챔피언 통계 배너 */}
-      <Link
-        href="/champions"
-        className="group flex w-full items-center gap-4 rounded-xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-amber-500/40 hover:shadow-md animate-in fade-in slide-in-from-bottom-3 duration-700 delay-500 fill-mode-backwards"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/12 text-amber-500 dark:text-amber-400">
-          <BarChart3 className="size-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">챔피언 통계</span>
-          <span className="block text-sm text-muted-foreground">
-            라인별 1~5티어와 승률·픽률·밴률 — 지금 강한 챔피언을 확인하세요
+          <span className="mt-5 inline-flex items-center gap-1 text-xs font-medium text-amber-500 dark:text-amber-400">
+            통계 보기
+            <ArrowRight className="size-3.5 transition-transform group-hover/spot:translate-x-0.5" />
           </span>
-        </span>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </Link>
+        </SpotlightCard>
+      </section>
 
-      {/* 디스코드 봇 배너 */}
-      <Link
-        href="/discord"
-        className="group flex w-full items-center gap-4 rounded-xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-[#5865F2]/40 hover:shadow-md animate-in fade-in slide-in-from-bottom-3 duration-700 delay-500 fill-mode-backwards"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#5865F2]/12 text-[#5865F2]">
-          <Bot className="size-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">디스코드 봇 초대하기</span>
-          <span className="block text-sm text-muted-foreground">
-            새 패치노트와 서비스 상태를 여러분의 서버 채널로 알려드려요
-          </span>
-        </span>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </Link>
-
-      {/* 도구 */}
-      <div className="w-full space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-700 delay-500 fill-mode-backwards">
-        <h2 className="text-center text-sm font-semibold text-muted-foreground">
-          함께 쓰는 도구
-        </h2>
-        <div className="grid w-full gap-4 sm:grid-cols-3">
-          {TOOLS.map(({ icon: Icon, label, desc, href, tile, accent }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`group rounded-xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-md ${accent}`}
-            >
-              <span
-                className={`mb-3 flex size-9 items-center justify-center rounded-lg ${tile}`}
-              >
-                <Icon className="size-4.5" />
+      {/* ── 도구 ───────────────────────────────────────────── */}
+      <section className="mx-auto mt-14 max-w-6xl space-y-4">
+        <div className="flex items-end justify-between">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Sparkles className="size-4 text-primary" />
+            함께 쓰는 도구
+          </h2>
+          <Link href="/tools" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+            모두 보기
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {TOOLS.map(({ icon: Icon, label, desc, href, tile }) => (
+            <SpotlightCard key={href} href={href} className="p-6">
+              <span className={`mb-4 flex size-10 items-center justify-center rounded-xl ${tile}`}>
+                <Icon className="size-5" />
               </span>
-              <h3 className="mb-1.5 text-sm font-semibold">{label}</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {desc}
-              </p>
-              <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+              <h3 className="mb-1.5 text-base font-semibold">{label}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{desc}</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary">
                 사용해 보기
-                <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+                <ArrowRight className="size-3.5 transition-transform group-hover/spot:translate-x-0.5" />
               </span>
-            </Link>
+            </SpotlightCard>
           ))}
         </div>
-      </div>
+      </section>
+
+      {/* ── 디스코드 ───────────────────────────────────────── */}
+      <section className="mx-auto mt-6 mb-10 max-w-6xl">
+        <SpotlightCard href="/discord" spot="#5865F2" className="flex items-center gap-4 p-5 sm:p-6">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#5865F2]/15 text-[#5865F2]">
+            <Bot className="size-5.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold">디스코드 봇 초대하기</span>
+            <span className="block text-sm text-muted-foreground">
+              /rift 로 매칭 구간 조회, 팀 나누기·듀오 분석, 새 패치노트와 서비스 상태 알림을 여러분의 서버에서.
+            </span>
+          </span>
+          <Users className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover/spot:translate-x-0.5" />
+        </SpotlightCard>
+      </section>
     </div>
   );
 }
