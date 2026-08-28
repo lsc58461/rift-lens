@@ -149,16 +149,26 @@ export default async function RankingPage({
                         </Badge>
                       )}
                     </span>
-                    {/* 지표: 모바일에선 w-full로 2줄째(순위 칸만큼 들여쓰기), sm+에선 인라인 */}
-                    <span className="flex w-full items-center gap-3 pl-11 sm:w-auto sm:justify-end sm:pl-0">
-                      <span className="w-20 shrink-0 text-right font-semibold tabular-nums sm:text-right" style={{ color }}>
+                    {/* 모바일: 2줄째를 고정 폭 없이 한 줄로 — LP · 승패, 승률은 오른쪽 끝 */}
+                    <span className="flex w-full items-baseline gap-2 pl-11 text-xs sm:hidden">
+                      <span className="text-sm font-semibold tabular-nums" style={{ color }}>
                         {r.lp.toLocaleString()}
-                        <span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">LP</span>
+                        <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">LP</span>
                       </span>
-                      <span className="w-28 shrink-0 text-xs tabular-nums text-muted-foreground sm:text-right">
+                      <span className="tabular-nums text-muted-foreground">
                         {r.wins}승 {r.losses}패
                       </span>
-                      <span className="w-14 shrink-0 text-xs tabular-nums sm:text-right">{wr}%</span>
+                      <span className="ml-auto tabular-nums">{wr}%</span>
+                    </span>
+                    {/* sm+: 헤더와 같은 고정 폭 컬럼 */}
+                    <span className="hidden items-center gap-3 sm:flex">
+                      <span className="w-20 shrink-0 text-right font-semibold tabular-nums" style={{ color }}>
+                        {r.lp.toLocaleString()}
+                      </span>
+                      <span className="w-28 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                        {r.wins}승 {r.losses}패
+                      </span>
+                      <span className="w-14 shrink-0 text-right text-xs tabular-nums">{wr}%</span>
                     </span>
                   </div>
                 );
