@@ -68,7 +68,7 @@ export function InteractiveBackground() {
           y: Math.random() * h,
           vx: (Math.random() - 0.5) * SPEED,
           vy: (Math.random() - 0.5) * SPEED,
-          r: 0.9 + Math.random() * 1.6,
+          r: 1.3 + Math.random() * 1.9,
           hue: Math.random() < 0.18 ? 1 : 0,
           tw: Math.random() * Math.PI * 2,
         }));
@@ -138,7 +138,7 @@ export function InteractiveBackground() {
           if (Math.abs(dx) > LINK_DIST || Math.abs(dy) > LINK_DIST) continue;
           const dist = Math.hypot(dx, dy);
           if (dist > LINK_DIST) continue;
-          const alpha = (1 - dist / LINK_DIST) * (dark ? 0.22 : 0.16) * p.alpha;
+          const alpha = (1 - dist / LINK_DIST) * (dark ? 0.3 : 0.2) * p.alpha;
           ctx.strokeStyle = `rgba(${p.line},${alpha})`;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
@@ -161,17 +161,14 @@ export function InteractiveBackground() {
             ctx.stroke();
           }
         }
-        const twinkle = reduced ? 0.7 : 0.55 + 0.45 * Math.sin(t / 900 + d.tw);
-        const base = dark ? 0.55 : 0.5;
+        const twinkle = reduced ? 0.85 : 0.7 + 0.3 * Math.sin(t / 900 + d.tw);
+        const base = dark ? 0.85 : 0.75;
         const alpha = Math.min(1, (base * twinkle + near * 0.6) * p.alpha);
         const color = d.hue ? p.amber : p.blue;
         const r = d.r + near * 1.8;
-        if (near > 0.2 || d.hue) {
-          ctx.shadowColor = `rgba(${color},${dark ? 0.9 : 0.5})`;
-          ctx.shadowBlur = 8 + near * 10;
-        } else {
-          ctx.shadowBlur = 0;
-        }
+        // 커서와 무관하게 항상 은은한 글로우, 커서 근처에선 더 크게
+        ctx.shadowColor = `rgba(${color},${dark ? 0.9 : 0.5})`;
+        ctx.shadowBlur = 6 + near * 12;
         ctx.fillStyle = `rgba(${color},${alpha})`;
         ctx.beginPath();
         ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
