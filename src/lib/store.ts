@@ -141,6 +141,32 @@ export async function latestLeagueSnapshot(
   return r.entries as LeagueEntry[];
 }
 
+/** 최근 3일 스냅샷에서 그랜드마스터·챌린저의 실제 LP 컷(하위 5%)을 뽑는다.
+ *  인원 컷 티어라 LP만으로는 못 정하는데, 표본이 많아 5% 분위수면 안정적이다. */
+export async function apexCutoffsFromSnapshots(): Promise<{
+  grandmaster: number;
+  challenger: number;
+} | null> {
+  const sql = await getSql();
+  const rows = await sql`
+    WITH latest AS (
+      SELECT DISTINCT ON (puuid) puuid, solo_tier, solo_lp
+      FROM league_snapshots
+      WHERE created_at > now() - interval '3 days'
+        AND solo_tier IN ('GRANDMASTER', 'CHALLENGER') AND solo_lp IS NOT NULL
+      ORDER BY puuid, created_at DESC)
+    SELECT solo_tier AS tier, count(*)::int AS n,
+           percentile_cont(0.05) WITHIN GROUP (ORDER BY solo_lp) AS cut
+    FROM latest GROUP BY 1`;
+  const m = new Map(
+    (rows as unknown as { tier: string; n: number; cut: number }[]).map((r) => [r.tier, r]),
+  );
+  const gm = m.get("GRANDMASTER");
+  const ch = m.get("CHALLENGER");
+  if (!gm || !ch || gm.n < 30 || ch.n < 30) return null; // 표본 부족이면 기본값 유지
+  return { grandmaster: Math.round(Number(gm.cut)), challenger: Math.round(Number(ch.cut)) };
+}
+
 export interface NearestRankSnap {
   puuid: string;
   at: number; // 요청한 기준 시각(ms)

@@ -14,6 +14,22 @@ const TIERS = [
 const APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"] as const;
 const APEX_BASE = TIERS.length * 400; // 2800
 
+// 마스터 이상은 LP만으로 티어가 정해지지 않는다(그마·챌은 인원 컷). 포인트를
+// 티어로 역산할 때 쓰는 컷 — 기본값은 옛 고정치이고, 서버는 부팅 시·매시간
+// 우리 스냅샷에서 실제 컷(하위 5% LP)을 뽑아 setApexCutoffs로 갱신한다.
+// (클라이언트 번들은 기본값 그대로 — 차트 툴팁 정도에만 쓰여 큰 문제 없음)
+export const APEX_CUTOFFS = { grandmaster: 500, challenger: 1000 };
+export function setApexCutoffs(c: { grandmaster: number; challenger: number }): void {
+  if (Number.isFinite(c.grandmaster) && c.grandmaster > 0) APEX_CUTOFFS.grandmaster = c.grandmaster;
+  if (Number.isFinite(c.challenger) && c.challenger > APEX_CUTOFFS.grandmaster) {
+    APEX_CUTOFFS.challenger = c.challenger;
+  }
+}
+/** 포인트가 마스터 이상 구간인지 */
+export function isApexPoints(points: number): boolean {
+  return points >= APEX_BASE;
+}
+
 const DIVISIONS: Record<string, number> = { IV: 0, III: 1, II: 2, I: 3 };
 
 export const TIER_LABELS: Record<string, string> = {
@@ -45,13 +61,28 @@ export interface RankLabel {
   label: string; // "골드 2 · 47LP" 같은 표시용 문자열
 }
 
+/** 라이엇 랭크 엔트리(실제 티어)를 표시용 라벨로 — 포인트 역산과 달리 마스터
+ *  이상도 라이엇이 준 티어를 그대로 쓴다 (현재 티어 표시는 반드시 이걸로) */
+export function entryToRank(tier: string, division: string, lp: number): RankLabel {
+  if ((APEX_TIERS as readonly string[]).includes(tier)) {
+    return { tier, label: `${TIER_LABELS[tier] ?? tier} ${lp}LP` };
+  }
+  const div = DIVISION_LABELS[DIVISIONS[division] ?? 0] ?? "4";
+  return { tier, label: `${TIER_LABELS[tier] ?? tier} ${div} · ${lp}LP` };
+}
+
 /** MMR 포인트를 표시용 랭크로 역변환 */
 export function pointsToRank(points: number): RankLabel {
   const p = Math.max(0, Math.round(points));
   if (p >= APEX_BASE) {
     // 마스터 이상은 구간을 나누지 않고 LP로만 표기
     const lp = p - APEX_BASE;
-    const tier = lp >= 1000 ? "CHALLENGER" : lp >= 500 ? "GRANDMASTER" : "MASTER";
+    const tier =
+      lp >= APEX_CUTOFFS.challenger
+        ? "CHALLENGER"
+        : lp >= APEX_CUTOFFS.grandmaster
+          ? "GRANDMASTER"
+          : "MASTER";
     return { tier, label: `${TIER_LABELS[tier]} ${lp}LP` };
   }
   const tierIndex = Math.min(Math.floor(p / 400), TIERS.length - 1);

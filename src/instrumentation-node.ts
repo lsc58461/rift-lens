@@ -12,8 +12,10 @@
 import { getCrawlState, releaseCrawlRound } from "@/lib/crawl-seed";
 import { warmChampionStats } from "@/lib/champion-stats";
 import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
+import { setApexCutoffs } from "@/lib/mmr/rank";
 import { getRefreshAllState, releaseRefreshAllRound } from "@/lib/refresh-all";
 import { getRunefillState, releaseRunefillRound } from "@/lib/rune-backfill";
+import { apexCutoffsFromSnapshots } from "@/lib/store";
 
 const INTERNAL_ORIGIN = "http://127.0.0.1:3000";
 const BOOT_DELAY_MS = 20_000; // 서버·DB 워밍 뒤 확인
@@ -58,6 +60,16 @@ export function registerNode(): void {
   // 강제 kill) 첫 확인 시점엔 하트비트가 아직 신선해 보일 수 있어서, 하트비트가
   // 죽었다고 판정 가능한 시점에 한 번 더 본다.
   setTimeout(() => void resumeOrphans(1), BOOT_DELAY_MS).unref();
+  // 마스터 이상 티어 컷(그마·챌 LP) — 스냅샷에서 실측해 포인트→티어 역산에 반영
+  const refreshApexCutoffs = async () => {
+    const c = await apexCutoffsFromSnapshots().catch(() => null);
+    if (c) {
+      setApexCutoffs(c);
+      console.log(`[apex] 컷 갱신 그마 ${c.grandmaster}LP · 챌 ${c.challenger}LP`);
+    }
+  };
+  setTimeout(() => void refreshApexCutoffs(), 5_000).unref();
+  setInterval(() => void refreshApexCutoffs(), 60 * 60_000).unref();
   // 챔피언 통계 캐시 워밍 — 배포 직후 첫 방문자가 재집계를 기다리지 않게.
   // 캐시가 이미 있으면 즉시 끝나고(오래됐으면 뒤에서 갱신), 없을 때만 집계한다.
   setTimeout(() => {
