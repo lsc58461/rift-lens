@@ -124,7 +124,7 @@ export default async function RankingPage({
                     >
                       {r.rankNo}
                     </span>
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="flex min-w-0 flex-1 items-center gap-2 sm:flex-1">
                       {label ? (
                         <Link
                           href={`/summoner/kr/${encodeURIComponent(label)}`}
@@ -149,13 +149,17 @@ export default async function RankingPage({
                         </Badge>
                       )}
                     </span>
-                    <span className="w-20 shrink-0 text-right font-semibold tabular-nums" style={{ color }}>
-                      {r.lp.toLocaleString()}
+                    {/* 지표: 모바일에선 w-full로 2줄째(순위 칸만큼 들여쓰기), sm+에선 인라인 */}
+                    <span className="flex w-full items-center gap-3 pl-13 sm:w-auto sm:justify-end sm:pl-0">
+                      <span className="w-20 shrink-0 text-right font-semibold tabular-nums sm:text-right" style={{ color }}>
+                        {r.lp.toLocaleString()}
+                        <span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">LP</span>
+                      </span>
+                      <span className="w-28 shrink-0 text-xs tabular-nums text-muted-foreground sm:text-right">
+                        {r.wins}승 {r.losses}패
+                      </span>
+                      <span className="w-14 shrink-0 text-xs tabular-nums sm:text-right">{wr}%</span>
                     </span>
-                    <span className="w-28 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                      {r.wins}승 {r.losses}패
-                    </span>
-                    <span className="w-14 shrink-0 text-right text-xs tabular-nums">{wr}%</span>
                   </div>
                 );
               })}
