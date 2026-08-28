@@ -46,8 +46,9 @@ function staticPages(): MetadataRoute.Sitemap {
 }
 
 export default async function sitemap({ id }: { id: number | string }): Promise<MetadataRoute.Sitemap> {
-  const n = Number(id); // 런타임엔 문자열("0")로 들어온다
-  if (!Number.isFinite(n) || n === 0) return staticPages();
+  // 런타임엔 "1" 또는 "1.xml" 같은 문자열로 들어온다 — 앞의 숫자만 취한다
+  const n = parseInt(String(id), 10);
+  if (!Number.isFinite(n) || n <= 0) return staticPages();
   try {
     const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
     return pages.map((p) => ({
