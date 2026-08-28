@@ -2,6 +2,7 @@
 // puuid가 들어가는 테이블(summoners/matches/league_snapshots)은 API 키 지문(fp)으로 스코프.
 
 import "server-only";
+import { syncParticipantsFromMatch } from "@/lib/match-participants";
 import { getSql } from "./db";
 import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
@@ -121,6 +122,10 @@ export async function saveMatchRow(
         bans = CASE WHEN EXCLUDED.bans = '[]'::jsonb THEN matches.bans ELSE EXCLUDED.bans END,
         teams = CASE WHEN EXCLUDED.teams = '[]'::jsonb THEN matches.teams ELSE EXCLUDED.teams END,
         fields_captured = true`;
+  // 참가자 정규화 테이블에도 함께 기록 (실패해도 원본 저장은 유효 — 백필이 메운다)
+  await syncParticipantsFromMatch(fp, platform, match).catch((e) =>
+    console.error("[participants] 이중 기록 실패", match.matchId, (e as Error)?.message),
+  );
 }
 
 // ── 랭크 스냅샷 (히스토리 적재) ─────────────────────────

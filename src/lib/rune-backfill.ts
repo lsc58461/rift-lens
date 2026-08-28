@@ -4,6 +4,7 @@
 
 import "server-only";
 import { cache } from "@/lib/cache";
+import { resyncMatches } from "@/lib/match-participants";
 import { getSql } from "@/lib/db";
 import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
@@ -179,6 +180,7 @@ export async function runRunefillRound(origin?: string): Promise<void> {
             SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
                 build_harvested = true, fields_captured = true
             WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
+          await resyncMatches(fp, [r.match_id]).catch(() => {});
         }
       }
     }

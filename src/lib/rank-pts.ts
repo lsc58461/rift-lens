@@ -73,10 +73,18 @@ export async function recomputeRankPtsBatch(limit = 500): Promise<number> {
     SET rank_pts = CASE WHEN c.known > 0 THEN c.avg_pts ELSE -1 END
     FROM calc c
     WHERE m.fp = $1 AND m.match_id = c.match_id
-    RETURNING m.match_id`,
+    RETURNING m.match_id, m.rank_pts`,
     [fp, limit],
   );
-  return (rows as unknown as unknown[]).length;
+  const updated = rows as unknown as { match_id: string; rank_pts: number }[];
+  if (updated.length > 0) {
+    // 참가자 정규화 테이블에도 같은 값 전파
+    await sql`
+      UPDATE match_participants p SET rank_pts = v.rank_pts
+      FROM (SELECT * FROM jsonb_to_recordset(${sql.json(updated as never)}) AS x(match_id text, rank_pts real)) v
+      WHERE p.fp = ${fp} AND p.match_id = v.match_id`.catch(() => {});
+  }
+  return updated.length;
 }
 
 /** rank_pts 미계산 매치 수 */
@@ -98,4 +106,5 @@ export async function invalidateRankPtsForPuuids(puuids: string[]): Promise<void
     WHERE fp = ${riotKeyFp()}
       AND rank_pts IS NOT NULL
       AND participants @> ANY(${puuids.map((p) => JSON.stringify([{ puuid: p }]))}::jsonb[])`;
+  await sql`UPDATE match_participants SET rank_pts = NULL WHERE fp = ${riotKeyFp()}`.catch(() => {});
 }

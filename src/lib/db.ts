@@ -260,6 +260,44 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS season_ranks_name_idx
     ON season_ranks (fp, platform, season, game_name_lower, tag_line_lower);
 
+    -- 참가자 정규화 테이블 — matches.participants(jsonb)에서 파생 (1행 = 1참가자).
+    -- 참가자 단위 집계(챔피언 통계·후보 검색·puuid 조회)를 JSON 펼치기 없이 처리한다.
+    CREATE TABLE IF NOT EXISTS match_participants (
+      fp text NOT NULL,
+      match_id text NOT NULL,
+      platform text NOT NULL,
+      puuid text NOT NULL,
+      idx smallint NOT NULL,
+      team_id smallint NOT NULL,
+      win boolean NOT NULL,
+      champion_name text NOT NULL,
+      champion_id int,
+      team_position text NOT NULL DEFAULT '',
+      riot_game_name text NOT NULL DEFAULT '',
+      riot_tag_line text NOT NULL DEFAULT '',
+      kills smallint NOT NULL DEFAULT 0,
+      deaths smallint NOT NULL DEFAULT 0,
+      assists smallint NOT NULL DEFAULT 0,
+      cs int, gold int, damage int, damage_taken int, vision smallint, champ_level smallint,
+      spell1 int, spell2 int, keystone int, sub_style int,
+      items int[] NOT NULL DEFAULT '{}',
+      double_kills smallint NOT NULL DEFAULT 0,
+      triple_kills smallint NOT NULL DEFAULT 0,
+      quadra_kills smallint NOT NULL DEFAULT 0,
+      penta_kills smallint NOT NULL DEFAULT 0,
+      kill_participation real,
+      game_creation bigint NOT NULL,
+      game_duration int NOT NULL,
+      queue_id int NOT NULL,
+      patch text,
+      rank_pts real,
+      PRIMARY KEY (fp, match_id, puuid)
+    );
+    CREATE INDEX IF NOT EXISTS mp_patch_champ_idx ON match_participants (fp, patch, champion_name);
+    CREATE INDEX IF NOT EXISTS mp_puuid_time_idx ON match_participants (fp, puuid, game_creation DESC);
+    CREATE INDEX IF NOT EXISTS mp_patch_rank_idx ON match_participants (fp, patch, rank_pts);
+    CREATE INDEX IF NOT EXISTS mp_name_idx ON match_participants (fp, lower(riot_game_name), lower(riot_tag_line));
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,
