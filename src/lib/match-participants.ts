@@ -7,12 +7,15 @@
 // 원본에서 언제든 다시 만들 수 있다(resyncMatch).
 import "server-only";
 import type { Sql } from "postgres";
+import { cache } from "@/lib/cache";
 import { getSql } from "@/lib/db";
 import { getSetting, setSetting } from "@/lib/store";
 import type { MatchInfo, MatchParticipant, PlatformRegion } from "@/lib/riot/types";
 
 const STATE_KEY = "participants:backfill";
-const BACKFILL_BATCH = 2_000; // 틱당 매치 수 (DB만 사용)
+const LOCK_KEY = "participants:backfill:lock";
+const BACKFILL_BATCH = 5_000; // 묶음당 매치 수 — DB 안에서 한 문장으로 처리
+const TICK_BUDGET_MS = 50_000; // 1분 틱 안에서 연속 처리
 
 export interface ParticipantsBackfillState {
   total: number; // 시작 시점 미적재 매치 수
@@ -194,6 +197,59 @@ export async function resyncMatches(fp: string, matchIds: string[]): Promise<num
   return rows.length;
 }
 
+/** 미적재 매치 한 묶음을 DB 안에서 바로 풀어 넣는다 — JSON을 노드로 가져오지 않아
+ *  노드 왕복 방식보다 몇 배 빠르다. 백필 전용(이미 있는 매치는 건드리지 않음). */
+async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<number> {
+  const rows = await sql.unsafe(
+    `
+    WITH todo AS (
+      SELECT m.match_id, m.platform, m.game_creation, m.game_duration, m.queue_id,
+             m.participants, m.patch, m.rank_pts
+      FROM matches m
+      WHERE m.fp = $1 AND NOT EXISTS (
+        SELECT 1 FROM match_participants p WHERE p.fp = m.fp AND p.match_id = m.match_id)
+      ORDER BY m.game_creation DESC
+      LIMIT $2
+    ),
+    ins AS (
+      INSERT INTO match_participants
+        (fp, match_id, platform, puuid, idx, team_id, win, champion_name, champion_id,
+         team_position, riot_game_name, riot_tag_line, kills, deaths, assists, cs, gold,
+         damage, damage_taken, vision, champ_level, spell1, spell2, keystone, sub_style,
+         items, double_kills, triple_kills, quadra_kills, penta_kills, kill_participation,
+         game_creation, game_duration, queue_id, patch, rank_pts)
+      SELECT $1, t.match_id, t.platform, p->>'puuid', (o.ord - 1)::smallint,
+             coalesce((p->>'teamId')::int, 0)::smallint, coalesce((p->>'win')::boolean, false),
+             coalesce(p->>'championName', ''), (p->>'championId')::int,
+             coalesce(p->>'teamPosition', ''), coalesce(p->>'riotIdGameName', ''), coalesce(p->>'riotIdTagline', ''),
+             coalesce((p->>'kills')::int, 0)::smallint, coalesce((p->>'deaths')::int, 0)::smallint,
+             coalesce((p->>'assists')::int, 0)::smallint,
+             (p->>'cs')::int, (p->>'goldEarned')::int, (p->>'damage')::int, (p->>'damageTaken')::int,
+             (p->>'visionScore')::int::smallint, (p->>'champLevel')::int::smallint,
+             (p->>'spell1Id')::int, (p->>'spell2Id')::int, (p->>'keystone')::int, (p->>'subStyle')::int,
+             coalesce(ARRAY(SELECT coalesce(nullif(x, ''), '0')::int
+                            FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(p->'items') = 'array' THEN p->'items' ELSE '[]'::jsonb END) x), '{}'),
+             coalesce((p->>'doubleKills')::int, 0)::smallint, coalesce((p->>'tripleKills')::int, 0)::smallint,
+             coalesce((p->>'quadraKills')::int, 0)::smallint, coalesce((p->>'pentaKills')::int, 0)::smallint,
+             (p->>'killParticipation')::real,
+             t.game_creation, t.game_duration, t.queue_id, t.patch, t.rank_pts
+      FROM todo t
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(t.participants) = 'array' THEN t.participants ELSE '[]'::jsonb END
+      ) WITH ORDINALITY AS o(p, ord)
+      WHERE coalesce(p->>'puuid', '') <> ''
+      ON CONFLICT (fp, match_id, puuid) DO NOTHING
+      RETURNING match_id
+    )
+    SELECT count(DISTINCT match_id)::int AS n, (SELECT count(*)::int FROM todo) AS picked FROM ins`,
+    [fp, limit],
+  );
+  const r = (rows as unknown as { n: number; picked: number }[])[0];
+  // 참가자가 비어 있는 매치(picked > n)는 영원히 미적재로 남아 매번 뽑히므로,
+  // 그런 매치는 더미 없이 건너뛰도록 호출자가 picked==0일 때만 종료 판단한다
+  return r?.picked ?? 0;
+}
+
 export function getParticipantsBackfillState(): Promise<ParticipantsBackfillState | null> {
   return getSetting<ParticipantsBackfillState>(STATE_KEY);
 }
@@ -208,19 +264,15 @@ export async function countParticipantsPending(fp: string): Promise<number> {
   return (r[0]?.n as number) ?? 0;
 }
 
-/** 1분마다 호출 — 미적재 매치를 한 묶음 적재. DB만 쓰므로 라이엇 한도와 무관.
- *  두 인스턴스가 겹쳐도 upsert라 안전하다(같은 일을 두 번 할 뿐). */
+/** 1분마다 호출 — 잠금을 잡은 인스턴스가 50초 동안 5천 건 묶음으로 연속 적재.
+ *  DB만 쓰므로 라이엇 한도와 무관. */
 export async function runParticipantsBackfillTick(fp: string): Promise<void> {
   const state = await getParticipantsBackfillState();
   if (state?.finished) return;
+  if (await cache.get<number>(LOCK_KEY).catch(() => null)) return;
+  await cache.set(LOCK_KEY, Date.now(), 55).catch(() => {});
   const sql = await getSql();
   try {
-    const ids = (await sql`
-      SELECT m.match_id FROM matches m
-      WHERE m.fp = ${fp} AND NOT EXISTS (
-        SELECT 1 FROM match_participants p WHERE p.fp = m.fp AND p.match_id = m.match_id)
-      ORDER BY m.game_creation DESC
-      LIMIT ${BACKFILL_BATCH}`) as unknown as { match_id: string }[];
     if (!state) {
       const total = await countParticipantsPending(fp);
       await setSetting<ParticipantsBackfillState>(STATE_KEY, {
@@ -233,20 +285,35 @@ export async function runParticipantsBackfillTick(fp: string): Promise<void> {
       });
       if (total === 0) return;
     }
-    if (ids.length === 0) {
-      const cur = (await getParticipantsBackfillState())!;
-      await setSetting(STATE_KEY, { ...cur, finished: true, updatedAt: Date.now() });
-      console.log("[participants] 적재 완료");
-      return;
+    const deadline = Date.now() + TICK_BUDGET_MS;
+    let done = 0;
+    let lastPicked = 0;
+    while (Date.now() < deadline) {
+      const picked = await backfillBatchSql(sql, fp, BACKFILL_BATCH);
+      lastPicked = picked;
+      if (picked === 0) break;
+      done += picked;
+      // 참가자가 비어 있는 매치만 남아 같은 묶음이 반복되면(진전 없음) 중단
+      if (picked < BACKFILL_BATCH) break;
     }
-    const n = await resyncMatches(fp, ids.map((r) => r.match_id));
     const cur = (await getParticipantsBackfillState())!;
-    await setSetting(STATE_KEY, { ...cur, done: cur.done + n, updatedAt: Date.now(), lastError: null });
+    const finished = lastPicked === 0 || (await countParticipantsPending(fp)) === 0;
+    await setSetting(STATE_KEY, {
+      ...cur,
+      done: cur.done + done,
+      finished,
+      updatedAt: Date.now(),
+      lastError: null,
+    });
+    if (finished) console.log("[participants] 적재 완료");
+    else if (done > 0) console.log(`[participants] 적재 +${done}`);
   } catch (e) {
     const cur = await getParticipantsBackfillState();
     if (cur) {
       await setSetting(STATE_KEY, { ...cur, updatedAt: Date.now(), lastError: (e as Error)?.message ?? String(e) });
     }
     console.error("[participants] 적재 실패:", (e as Error)?.message);
+  } finally {
+    await cache.delete(LOCK_KEY).catch(() => {});
   }
 }
