@@ -158,7 +158,10 @@ export default async function RankingPage({
                       <span className="tabular-nums text-muted-foreground">
                         {r.wins}승 {r.losses}패
                       </span>
-                      <span className="ml-auto tabular-nums">{wr}%</span>
+                      <span className="ml-auto tabular-nums">
+                        <span className="text-muted-foreground">승률 </span>
+                        {wr}%
+                      </span>
                     </span>
                     {/* sm+: 헤더와 같은 고정 폭 컬럼 */}
                     <span className="hidden items-center gap-3 sm:flex">
