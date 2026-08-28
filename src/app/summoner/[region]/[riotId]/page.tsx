@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { ensureApexCutoffs } from "@/lib/apex-ladder";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
@@ -452,6 +453,7 @@ export default async function SummonerPage({
     sampledPlayers,
     confidence,
   } = result;
+  await ensureApexCutoffs(); // 마스터 이상 컷(그마·챌) 최신화 — 라벨 재계산 전에
   // 저장된 라벨 대신 지금 기준으로 다시 라벨링 — 마스터 이상 컷이 갱신되거나
   // 예전 결과가 포인트 역산 라벨을 갖고 있어도 화면은 항상 현재 기준으로 맞춘다
   const currentRank = soloEntry

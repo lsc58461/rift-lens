@@ -9,6 +9,7 @@ import { cache } from "@/lib/cache";
 import { getSql } from "@/lib/db";
 import { getAccountByPuuid, getApexLeague, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
+import { getApexCutoffsSync, setApexCutoffs } from "@/lib/mmr/rank";
 import { currentNamesByPuuid, getSetting, setSetting } from "@/lib/store";
 import type { PlatformRegion } from "@/lib/riot/types";
 
@@ -41,6 +42,15 @@ export interface LadderRow {
 
 export function getApexCutoffs(): Promise<ApexCutoffs | null> {
   return getSetting<ApexCutoffs>(CUTOFF_KEY);
+}
+
+/** 렌더 직전 호출 — 이 프로세스에 컷이 없거나 1시간 넘게 오래됐으면 설정에서 읽어 반영.
+ *  (instrumentation의 주기 갱신과 별개로, 페이지 청크가 먼저 뜬 경우를 막는다) */
+export async function ensureApexCutoffs(): Promise<void> {
+  const cur = getApexCutoffsSync();
+  if (cur.loadedAt && Date.now() - cur.loadedAt < 60 * 60_000) return;
+  const c = await getApexCutoffs().catch(() => null);
+  if (c) setApexCutoffs(c);
 }
 
 /** 한 번 폴링: 두 티어 명단 갱신 + 컷 저장 + 이름 일부 보충. 반환: 갱신했는지 */

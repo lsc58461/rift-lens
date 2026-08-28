@@ -16,6 +16,7 @@ import {
 } from "@/lib/riot/client";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "@/lib/riot/types";
 import { pointsToRank, rankToPoints, type RankLabel, entryToRank } from "./rank";
+import { ensureApexCutoffs } from "@/lib/apex-ladder";
 
 // 알고리즘이 바뀔 때 올린다 — 저장된 분석 결과의 버전이 다르면 재분석된다
 // v4: 듀오 금지 구간(한국 마스터+, 전서버 그마+)은 듀오 감지 비활성화
@@ -341,6 +342,7 @@ export async function estimateMmr(
   const confidence =
     totalSamples >= 80 ? "high" : totalSamples >= 40 ? "medium" : "low";
 
+  await ensureApexCutoffs(); // 결과 라벨(마스터 이상 티어)에 최신 컷 반영
   return {
     algoVersion: ALGO_VERSION,
     analyzedAt: Date.now(),

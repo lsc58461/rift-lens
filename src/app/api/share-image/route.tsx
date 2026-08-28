@@ -6,6 +6,7 @@ import { getStoredResult } from "@/lib/mmr/deep-jobs";
 import type { MmrEstimate } from "@/lib/mmr/estimate";
 import { TIER_COLORS, isApexPoints } from "@/lib/mmr/rank";
 import { PLATFORM_LABELS, type PlatformRegion } from "@/lib/riot/types";
+import { ensureApexCutoffs } from "@/lib/apex-ladder";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -23,6 +24,7 @@ function gapText(gap: number | null, apex = false): string {
 }
 
 export async function GET(req: NextRequest) {
+  await ensureApexCutoffs();
   const sp = req.nextUrl.searchParams;
   const region = sp.get("region") ?? "";
   const riotId = sp.get("riotId") ?? "";

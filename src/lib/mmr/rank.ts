@@ -18,12 +18,22 @@ const APEX_BASE = TIERS.length * 400; // 2800
 // 티어로 역산할 때 쓰는 컷 — 기본값은 옛 고정치이고, 서버는 부팅 시·매시간
 // 우리 스냅샷에서 실제 컷(하위 5% LP)을 뽑아 setApexCutoffs로 갱신한다.
 // (클라이언트 번들은 기본값 그대로 — 차트 툴팁 정도에만 쓰여 큰 문제 없음)
-export const APEX_CUTOFFS = { grandmaster: 500, challenger: 1000 };
+// 주의: Next 서버 번들은 instrumentation 청크와 페이지 청크가 별도 모듈 인스턴스라
+// 모듈 변수로는 공유가 안 된다 — 프로세스 전역(globalThis)에 둔다.
+interface ApexCutoffs {
+  grandmaster: number;
+  challenger: number;
+  loadedAt?: number;
+}
+const g = globalThis as unknown as { __riftApexCutoffs?: ApexCutoffs };
+const DEFAULT_CUTOFFS: ApexCutoffs = { grandmaster: 500, challenger: 1000 };
+export function getApexCutoffsSync(): ApexCutoffs {
+  return g.__riftApexCutoffs ?? DEFAULT_CUTOFFS;
+}
 export function setApexCutoffs(c: { grandmaster: number; challenger: number }): void {
-  if (Number.isFinite(c.grandmaster) && c.grandmaster > 0) APEX_CUTOFFS.grandmaster = c.grandmaster;
-  if (Number.isFinite(c.challenger) && c.challenger > APEX_CUTOFFS.grandmaster) {
-    APEX_CUTOFFS.challenger = c.challenger;
-  }
+  if (!Number.isFinite(c.grandmaster) || c.grandmaster <= 0) return;
+  if (!Number.isFinite(c.challenger) || c.challenger <= c.grandmaster) return;
+  g.__riftApexCutoffs = { grandmaster: c.grandmaster, challenger: c.challenger, loadedAt: Date.now() };
 }
 /** 포인트가 마스터 이상 구간인지 */
 export function isApexPoints(points: number): boolean {
@@ -77,12 +87,9 @@ export function pointsToRank(points: number): RankLabel {
   if (p >= APEX_BASE) {
     // 마스터 이상은 구간을 나누지 않고 LP로만 표기
     const lp = p - APEX_BASE;
+    const cut = getApexCutoffsSync();
     const tier =
-      lp >= APEX_CUTOFFS.challenger
-        ? "CHALLENGER"
-        : lp >= APEX_CUTOFFS.grandmaster
-          ? "GRANDMASTER"
-          : "MASTER";
+      lp >= cut.challenger ? "CHALLENGER" : lp >= cut.grandmaster ? "GRANDMASTER" : "MASTER";
     return { tier, label: `${TIER_LABELS[tier]} ${lp}LP` };
   }
   const tierIndex = Math.min(Math.floor(p / 400), TIERS.length - 1);
