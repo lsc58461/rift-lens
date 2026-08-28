@@ -183,7 +183,11 @@ export function InteractiveBackground() {
       if (!reduced) raf = requestAnimationFrame(loop);
     };
 
+    // 터치 기기에선 커서 인터랙션을 끈다 — 손가락이 화면을 가려 의미가 없고,
+    // 스크롤 중 점이 손가락 쪽으로 튀어 보인다. 점은 그냥 떠다니기만 한다.
+    const noHover = window.matchMedia("(hover: none)").matches;
     const onMove = (e: PointerEvent) => {
+      if (noHover || e.pointerType === "touch") return;
       mouse.tx = e.clientX;
       mouse.ty = e.clientY;
       if (!mouse.active) {
