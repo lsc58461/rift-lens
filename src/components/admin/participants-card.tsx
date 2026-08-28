@@ -50,11 +50,11 @@ export function ParticipantsCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Database className="size-4 text-primary" />
-          참가자 테이블 적재
+          <span className="whitespace-nowrap">참가자 테이블 적재</span>
           {info && (
-            <Badge variant={running ? "secondary" : "outline"} className="gap-1 font-normal">
+            <Badge variant={running ? "secondary" : "outline"} className="max-w-full gap-1 whitespace-normal text-left font-normal">
               {running && <Loader2 className="size-3 animate-spin" />}
               {running ? `적재 중 · 남은 매치 ${info.pending.toLocaleString()}` : "동기화됨"}
             </Badge>

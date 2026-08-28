@@ -116,11 +116,11 @@ export function CrawlCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Radar className="size-4 text-chart-2" />
-          소환사 시드 수집
+          <span className="whitespace-nowrap">소환사 시드 수집</span>
           {state?.running && (
-            <Badge variant="secondary" className="gap-1 font-normal">
+            <Badge variant="secondary" className="max-w-full gap-1 whitespace-normal text-left font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
               {state.mode === "balanced" && state.lastTier && (

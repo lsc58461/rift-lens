@@ -98,11 +98,11 @@ export function SeasonArchiveCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Archive className="size-4 text-primary" />
-          시즌 마감 랭크 확정
+          <span className="whitespace-nowrap">시즌 마감 랭크 확정</span>
           {archive && (
-            <Badge variant={active ? "secondary" : "outline"} className="gap-1 font-normal">
+            <Badge variant={active ? "secondary" : "outline"} className="max-w-full gap-1 whitespace-normal text-left font-normal">
               {archive.status === "running" && <Loader2 className="size-3 animate-spin" />}
               {archive.season} · {STATUS_LABEL[archive.status]}
             </Badge>

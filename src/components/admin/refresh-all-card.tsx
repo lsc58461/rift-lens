@@ -104,11 +104,11 @@ export function RefreshAllCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <RefreshCw className="size-4 text-primary" />
-          전체 유저 데이터 갱신
+          <span className="whitespace-nowrap">전체 유저 데이터 갱신</span>
           {state?.running && (
-            <Badge variant="secondary" className="gap-1 font-normal">
+            <Badge variant="secondary" className="max-w-full gap-1 whitespace-normal text-left font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
               {state.target ? (

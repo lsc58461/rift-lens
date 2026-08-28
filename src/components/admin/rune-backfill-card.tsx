@@ -102,11 +102,11 @@ export function RuneBackfillCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Sparkle className="size-4 text-chart-2" />
-          매치 데이터 백필
+          <span className="whitespace-nowrap">매치 데이터 백필</span>
           {state?.running && (
-            <Badge variant="secondary" className="gap-1 font-normal">
+            <Badge variant="secondary" className="max-w-full gap-1 whitespace-normal text-left font-normal">
               <Loader2 className="size-3 animate-spin" />
               진행 중
               {state.startedAt && state.total > 0 ? (
