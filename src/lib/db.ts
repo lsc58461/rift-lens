@@ -221,6 +221,24 @@ const SCHEMA_SQL = `
     ON matches (fp, game_creation DESC)
     WHERE patch IS NULL OR NOT build_harvested OR NOT fields_captured;
 
+    -- 아펙스 래더(챌린저·그마) 명단 — 30분마다 통째로 교체. 컷·랭킹 페이지용.
+    CREATE TABLE IF NOT EXISTS apex_ladder (
+      fp text NOT NULL,
+      platform text NOT NULL,
+      tier text NOT NULL,
+      rank_no int NOT NULL,
+      puuid text NOT NULL,
+      lp int NOT NULL,
+      wins int NOT NULL,
+      losses int NOT NULL,
+      hot_streak boolean NOT NULL DEFAULT false,
+      veteran boolean NOT NULL DEFAULT false,
+      fresh_blood boolean NOT NULL DEFAULT false,
+      fetched_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (fp, platform, tier, puuid)
+    );
+    CREATE INDEX IF NOT EXISTS apex_ladder_rank_idx ON apex_ladder (fp, platform, tier, rank_no);
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,

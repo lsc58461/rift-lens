@@ -318,6 +318,30 @@ export async function getLeagueEntries(
   return entries;
 }
 
+export interface ApexLeagueEntry {
+  summonerId?: string;
+  puuid: string;
+  leaguePoints: number;
+  rank: string;
+  wins: number;
+  losses: number;
+  veteran?: boolean;
+  inactive?: boolean;
+  freshBlood?: boolean;
+  hotStreak?: boolean;
+}
+
+/** 챌린저/그랜드마스터 리그 전체 명단 (솔로랭크) — 콜 1개에 전원 */
+export async function getApexLeague(
+  platform: PlatformRegion,
+  tier: "CHALLENGER" | "GRANDMASTER",
+): Promise<{ tier: string; entries: ApexLeagueEntry[] }> {
+  const path = tier === "CHALLENGER" ? "challengerleagues" : "grandmasterleagues";
+  return riotFetch<{ tier: string; entries: ApexLeagueEntry[] }>(
+    `https://${platform}.api.riotgames.com/lol/league/v4/${path}/by-queue/RANKED_SOLO_5x5`,
+  );
+}
+
 /** 현재 API 키 지문 — puuid 스코프 데이터 조회 시 사용 */
 export function riotKeyFp(): string {
   return keyFp();

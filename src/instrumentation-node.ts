@@ -10,6 +10,7 @@
 // continue는 멱등이라(라운드가 살아 있으면 무시) 두 인스턴스가 겹쳐도 안전하다.
 // NEXT_MANUAL_SIG_HANDLE=true 여야 Next가 SIGTERM에 즉시 exit하지 않고 우리 훅이 돈다.
 import { getCrawlState, releaseCrawlRound } from "@/lib/crawl-seed";
+import { getApexCutoffs, pollApexLadder } from "@/lib/apex-ladder";
 import { warmChampionStats } from "@/lib/champion-stats";
 import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { setApexCutoffs } from "@/lib/mmr/rank";
@@ -61,15 +62,28 @@ export function registerNode(): void {
   // 죽었다고 판정 가능한 시점에 한 번 더 본다.
   setTimeout(() => void resumeOrphans(1), BOOT_DELAY_MS).unref();
   // 마스터 이상 티어 컷(그마·챌 LP) — 스냅샷에서 실측해 포인트→티어 역산에 반영
+  // 1순위: 래더 명단의 최소 LP(정확), 2순위: 스냅샷 하위 5% 분위수(근사)
   const refreshApexCutoffs = async () => {
-    const c = await apexCutoffsFromSnapshots().catch(() => null);
+    const ladder = await getApexCutoffs().catch(() => null);
+    const c = ladder ?? (await apexCutoffsFromSnapshots().catch(() => null));
     if (c) {
       setApexCutoffs(c);
-      console.log(`[apex] 컷 갱신 그마 ${c.grandmaster}LP · 챌 ${c.challenger}LP`);
+      console.log(`[apex] 컷 갱신 그마 ${c.grandmaster}LP · 챌 ${c.challenger}LP (${ladder ? "래더" : "스냅샷"})`);
     }
   };
+  // 래더 폴링(30분) — 인스턴스 2개 중 하나만 실제로 받는다(Redis 마커). 받은 뒤 컷 반영
+  const pollLadder = async () => {
+    try {
+      const did = await pollApexLadder();
+      if (did) console.log("[apex] 래더 갱신 완료");
+    } catch (e) {
+      console.error("[apex] 래더 갱신 실패:", (e as Error)?.message);
+    }
+    await refreshApexCutoffs();
+  };
   setTimeout(() => void refreshApexCutoffs(), 5_000).unref();
-  setInterval(() => void refreshApexCutoffs(), 60 * 60_000).unref();
+  setTimeout(() => void pollLadder(), 45_000).unref();
+  setInterval(() => void pollLadder(), 30 * 60_000).unref();
   // 챔피언 통계 캐시 워밍 — 배포 직후 첫 방문자가 재집계를 기다리지 않게.
   // 캐시가 이미 있으면 즉시 끝나고(오래됐으면 뒤에서 갱신), 없을 때만 집계한다.
   setTimeout(() => {
