@@ -16,6 +16,7 @@ import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { setApexCutoffs } from "@/lib/mmr/rank";
 import { getRefreshAllState, releaseRefreshAllRound } from "@/lib/refresh-all";
 import { getRunefillState, releaseRunefillRound } from "@/lib/rune-backfill";
+import { runSeasonArchiveTick } from "@/lib/season-archive";
 import { apexCutoffsFromSnapshots } from "@/lib/store";
 
 const INTERNAL_ORIGIN = "http://127.0.0.1:3000";
@@ -84,6 +85,11 @@ export function registerNode(): void {
   setTimeout(() => void refreshApexCutoffs(), 5_000).unref();
   setTimeout(() => void pollLadder(), 45_000).unref();
   setInterval(() => void pollLadder(), 30 * 60_000).unref();
+  // 시즌 마감 랭크 확정 — 예약이 있고 수집 창 안일 때만 일한다(아니면 즉시 반환)
+  setInterval(
+    () => runSeasonArchiveTick().catch((e) => console.error("[season] 틱 실패:", (e as Error)?.message)),
+    5 * 60_000,
+  ).unref();
   // 챔피언 통계 캐시 워밍 — 배포 직후 첫 방문자가 재집계를 기다리지 않게.
   // 캐시가 이미 있으면 즉시 끝나고(오래됐으면 뒤에서 갱신), 없을 때만 집계한다.
   setTimeout(() => {

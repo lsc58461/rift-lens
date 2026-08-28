@@ -239,6 +239,27 @@ const SCHEMA_SQL = `
     );
     CREATE INDEX IF NOT EXISTS apex_ladder_rank_idx ON apex_ladder (fp, platform, tier, rank_no);
 
+    -- 시즌 마감 시점 확정 랭크 — 라이엇이 과거 시즌 랭크를 안 주므로 우리가 마감 직전에 기록
+    CREATE TABLE IF NOT EXISTS season_ranks (
+      fp text NOT NULL,
+      platform text NOT NULL,
+      puuid text NOT NULL,
+      game_name text NOT NULL,
+      tag_line text NOT NULL,
+      game_name_lower text NOT NULL,
+      tag_line_lower text NOT NULL,
+      season text NOT NULL,
+      tier text NOT NULL,
+      rank text,
+      lp int,
+      wins int,
+      losses int,
+      captured_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (fp, platform, puuid, season)
+    );
+    CREATE INDEX IF NOT EXISTS season_ranks_name_idx
+    ON season_ranks (fp, platform, season, game_name_lower, tag_line_lower);
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,

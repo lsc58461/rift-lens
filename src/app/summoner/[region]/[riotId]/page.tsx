@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
   ArrowDown,
@@ -393,11 +394,13 @@ export default async function SummonerPage({
   // 시즌 최고 티어 — 라이엇은 과거 랭크를 안 주므로 우리 스냅샷 히스토리에서
   // 시즌 시작 이후 최고점을 뽑는다 (관측한 범위 안에서의 최고라 화면에 그렇게 표기)
   let peak: { label: string; tier: string; at: number; pts: number } | null = null;
+  let seasonRanks: SeasonRankRow[] = [];
   try {
     const acct = await getAccountByRiotId(platform, gameName, tagLine);
     selfPuuid = acct.puuid;
     const history = await getLeagueHistory(platform, acct.puuid);
     lpInsight = computeLpInsight(history);
+    seasonRanks = await getSeasonRanks(platform, acct.puuid).catch(() => []);
     const seasonStart = new Date(SEASON_START).getTime();
     for (const h of history) {
       if (!h.solo_tier || h.solo_lp === null) continue;
@@ -664,6 +667,24 @@ export default async function SummonerPage({
                 <Users className="size-4" />
                 표본 {sampledPlayers}명의 현재 랭크 분석
               </div>
+              {seasonRanks.length > 0 && (
+                <div className="space-y-1 border-t pt-2.5">
+                  <div className="text-xs text-muted-foreground">지난 시즌 (마감 시점 기준)</div>
+                  {seasonRanks.map((r) => (
+                    <div key={r.season} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-muted-foreground">{r.season}</span>
+                      <span
+                        className="font-medium"
+                        style={r.tier !== "UNRANKED" ? { color: TIER_COLORS[r.tier] } : undefined}
+                      >
+                        {r.tier === "UNRANKED"
+                          ? "언랭크"
+                          : entryToRank(r.tier, r.rank ?? "IV", r.lp ?? 0).label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
