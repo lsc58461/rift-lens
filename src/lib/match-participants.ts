@@ -58,6 +58,9 @@ interface ParticipantRow {
   quadra_kills: number;
   penta_kills: number;
   kill_participation: number | null;
+  perks: number[] | null;
+  sub_perks: number[] | null;
+  stat_perks: number[] | null;
   game_creation: number;
   game_duration: number;
   queue_id: number;
@@ -112,6 +115,9 @@ function toRows(
       quadra_kills: p.quadraKills ?? 0,
       penta_kills: p.pentaKills ?? 0,
       kill_participation: p.killParticipation ?? null,
+      perks: p.perks ? p.perks.map(Number) : null,
+      sub_perks: p.subPerks ? p.subPerks.map(Number) : null,
+      stat_perks: p.statPerks ? p.statPerks.map(Number) : null,
       game_creation: m.gameCreation,
       game_duration: m.gameDuration,
       queue_id: m.queueId,
@@ -125,6 +131,7 @@ const COLS = [
   "team_position", "riot_game_name", "riot_tag_line", "kills", "deaths", "assists", "cs", "gold",
   "damage", "damage_taken", "vision", "champ_level", "spell1", "spell2", "keystone", "sub_style",
   "items", "double_kills", "triple_kills", "quadra_kills", "penta_kills", "kill_participation",
+  "perks", "sub_perks", "stat_perks",
   "game_creation", "game_duration", "queue_id", "patch", "rank_pts",
 ] as const;
 
@@ -149,6 +156,9 @@ async function upsertRows(sql: Sql, rows: ParticipantRow[]): Promise<void> {
         double_kills = EXCLUDED.double_kills, triple_kills = EXCLUDED.triple_kills,
         quadra_kills = EXCLUDED.quadra_kills, penta_kills = EXCLUDED.penta_kills,
         kill_participation = EXCLUDED.kill_participation,
+        perks = coalesce(EXCLUDED.perks, match_participants.perks),
+        sub_perks = coalesce(EXCLUDED.sub_perks, match_participants.sub_perks),
+        stat_perks = coalesce(EXCLUDED.stat_perks, match_participants.stat_perks),
         game_creation = EXCLUDED.game_creation, game_duration = EXCLUDED.game_duration,
         queue_id = EXCLUDED.queue_id,
         patch = coalesce(EXCLUDED.patch, match_participants.patch),
@@ -217,6 +227,7 @@ async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<nu
          team_position, riot_game_name, riot_tag_line, kills, deaths, assists, cs, gold,
          damage, damage_taken, vision, champ_level, spell1, spell2, keystone, sub_style,
          items, double_kills, triple_kills, quadra_kills, penta_kills, kill_participation,
+         perks, sub_perks, stat_perks,
          game_creation, game_duration, queue_id, patch, rank_pts)
       SELECT $1, t.match_id, t.platform, p->>'puuid', (o.ord - 1)::smallint,
              coalesce((p->>'teamId')::int, 0)::smallint, coalesce((p->>'win')::boolean, false),
@@ -232,6 +243,9 @@ async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<nu
              coalesce((p->>'doubleKills')::int, 0)::smallint, coalesce((p->>'tripleKills')::int, 0)::smallint,
              coalesce((p->>'quadraKills')::int, 0)::smallint, coalesce((p->>'pentaKills')::int, 0)::smallint,
              (p->>'killParticipation')::real,
+             CASE WHEN jsonb_typeof(p->'perks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'perks') x) END,
+             CASE WHEN jsonb_typeof(p->'subPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'subPerks') x) END,
+             CASE WHEN jsonb_typeof(p->'statPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'statPerks') x) END,
              t.game_creation, t.game_duration, t.queue_id, t.patch, t.rank_pts
       FROM todo t
       CROSS JOIN LATERAL jsonb_array_elements(
@@ -248,6 +262,44 @@ async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<nu
   // 참가자가 비어 있는 매치(picked > n)는 영원히 미적재로 남아 매번 뽑히므로,
   // 그런 매치는 더미 없이 건너뛰도록 호출자가 picked==0일 때만 종료 판단한다
   return r?.picked ?? 0;
+}
+
+const RUNES_STATE_KEY = "participants:runes-fill";
+
+/** 룬 컬럼이 나중에 추가돼서, 먼저 적재된 행의 perks/sub_perks/stat_perks를 JSON에서
+ *  채운다. 매치 단위 묶음으로 DB 안에서 처리. 반환: 이번에 처리한 매치 수 */
+async function fillRuneColumnsBatch(sql: Sql, fp: string, limit: number): Promise<number> {
+  const rows = await sql.unsafe(
+    `
+    WITH todo AS (
+      SELECT DISTINCT p.match_id FROM match_participants p
+      WHERE p.fp = $1 AND p.perks IS NULL AND p.keystone IS NOT NULL
+      LIMIT $2
+    ),
+    src AS (
+      SELECT m.match_id, pp->>'puuid' AS puuid,
+             CASE WHEN jsonb_typeof(pp->'perks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(pp->'perks') x) END AS perks,
+             CASE WHEN jsonb_typeof(pp->'subPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(pp->'subPerks') x) END AS sub_perks,
+             CASE WHEN jsonb_typeof(pp->'statPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(pp->'statPerks') x) END AS stat_perks
+      FROM todo t JOIN matches m ON m.fp = $1 AND m.match_id = t.match_id
+      CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
+    ),
+    upd AS (
+      UPDATE match_participants p
+      SET perks = coalesce(s.perks, '{}'), sub_perks = s.sub_perks, stat_perks = s.stat_perks
+      FROM src s
+      WHERE p.fp = $1 AND p.match_id = s.match_id AND p.puuid = s.puuid
+      RETURNING p.match_id
+    )
+    SELECT (SELECT count(*)::int FROM todo) AS picked, count(DISTINCT match_id)::int AS n FROM upd`,
+    [fp, limit],
+  );
+  const r = (rows as unknown as { picked: number; n: number }[])[0];
+  return r?.picked ?? 0;
+}
+
+export async function getRunesFillDone(): Promise<boolean> {
+  return (await getSetting<{ finished: boolean }>(RUNES_STATE_KEY))?.finished === true;
 }
 
 export function getParticipantsBackfillState(): Promise<ParticipantsBackfillState | null> {
@@ -268,7 +320,10 @@ export async function countParticipantsPending(fp: string): Promise<number> {
  *  DB만 쓰므로 라이엇 한도와 무관. */
 export async function runParticipantsBackfillTick(fp: string): Promise<void> {
   const state = await getParticipantsBackfillState();
-  if (state?.finished) return;
+  if (state?.finished) {
+    await runRunesFillTick(fp);
+    return;
+  }
   if (await cache.get<number>(LOCK_KEY).catch(() => null)) return;
   await cache.set(LOCK_KEY, Date.now(), 55).catch(() => {});
   const sql = await getSql();
@@ -313,6 +368,34 @@ export async function runParticipantsBackfillTick(fp: string): Promise<void> {
       await setSetting(STATE_KEY, { ...cur, updatedAt: Date.now(), lastError: (e as Error)?.message ?? String(e) });
     }
     console.error("[participants] 적재 실패:", (e as Error)?.message);
+  } finally {
+    await cache.delete(LOCK_KEY).catch(() => {});
+  }
+}
+
+/** 메인 적재가 끝난 뒤, 룬 컬럼이 비어 있는 행을 채운다 (50초 연속, 잠금 공유) */
+async function runRunesFillTick(fp: string): Promise<void> {
+  if (await getRunesFillDone()) return;
+  if (await cache.get<number>(LOCK_KEY).catch(() => null)) return;
+  await cache.set(LOCK_KEY, Date.now(), 55).catch(() => {});
+  const sql = await getSql();
+  try {
+    const deadline = Date.now() + TICK_BUDGET_MS;
+    let done = 0;
+    let picked = -1;
+    while (Date.now() < deadline) {
+      picked = await fillRuneColumnsBatch(sql, fp, 3_000);
+      if (picked === 0) break;
+      done += picked;
+    }
+    if (picked === 0) {
+      await setSetting(RUNES_STATE_KEY, { finished: true, at: Date.now() });
+      console.log("[participants] 룬 컬럼 채우기 완료");
+    } else if (done > 0) {
+      console.log(`[participants] 룬 컬럼 +${done}`);
+    }
+  } catch (e) {
+    console.error("[participants] 룬 컬럼 채우기 실패:", (e as Error)?.message);
   } finally {
     await cache.delete(LOCK_KEY).catch(() => {});
   }

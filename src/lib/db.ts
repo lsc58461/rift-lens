@@ -293,6 +293,9 @@ const SCHEMA_SQL = `
       rank_pts real,
       PRIMARY KEY (fp, match_id, puuid)
     );
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS perks int[];
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS sub_perks int[];
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS stat_perks int[];
     CREATE INDEX IF NOT EXISTS mp_patch_champ_idx ON match_participants (fp, patch, champion_name);
     CREATE INDEX IF NOT EXISTS mp_puuid_time_idx ON match_participants (fp, puuid, game_creation DESC);
     CREATE INDEX IF NOT EXISTS mp_patch_rank_idx ON match_participants (fp, patch, rank_pts);

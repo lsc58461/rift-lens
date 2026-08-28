@@ -247,26 +247,18 @@ async function buildStats(
     await getCompletedItemIds(await getDDragonVersion()),
   );
 
-  // 공통 서브쿼리 — 참가자 한 명이 한 행
+  // 공통 서브쿼리 — 참가자 정규화 테이블(1행 = 1참가자). JSON 펼치기 없이
+  // (fp, patch, champion_name)·(fp, patch, rank_pts) 인덱스를 탄다.
+  // patchFilter의 m.patch / m.rank_pts 는 이 테이블에 같은 이름으로 복제돼 있다.
   const P = `
-    SELECT pp->>'championName' AS champ,
-           (pp->>'win')::boolean AS win,
-           (pp->>'spell1Id')::int AS s1,
-           (pp->>'spell2Id')::int AS s2,
-           (pp->>'keystone')::int AS keystone,
-           (pp->>'subStyle')::int AS substyle,
-           pp->'perks' AS perks,
-           pp->'subPerks' AS subperks,
-           pp->'statPerks' AS statperks,
-           pp->>'teamPosition' AS pos,
-           (pp->>'kills')::int AS kills,
-           (pp->>'deaths')::int AS deaths,
-           (pp->>'assists')::int AS assists,
-           (pp->>'cs')::int AS cs,
-           (pp->>'damage')::int AS damage,
-           pp->'items' AS items
-    FROM matches m
-    CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
+    SELECT champion_name AS champ, win,
+           spell1 AS s1, spell2 AS s2,
+           keystone, sub_style AS substyle,
+           perks, sub_perks AS subperks, stat_perks AS statperks,
+           team_position AS pos,
+           kills::int, deaths::int, assists::int, cs, damage,
+           items
+    FROM match_participants m
     WHERE m.fp = '${fp.replace(/'/g, "")}' ${patchFilter}`;
 
   const [meta, base, positions, spells, items, runes, startItems, buildPaths] = await Promise.all([
@@ -291,12 +283,12 @@ async function buildStats(
       FROM (${P}) p WHERE s1 IS NOT NULL AND s2 IS NOT NULL
       GROUP BY champ, least(s1, s2), greatest(s1, s2)`),
     runQuery(sql, `
-      SELECT champ, (it.val #>> '{}')::int AS id,
+      SELECT champ, it.id,
              count(*)::int AS games, count(*) FILTER (WHERE win)::int AS wins
       FROM (${P}) p
-      CROSS JOIN LATERAL jsonb_array_elements(p.items) WITH ORDINALITY AS it(val, ord)
-      WHERE it.ord <= 6 AND (it.val #>> '{}')::int > 0
-      GROUP BY champ, (it.val #>> '{}')::int`),
+      CROSS JOIN LATERAL unnest(p.items[1:6]) AS it(id)
+      WHERE it.id > 0
+      GROUP BY champ, it.id`),
     runQuery(sql, `
       SELECT champ, keystone, substyle,
              perks::text AS perks, subperks::text AS subperks, statperks::text AS statperks,
@@ -353,9 +345,11 @@ async function buildStats(
   for (const r of runes as unknown as { champ: string; keystone: number; substyle: number; perks: string; subperks: string; statperks: string; games: number; wins: number }[]) {
     const c = map.get(r.champ);
     if (!c || r.games < 2) continue;
+    // int[]::text 는 "{1,2,3}" 형태 — JSON 배열("[1,2,3]")도 함께 허용
     const parse = (t: string | null): number[] => {
+      if (!t) return [];
       try {
-        const v = JSON.parse(t ?? "[]");
+        const v = JSON.parse(t.replace(/^\{/, "[").replace(/\}$/, "]"));
         return Array.isArray(v) ? v.map(Number) : [];
       } catch {
         return [];

@@ -215,35 +215,37 @@ function pickBalanced(
 async function findCandidates(limit: number): Promise<Candidate[]> {
   const sql = await getSql();
   const fp = riotKeyFp();
+  // 참가자 정규화 테이블: ① 미등록 puuid를 최신 경기순으로 추린 뒤 ② 그 사람의
+  // 최신 경기 이름과 최신 스냅샷 티어를 붙인다 (JSON 펼치기 없음)
   const rows = await sql`
-    SELECT name, tag, puuid, tier, rank, lp FROM (
-      SELECT DISTINCT ON (lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')))
-             p->>'riotIdGameName' AS name, p->>'riotIdTagline' AS tag,
-             p->>'puuid' AS puuid,
-             ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp,
-             m.match_id AS mid, m.game_creation AS gc
-      FROM matches m
-      CROSS JOIN LATERAL jsonb_array_elements(m.participants) p
-      LEFT JOIN LATERAL (
-        SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
-        WHERE l.fp = m.fp AND l.platform = m.platform AND l.puuid = p->>'puuid'
-          AND l.solo_tier IS NOT NULL
-        ORDER BY l.created_at DESC LIMIT 1) ls ON true
-      WHERE m.fp = ${fp}
-        AND coalesce(p->>'riotIdGameName', '') <> ''
-        AND coalesce(p->>'riotIdTagline', '') <> ''
-        AND coalesce(p->>'puuid', '') <> ''
-        AND NOT EXISTS (
-          SELECT 1 FROM recent_searches r
-          WHERE r.platform = m.platform
-            AND r.game_name_lower = lower(trim(p->>'riotIdGameName'))
-            AND r.tag_line_lower = lower(trim(p->>'riotIdTagline')))
-        AND NOT EXISTS (
-          SELECT 1 FROM recent_searches r WHERE r.puuid = p->>'puuid')
-      ORDER BY lower(trim(p->>'riotIdGameName')), lower(trim(p->>'riotIdTagline')),
-               m.game_creation DESC
-    ) s
-    ORDER BY gc DESC, mid
+    WITH cand AS (
+      SELECT mp.puuid, max(mp.game_creation) AS gc
+      FROM match_participants mp
+      WHERE mp.fp = ${fp} AND mp.riot_game_name <> '' AND mp.riot_tag_line <> ''
+        AND NOT EXISTS (SELECT 1 FROM recent_searches r WHERE r.puuid = mp.puuid)
+      GROUP BY mp.puuid
+      ORDER BY gc DESC
+      LIMIT ${limit * 2}
+    ),
+    named AS (
+      SELECT DISTINCT ON (c.puuid) c.puuid, c.gc,
+             mp.riot_game_name AS name, mp.riot_tag_line AS tag, mp.platform, mp.match_id AS mid
+      FROM cand c
+      JOIN match_participants mp ON mp.fp = ${fp} AND mp.puuid = c.puuid
+      ORDER BY c.puuid, mp.game_creation DESC
+    )
+    SELECT n.name, n.tag, n.puuid, ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp
+    FROM named n
+    LEFT JOIN LATERAL (
+      SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
+      WHERE l.fp = ${fp} AND l.platform = n.platform AND l.puuid = n.puuid
+        AND l.solo_tier IS NOT NULL
+      ORDER BY l.created_at DESC LIMIT 1) ls ON true
+    WHERE NOT EXISTS (
+      SELECT 1 FROM recent_searches r
+      WHERE r.platform = n.platform
+        AND r.game_name_lower = lower(trim(n.name)) AND r.tag_line_lower = lower(trim(n.tag)))
+    ORDER BY n.gc DESC, n.mid
     LIMIT ${limit}`;
   return rows as unknown as Candidate[];
 }

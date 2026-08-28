@@ -59,12 +59,11 @@ export async function recomputeRankPtsBatch(limit = 500): Promise<number> {
              avg(pts.p)::int AS avg_pts,
              count(pts.p) AS known
       FROM todo t
-      JOIN matches m ON m.fp = $1 AND m.match_id = t.match_id
-      CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
+      JOIN match_participants mp ON mp.fp = $1 AND mp.match_id = t.match_id
       LEFT JOIN LATERAL (
         SELECT ${LS_POINTS} AS p
         FROM league_snapshots ls
-        WHERE ls.fp = $1 AND ls.puuid = pp->>'puuid'
+        WHERE ls.fp = $1 AND ls.puuid = mp.puuid
         ORDER BY ls.created_at DESC LIMIT 1
       ) pts ON true
       GROUP BY t.match_id
