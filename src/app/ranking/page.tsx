@@ -101,8 +101,8 @@ export default async function RankingPage({
       ) : (
         <Card className="py-0">
           <CardContent className="px-0">
-            <div className="hidden items-center gap-3 border-b px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
-              <span className="w-10 shrink-0 text-right">#</span>
+            <div className="hidden items-center gap-3 border-b px-3 py-2.5 sm:px-4 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:flex">
+              <span className="w-8 shrink-0 text-right">#</span>
               <span className="flex-1">소환사</span>
               <span className="w-20 shrink-0 text-right">LP</span>
               <span className="w-28 shrink-0 text-right">승 / 패</span>
@@ -116,10 +116,10 @@ export default async function RankingPage({
                 return (
                   <div
                     key={r.puuid}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm sm:px-4 transition-colors hover:bg-muted/40 sm:flex-nowrap"
                   >
                     <span
-                      className="w-10 shrink-0 text-right font-semibold tabular-nums"
+                      className="w-8 shrink-0 text-right font-semibold tabular-nums"
                       style={r.rankNo <= 3 ? { color } : undefined}
                     >
                       {r.rankNo}
@@ -150,7 +150,7 @@ export default async function RankingPage({
                       )}
                     </span>
                     {/* 지표: 모바일에선 w-full로 2줄째(순위 칸만큼 들여쓰기), sm+에선 인라인 */}
-                    <span className="flex w-full items-center gap-3 pl-13 sm:w-auto sm:justify-end sm:pl-0">
+                    <span className="flex w-full items-center gap-3 pl-11 sm:w-auto sm:justify-end sm:pl-0">
                       <span className="w-20 shrink-0 text-right font-semibold tabular-nums sm:text-right" style={{ color }}>
                         {r.lp.toLocaleString()}
                         <span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">LP</span>
