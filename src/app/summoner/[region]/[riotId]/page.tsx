@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Crown,
   ArrowDown,
   ArrowUp,
   Minus,
@@ -43,7 +44,7 @@ import {
   getStoredResult,
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
-import { pointsToRank, TIER_COLORS, entryToRank, isApexPoints } from "@/lib/mmr/rank";
+import { pointsToRank, TIER_COLORS, entryToRank, isApexPoints, rankToPoints } from "@/lib/mmr/rank";
 import {
   computeLpInsight,
   hasLpSignal,
@@ -111,6 +112,9 @@ const CONFIDENCE_LABELS = {
 // 표현 원칙: "최근 로비 평균 랭크가 현재 티어보다 높다/낮다"는 사실만 말한다.
 // 시스템이 실력을 어떻게 평가한다거나 LP·티어 전망 같은 해석은 붙이지 않는다
 // (라이엇 API 정책 — 공식 랭킹 시스템의 대체물(MMR/ELO 계산기) 금지).
+// 시즌 시작(KST) — 시즌 최고 티어 집계 기준. 새 시즌이 열리면 갱신한다.
+const SEASON_START = "2026-01-08T00:00:00+09:00";
+
 function estimatedPointsOf(r: { estimatedPoints: number | null }): number | null {
   return r.estimatedPoints;
 }
@@ -386,10 +390,24 @@ export default async function SummonerPage({
 
   // LP 득실 추적 — 스냅샷 히스토리 기반 (API 호출 없음)
   let lpInsight: LpInsight | null = null;
+  // 시즌 최고 티어 — 라이엇은 과거 랭크를 안 주므로 우리 스냅샷 히스토리에서
+  // 시즌 시작 이후 최고점을 뽑는다 (관측한 범위 안에서의 최고라 화면에 그렇게 표기)
+  let peak: { label: string; tier: string; at: number; pts: number } | null = null;
   try {
     const acct = await getAccountByRiotId(platform, gameName, tagLine);
     selfPuuid = acct.puuid;
-    lpInsight = computeLpInsight(await getLeagueHistory(platform, acct.puuid));
+    const history = await getLeagueHistory(platform, acct.puuid);
+    lpInsight = computeLpInsight(history);
+    const seasonStart = new Date(SEASON_START).getTime();
+    for (const h of history) {
+      if (!h.solo_tier || h.solo_lp === null) continue;
+      const at = new Date(h.created_at).getTime();
+      if (at < seasonStart) continue;
+      const pts = rankToPoints(h.solo_tier, h.solo_rank ?? "IV", h.solo_lp);
+      if (!peak || pts > peak.pts) {
+        peak = { ...entryToRank(h.solo_tier, h.solo_rank ?? "IV", h.solo_lp), at, pts };
+      }
+    }
   } catch {
     // 히스토리 조회 실패는 카드 생략으로 처리
   }
@@ -627,6 +645,21 @@ export default async function SummonerPage({
                   %)
                 </div>
               )}
+              {peak && (
+                <div
+                  className="flex items-center gap-2 text-muted-foreground"
+                  title="Rift Lens가 관측한 랭크 기록 중 이번 시즌 최고점 (라이엇 공식 최고 기록과 다를 수 있어요)"
+                >
+                  <Crown className="size-4" />
+                  시즌 최고{" "}
+                  <span className="font-medium" style={{ color: TIER_COLORS[peak.tier] }}>
+                    {peak.label}
+                  </span>
+                  <span className="text-xs">
+                    · {new Date(peak.at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric" })} 관측
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Users className="size-4" />
                 표본 {sampledPlayers}명의 현재 랭크 분석
@@ -641,8 +674,7 @@ export default async function SummonerPage({
                 <CardTitle className="text-base">LP 흐름</CardTitle>
                 <CardDescription>
                   랭크 스냅샷 관측 {lpInsight.observedWins}승{" "}
-                  {lpInsight.observedLosses}패 기준 · LP 득실은 내부 지표를 가장
-                  직접 반영하는 신호예요
+                  {lpInsight.observedLosses}패 기준 · 승리·패배당 평균 LP 득실이에요
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
