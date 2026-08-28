@@ -4,6 +4,10 @@ import { PageHeader } from "@/components/page-kit";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { getRecentSearches } from "@/lib/recent";
+import { Pager, parsePage } from "@/components/pager";
+
+const PAGE_SIZE = 50;
+const MAX_LIST = 500;
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { PLATFORM_LABELS } from "@/lib/riot/types";
 
@@ -24,15 +28,23 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hours / 24)}일 전`;
 }
 
-export default async function RecentPage() {
-  const entries = await getRecentSearches();
+export default async function RecentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: rawPage } = await searchParams;
+  const all = await getRecentSearches(MAX_LIST);
+  const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+  const page = parsePage(rawPage, totalPages);
+  const entries = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-6">
       <PageHeader
         icon={History}
         title="최근 검색"
-        description={`최근 조회된 소환사 ${entries.length}명`}
+        description={`최근 조회된 소환사 ${all.length.toLocaleString()}명${totalPages > 1 ? ` · ${page}/${totalPages} 페이지` : ""}`}
       />
 
       {entries.length === 0 ? (
@@ -96,6 +108,7 @@ export default async function RecentPage() {
           ))}
         </div>
       )}
+      <Pager page={page} totalPages={totalPages} basePath="/recent" />
     </div>
   );
 }

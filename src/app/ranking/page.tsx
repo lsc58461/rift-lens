@@ -10,6 +10,9 @@ import {
   type ApexLadderTier,
 } from "@/lib/apex-ladder";
 import { TIER_COLORS, TIER_LABELS } from "@/lib/mmr/rank";
+import { Pager, parsePage } from "@/components/pager";
+
+const PAGE_SIZE = 50;
 
 export const revalidate = 120; // 래더는 30분마다 갱신되므로 2분 ISR이면 충분
 
@@ -29,15 +32,19 @@ function timeAgo(ts: number): string {
 export default async function RankingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tier?: string }>;
+  searchParams: Promise<{ tier?: string; page?: string }>;
 }) {
-  const { tier: rawTier } = await searchParams;
+  const { tier: rawTier, page: rawPage } = await searchParams;
   const tier: ApexLadderTier = rawTier === "GRANDMASTER" ? "GRANDMASTER" : "CHALLENGER";
   const [{ rows, fetchedAt }, cutoffs] = await Promise.all([
     getApexLadder(tier).catch(() => ({ rows: [], fetchedAt: null })),
     getApexCutoffs().catch(() => null),
   ]);
   const color = TIER_COLORS[tier];
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const page = parsePage(rawPage, totalPages);
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pagerQuery = { tier: tier === "CHALLENGER" ? undefined : tier };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -109,7 +116,7 @@ export default async function RankingPage({
               <span className="w-14 shrink-0 text-right">승률</span>
             </div>
             <div className="divide-y divide-border/60">
-              {rows.map((r) => {
+              {pageRows.map((r) => {
                 const games = r.wins + r.losses;
                 const wr = games > 0 ? Math.round((r.wins / games) * 100) : 0;
                 const label = r.name ?? null;
@@ -180,6 +187,8 @@ export default async function RankingPage({
           </CardContent>
         </Card>
       )}
+
+      <Pager page={page} totalPages={totalPages} basePath="/ranking" query={pagerQuery} />
 
       <p className="text-xs text-muted-foreground">
         라이엇 공식 리그 목록 기준(30분마다 갱신). 컷은 각 티어 명단의 최소 LP예요. 이름은
