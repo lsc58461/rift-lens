@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
 
 // 사이트맵 구조 — 인덱스(/sitemap.xml, 별도 라우트) 아래에
-//   /sitemap/0.xml : 정적 페이지
+//   /sitemap/0.xml : 정적 페이지  (인덱스는 /sitemap-index.xml — /sitemap.xml은 Next 예약 경로)
 //   /sitemap/1.xml … : 소환사 페이지 10,000개씩 (최근 분석순)
 // 소환사 페이지가 수만 개라 한 파일(5만 URL 상한)에 몰아넣지 않고 쪼갠다.
 // 1시간 캐시 — 검색엔진이 자주 긁어도 DB를 매번 훑지 않게.

@@ -1,7 +1,7 @@
 import { generateSitemaps } from "@/app/sitemap";
 
-// 사이트맵 인덱스 — Next는 generateSitemaps로 /sitemap/N.xml 만 만들고 인덱스는
-// 안 만들어 주므로 여기서 직접 낸다. robots.txt는 이 주소 하나만 가리키면 된다.
+// 사이트맵 인덱스(/sitemap-index.xml) — Next는 generateSitemaps로 /sitemap/N.xml 만 만들고 인덱스는
+// 안 만들어 주고 /sitemap.xml 경로는 예약돼 있어 여기서 직접 낸다. robots.txt가 이 주소를 가리킨다.
 export const revalidate = 3600;
 
 const BASE = "https://rift-lens.xyz";
