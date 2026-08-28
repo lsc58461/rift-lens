@@ -43,7 +43,7 @@ import {
   getStoredResult,
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
-import { pointsToRank, TIER_COLORS } from "@/lib/mmr/rank";
+import { pointsToRank, TIER_COLORS, entryToRank, isApexPoints } from "@/lib/mmr/rank";
 import {
   computeLpInsight,
   hasLpSignal,
@@ -111,10 +111,22 @@ const CONFIDENCE_LABELS = {
 // 표현 원칙: "최근 로비 평균 랭크가 현재 티어보다 높다/낮다"는 사실만 말한다.
 // 시스템이 실력을 어떻게 평가한다거나 LP·티어 전망 같은 해석은 붙이지 않는다
 // (라이엇 API 정책 — 공식 랭킹 시스템의 대체물(MMR/ELO 계산기) 금지).
-function gapVerdict(gap: number): {
+function estimatedPointsOf(r: { estimatedPoints: number | null }): number | null {
+  return r.estimatedPoints;
+}
+
+function gapVerdict(gap: number, apex = false): {
   text: string;
   tone: "up" | "down" | "flat";
 } {
+  if (apex) {
+    // 마스터 이상은 디비전이 없어 "한 티어"가 의미 없다 — LP 차이로 말한다
+    const lp = Math.abs(Math.round(gap));
+    if (lp < 100) return { text: "최근 매칭 로비의 평균이 현재 LP와 비슷한 구간이에요.", tone: "flat" };
+    return gap > 0
+      ? { text: `최근 매칭 로비의 평균이 현재보다 약 ${lp}LP 높은 구간이에요.`, tone: "up" }
+      : { text: `최근 매칭 로비의 평균이 현재보다 약 ${lp}LP 낮은 구간이에요.`, tone: "down" };
+  }
   if (gap >= 150)
     return {
       text: "최근 매칭 로비의 평균 랭크가 현재 티어보다 한 티어 이상 높은 구간이에요.",
@@ -410,15 +422,27 @@ export default async function SummonerPage({
   const {
     account,
     soloEntry,
-    currentRank,
+    currentRank: storedCurrentRank,
     currentPoints,
-    estimatedRank,
+    estimatedRank: storedEstimatedRank,
     gap,
     recentWinrate,
     matches,
     sampledPlayers,
     confidence,
   } = result;
+  // 저장된 라벨 대신 지금 기준으로 다시 라벨링 — 마스터 이상 컷이 갱신되거나
+  // 예전 결과가 포인트 역산 라벨을 갖고 있어도 화면은 항상 현재 기준으로 맞춘다
+  const currentRank = soloEntry
+    ? entryToRank(soloEntry.tier, soloEntry.rank, soloEntry.leaguePoints)
+    : storedCurrentRank;
+  const estimatedRank =
+    estimatedPointsOf(result) !== null
+      ? pointsToRank(estimatedPointsOf(result)!)
+      : storedEstimatedRank;
+  const apex =
+    currentPoints !== null && isApexPoints(currentPoints) &&
+    estimatedPointsOf(result) !== null && isApexPoints(estimatedPointsOf(result)!);
   const duoExcludedCount = result.duoExcludedCount ?? 0; // 구버전 저장 결과 호환
   const analyzedCount = matches.length - duoExcludedCount;
 
@@ -433,7 +457,7 @@ export default async function SummonerPage({
       win: m.win,
     }));
 
-  const verdict = gap !== null ? gapVerdict(gap) : null;
+  const verdict = gap !== null ? gapVerdict(gap, apex) : null;
   const estColor = estimatedRank ? TIER_COLORS[estimatedRank.tier] : undefined;
   const showLobbyDist = matches.some((m) => m.lobbyPoints !== null);
 

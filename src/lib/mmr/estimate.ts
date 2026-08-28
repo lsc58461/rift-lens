@@ -15,7 +15,7 @@ import {
   getSummoner,
 } from "@/lib/riot/client";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "@/lib/riot/types";
-import { pointsToRank, rankToPoints, type RankLabel } from "./rank";
+import { pointsToRank, rankToPoints, type RankLabel, entryToRank } from "./rank";
 
 // 알고리즘이 바뀔 때 올린다 — 저장된 분석 결과의 버전이 다르면 재분석된다
 // v4: 듀오 금지 구간(한국 마스터+, 전서버 그마+)은 듀오 감지 비활성화
@@ -350,7 +350,8 @@ export async function estimateMmr(
     summonerLevel: summoner?.summonerLevel ?? null,
     soloEntry: solo,
     currentPoints,
-    currentRank: currentPoints !== null ? pointsToRank(currentPoints) : null,
+    // 현재 티어는 라이엇이 준 실제 티어 — 포인트 역산은 마스터 이상에서 LP 컷 오차가 난다
+    currentRank: solo ? entryToRank(solo.tier, solo.rank, solo.leaguePoints) : null,
     estimatedPoints,
     estimatedRank:
       estimatedPoints !== null ? pointsToRank(estimatedPoints) : null,

@@ -4,14 +4,19 @@ import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 import { getStoredResult } from "@/lib/mmr/deep-jobs";
 import type { MmrEstimate } from "@/lib/mmr/estimate";
-import { TIER_COLORS } from "@/lib/mmr/rank";
+import { TIER_COLORS, isApexPoints } from "@/lib/mmr/rank";
 import { PLATFORM_LABELS, type PlatformRegion } from "@/lib/riot/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-function gapText(gap: number | null): string {
+function gapText(gap: number | null, apex = false): string {
   if (gap === null) return "";
+  if (apex) {
+    const lp = Math.abs(Math.round(gap));
+    if (lp < 100) return "최근 로비 평균이 현재 LP와 비슷한 구간";
+    return gap > 0 ? `최근 로비 평균이 현재보다 약 ${lp}LP 높은 구간` : `최근 로비 평균이 현재보다 약 ${lp}LP 낮은 구간`;
+  }
   if (gap >= 50) return "최근 로비 평균 랭크가 현재 티어보다 높은 구간";
   if (gap <= -50) return "최근 로비 평균 랭크가 현재 티어보다 낮은 구간";
   return "최근 로비 평균 랭크가 현재 티어와 비슷한 구간";
@@ -270,7 +275,13 @@ export async function GET(req: NextRequest) {
             color: "#52525c",
           }}
         >
-          <div style={{ display: "flex" }}>{gapText(result.gap)}</div>
+          <div style={{ display: "flex" }}>
+            {gapText(
+              result.gap,
+              result.currentPoints !== null && isApexPoints(result.currentPoints) &&
+                result.estimatedPoints !== null && isApexPoints(result.estimatedPoints),
+            )}
+          </div>
           <div style={{ display: "flex" }}>
             최근 솔로랭크 경기 로비 평균 랭크 집계 · Riot 비공식
           </div>
