@@ -50,8 +50,10 @@ export function trackRateLimiter(): void {
   if (timer) return;
   timer = setInterval(() => {
     const snap = riotLimiter.snapshot();
-    const busy =
-      snap.saturated || snap.waitingHigh + snap.waitingLow > 0;
+    // "바쁨" = 이 인스턴스에 실제 대기 요청이 있을 때만. 한도 포화(saturated)는
+    // Redis 공유 값이라 일을 안 하는 인스턴스도 참이 돼서 기준에서 뺐다 —
+    // 어드민의 '보고 인스턴스'가 실제 호출을 내는 인스턴스 수를 뜻하게.
+    const busy = snap.waitingHigh + snap.waitingLow > 0;
     if (busy) {
       idleTicks = 0;
       void publish(snap);
