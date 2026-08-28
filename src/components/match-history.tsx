@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useHistorySummary } from "@/components/history-summary";
-import { MatchDetail, PlayerBadge, type DetailPlayer } from "@/components/match-detail";
+import { MatchDetail, PlayerBadge, RankAtGame, type DetailPlayer } from "@/components/match-detail";
 import type { RuneInfo } from "@/lib/ddragon";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { MatchSummary, type Summary } from "@/components/match-summary";
@@ -193,6 +193,7 @@ function TeamColumn({
           >
             {p.name.split("#")[0]}
           </Link>
+          <RankAtGame rank={p.rank} short />
           <PlayerBadge badge={p.badge} small />
         </div>
       ))}

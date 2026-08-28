@@ -1,5 +1,7 @@
 "use client";
 
+import { TIER_COLORS } from "@/lib/mmr/rank";
+
 // 펼친 경기의 상세 — 종합 스코어보드 / 팀 분석 / 빌드 세 탭.
 // 종합·팀 분석은 이미 받은 전적 데이터로 그리고, 빌드(아이템 타임라인·
 // 스킬 순서)만 탭을 열 때 타임라인 API를 한 번 호출한다(서버 30일 캐시).
@@ -33,6 +35,22 @@ export interface DetailPlayer {
   self?: boolean;
   /** 팀 내 최고 기여 — 승팀 MVP / 패팀 ACE */
   badge?: "MVP" | "ACE";
+  /** 경기 시점의 솔로랭크 (우리 스냅샷 기준, 가장 가까운 것). 없으면 미확인 */
+  rank?: { tier: string; label: string; short: string; ageDays: number } | null;
+}
+
+export function RankAtGame({ rank, short = false }: { rank?: DetailPlayer["rank"]; short?: boolean }) {
+  if (!rank) return null;
+  return (
+    <span
+      className="shrink-0 text-[10px] leading-none tabular-nums"
+      style={{ color: TIER_COLORS[rank.tier] }}
+      title={`경기 시점 기준 솔로랭크${rank.ageDays > 3 ? ` (경기와 ${rank.ageDays}일 차이 나는 기록)` : ""}`}
+    >
+      {short ? rank.short : rank.label}
+      {rank.ageDays > 3 && <span className="ml-0.5 opacity-60">±{rank.ageDays}d</span>}
+    </span>
+  );
 }
 
 export function PlayerBadge({ badge, small = false }: { badge?: "MVP" | "ACE"; small?: boolean }) {
@@ -265,6 +283,7 @@ function Scoreboard({
                   {p.name.split("#")[0]}
                 </Link>
                 <PlayerBadge badge={p.badge} small />
+                <RankAtGame rank={p.rank} />
               </span>
               <span className="text-right tabular-nums">
                 {p.kills}/{p.deaths}/{p.assists}

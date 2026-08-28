@@ -6,7 +6,8 @@ import {
   getRankedMatchIds,
   riotKeyFp,
 } from "@/lib/riot/client";
-import { currentNamesByPuuid } from "@/lib/store";
+import { currentNamesByPuuid, nearestRankSnapshots } from "@/lib/store";
+import { pointsToShortLabel, rankToPoints, TIER_LABELS } from "@/lib/mmr/rank";
 import {
   PLATFORM_LABELS,
   RiotApiError,
@@ -168,6 +169,27 @@ export async function POST(req: NextRequest) {
       [...new Set(known.flatMap((m) => m.participants.map((p) => p.puuid)))],
     ).catch(() => new Map<string, string>());
 
+    // 경기 시점의 참가자 랭크 — 우리가 쌓은 스냅샷 중 그 경기와 가장 가까운 것 (API 호출 없음)
+    const rankAt = await nearestRankSnapshots(
+      riotKeyFp(),
+      platform,
+      known.flatMap((m) => m.participants.map((p) => ({ puuid: p.puuid, at: m.gameCreation }))),
+    ).catch(() => new Map());
+    const rankOf = (puuid: string, at: number) => {
+      const r = rankAt.get(`${puuid}|${at}`);
+      if (!r) return null;
+      const apex = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(r.tier);
+      const label = apex
+        ? `${TIER_LABELS[r.tier] ?? r.tier} ${r.lp ?? 0}LP`
+        : `${TIER_LABELS[r.tier] ?? r.tier} ${r.rank ?? ""} ${r.lp ?? 0}LP`.replace(/\s+/g, " ");
+      return {
+        tier: r.tier,
+        label,
+        short: pointsToShortLabel(rankToPoints(r.tier, r.rank ?? "IV", r.lp ?? 0)),
+        ageDays: Math.round(Math.abs(r.snapAt - at) / 86_400_000),
+      };
+    };
+
     const games = matches
       .filter((m): m is NonNullable<typeof m> => m !== null)
       .map((m) => {
@@ -228,6 +250,7 @@ export async function POST(req: NextRequest) {
           items: p.items ?? [],
           self: isSelf(p),
           badge: badgeOf(p),
+          rank: rankOf(p.puuid, m.gameCreation),
         });
         return {
           matchId: m.matchId,

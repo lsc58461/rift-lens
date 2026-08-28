@@ -141,6 +141,52 @@ export async function latestLeagueSnapshot(
   return r.entries as LeagueEntry[];
 }
 
+export interface NearestRankSnap {
+  puuid: string;
+  at: number; // 요청한 기준 시각(ms)
+  tier: string;
+  rank: string | null;
+  lp: number | null;
+  snapAt: number; // 스냅샷 시각(ms)
+}
+
+/** (puuid, 경기 시각) 쌍마다 그 시각에 가장 가까운 솔로랭크 스냅샷을 돌려준다.
+ *  라이엇은 과거 랭크를 안 주므로 우리가 분석하며 쌓은 스냅샷으로 "그때 티어"를
+ *  복원한다 — 경기 전후 어느 쪽이든 가장 가까운 것. 없으면 항목이 빠진다. */
+export async function nearestRankSnapshots(
+  fp: string,
+  platform: PlatformRegion,
+  pairs: { puuid: string; at: number }[],
+): Promise<Map<string, NearestRankSnap>> {
+  const out = new Map<string, NearestRankSnap>();
+  if (pairs.length === 0) return out;
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT q.puuid, q.at, s.solo_tier, s.solo_rank, s.solo_lp,
+           (extract(epoch from s.created_at) * 1000)::bigint AS snap_at
+    FROM jsonb_to_recordset(${sql.json(pairs as never)}) AS q(puuid text, at bigint)
+    CROSS JOIN LATERAL (
+      SELECT solo_tier, solo_rank, solo_lp, created_at FROM league_snapshots l
+      WHERE l.fp = ${fp} AND l.platform = ${platform} AND l.puuid = q.puuid
+        AND l.solo_tier IS NOT NULL
+      ORDER BY abs(extract(epoch from l.created_at) * 1000 - q.at) LIMIT 1
+    ) s`;
+  for (const r of rows as unknown as {
+    puuid: string; at: string | number; solo_tier: string; solo_rank: string | null;
+    solo_lp: number | null; snap_at: string | number;
+  }[]) {
+    out.set(`${r.puuid}|${r.at}`, {
+      puuid: r.puuid,
+      at: Number(r.at),
+      tier: r.solo_tier,
+      rank: r.solo_rank,
+      lp: r.solo_lp,
+      snapAt: Number(r.snap_at),
+    });
+  }
+  return out;
+}
+
 export async function insertLeagueSnapshot(
   fp: string,
   platform: PlatformRegion,
