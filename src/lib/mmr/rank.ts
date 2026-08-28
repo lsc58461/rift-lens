@@ -66,7 +66,7 @@ export function pointsToRank(points: number): RankLabel {
 }
 
 // "플3", "에1" 같은 커뮤니티식 축약 표기 (모바일 차트 축 등 좁은 공간용)
-const TIER_SHORT: Record<string, string> = {
+export const TIER_SHORT: Record<string, string> = {
   IRON: "아",
   BRONZE: "브",
   SILVER: "실",

@@ -7,7 +7,7 @@ import {
   riotKeyFp,
 } from "@/lib/riot/client";
 import { currentNamesByPuuid, nearestRankSnapshots } from "@/lib/store";
-import { pointsToShortLabel, rankToPoints, TIER_LABELS } from "@/lib/mmr/rank";
+import { pointsToShortLabel, rankToPoints, TIER_LABELS, TIER_SHORT } from "@/lib/mmr/rank";
 import {
   PLATFORM_LABELS,
   RiotApiError,
@@ -185,7 +185,10 @@ export async function POST(req: NextRequest) {
       return {
         tier: r.tier,
         label,
-        short: pointsToShortLabel(rankToPoints(r.tier, r.rank ?? "IV", r.lp ?? 0)),
+        // 마스터 이상은 스냅샷의 실제 티어로 (포인트 역산은 LP만 보고 챌린저로 올려버린다)
+        short: apex
+          ? (TIER_SHORT[r.tier] ?? r.tier)
+          : pointsToShortLabel(rankToPoints(r.tier, r.rank ?? "IV", r.lp ?? 0)),
         ageDays: Math.round(Math.abs(r.snapAt - at) / 86_400_000),
       };
     };
