@@ -296,6 +296,36 @@ const SCHEMA_SQL = `
     ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS perks int[];
     ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS sub_perks int[];
     ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS stat_perks int[];
+    -- 참가자 확장 필드 전부 컬럼화 — JSON(matches.participants)을 없애고 이 테이블을
+    -- 유일한 원본으로 만들기 위한 1단계 (2026-08-30)
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS individual_position text;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS cs_total int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS cs_jungle int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS gold_spent int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS damage_mitigated int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS damage_to_objectives int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS damage_to_turrets int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS total_heal int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS heal_on_teammates int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS shield_on_teammates int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS cc_score int;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS turret_kills smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS inhibitor_kills smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS dragon_kills smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS baron_kills smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS objectives_stolen smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS wards_placed smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS wards_killed smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS control_wards_bought smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS largest_killing_spree smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS largest_multi_kill smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS solo_kills smallint;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS first_blood_kill boolean;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS first_tower_kill boolean;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS game_ended_in_surrender boolean;
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS game_ended_in_early_surrender boolean;
+    -- 확장 필드(위 컬럼들)를 JSON에서 옮겼는지 — 컬럼이 나중에 추가돼 기존 행 채우기용
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS ext_synced boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS mp_patch_champ_idx ON match_participants (fp, patch, champion_name);
     CREATE INDEX IF NOT EXISTS mp_puuid_time_idx ON match_participants (fp, puuid, game_creation DESC);
     CREATE INDEX IF NOT EXISTS mp_patch_rank_idx ON match_participants (fp, patch, rank_pts);

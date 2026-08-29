@@ -61,6 +61,33 @@ interface ParticipantRow {
   perks: number[] | null;
   sub_perks: number[] | null;
   stat_perks: number[] | null;
+  individual_position: string | null;
+  cs_total: number | null;
+  cs_jungle: number | null;
+  gold_spent: number | null;
+  damage_mitigated: number | null;
+  damage_to_objectives: number | null;
+  damage_to_turrets: number | null;
+  total_heal: number | null;
+  heal_on_teammates: number | null;
+  shield_on_teammates: number | null;
+  cc_score: number | null;
+  turret_kills: number | null;
+  inhibitor_kills: number | null;
+  dragon_kills: number | null;
+  baron_kills: number | null;
+  objectives_stolen: number | null;
+  wards_placed: number | null;
+  wards_killed: number | null;
+  control_wards_bought: number | null;
+  largest_killing_spree: number | null;
+  largest_multi_kill: number | null;
+  solo_kills: number | null;
+  first_blood_kill: boolean | null;
+  first_tower_kill: boolean | null;
+  game_ended_in_surrender: boolean | null;
+  game_ended_in_early_surrender: boolean | null;
+  ext_synced: boolean;
   game_creation: number;
   game_duration: number;
   queue_id: number;
@@ -118,6 +145,33 @@ function toRows(
       perks: p.perks ? p.perks.map(Number) : null,
       sub_perks: p.subPerks ? p.subPerks.map(Number) : null,
       stat_perks: p.statPerks ? p.statPerks.map(Number) : null,
+      individual_position: p.individualPosition ?? null,
+      cs_total: p.csTotal ?? null,
+      cs_jungle: p.csJungle ?? null,
+      gold_spent: p.goldSpent ?? null,
+      damage_mitigated: p.damageMitigated ?? null,
+      damage_to_objectives: p.damageToObjectives ?? null,
+      damage_to_turrets: p.damageToTurrets ?? null,
+      total_heal: p.totalHeal ?? null,
+      heal_on_teammates: p.healOnTeammates ?? null,
+      shield_on_teammates: p.shieldOnTeammates ?? null,
+      cc_score: p.ccScore ?? null,
+      turret_kills: p.turretKills ?? null,
+      inhibitor_kills: p.inhibitorKills ?? null,
+      dragon_kills: p.dragonKills ?? null,
+      baron_kills: p.baronKills ?? null,
+      objectives_stolen: p.objectivesStolen ?? null,
+      wards_placed: p.wardsPlaced ?? null,
+      wards_killed: p.wardsKilled ?? null,
+      control_wards_bought: p.controlWardsBought ?? null,
+      largest_killing_spree: p.largestKillingSpree ?? null,
+      largest_multi_kill: p.largestMultiKill ?? null,
+      solo_kills: p.soloKills ?? null,
+      first_blood_kill: p.firstBloodKill ?? null,
+      first_tower_kill: p.firstTowerKill ?? null,
+      game_ended_in_surrender: p.gameEndedInSurrender ?? null,
+      game_ended_in_early_surrender: p.gameEndedInEarlySurrender ?? null,
+      ext_synced: true,
       game_creation: m.gameCreation,
       game_duration: m.gameDuration,
       queue_id: m.queueId,
@@ -132,6 +186,7 @@ const COLS = [
   "damage", "damage_taken", "vision", "champ_level", "spell1", "spell2", "keystone", "sub_style",
   "items", "double_kills", "triple_kills", "quadra_kills", "penta_kills", "kill_participation",
   "perks", "sub_perks", "stat_perks",
+  "individual_position", "cs_total", "cs_jungle", "gold_spent", "damage_mitigated", "damage_to_objectives", "damage_to_turrets", "total_heal", "heal_on_teammates", "shield_on_teammates", "cc_score", "turret_kills", "inhibitor_kills", "dragon_kills", "baron_kills", "objectives_stolen", "wards_placed", "wards_killed", "control_wards_bought", "largest_killing_spree", "largest_multi_kill", "solo_kills", "first_blood_kill", "first_tower_kill", "game_ended_in_surrender", "game_ended_in_early_surrender", "ext_synced",
   "game_creation", "game_duration", "queue_id", "patch", "rank_pts",
 ] as const;
 
@@ -159,6 +214,33 @@ async function upsertRows(sql: Sql, rows: ParticipantRow[]): Promise<void> {
         perks = coalesce(EXCLUDED.perks, match_participants.perks),
         sub_perks = coalesce(EXCLUDED.sub_perks, match_participants.sub_perks),
         stat_perks = coalesce(EXCLUDED.stat_perks, match_participants.stat_perks),
+        individual_position = coalesce(EXCLUDED.individual_position, match_participants.individual_position),
+        cs_total = coalesce(EXCLUDED.cs_total, match_participants.cs_total),
+        cs_jungle = coalesce(EXCLUDED.cs_jungle, match_participants.cs_jungle),
+        gold_spent = coalesce(EXCLUDED.gold_spent, match_participants.gold_spent),
+        damage_mitigated = coalesce(EXCLUDED.damage_mitigated, match_participants.damage_mitigated),
+        damage_to_objectives = coalesce(EXCLUDED.damage_to_objectives, match_participants.damage_to_objectives),
+        damage_to_turrets = coalesce(EXCLUDED.damage_to_turrets, match_participants.damage_to_turrets),
+        total_heal = coalesce(EXCLUDED.total_heal, match_participants.total_heal),
+        heal_on_teammates = coalesce(EXCLUDED.heal_on_teammates, match_participants.heal_on_teammates),
+        shield_on_teammates = coalesce(EXCLUDED.shield_on_teammates, match_participants.shield_on_teammates),
+        cc_score = coalesce(EXCLUDED.cc_score, match_participants.cc_score),
+        turret_kills = coalesce(EXCLUDED.turret_kills, match_participants.turret_kills),
+        inhibitor_kills = coalesce(EXCLUDED.inhibitor_kills, match_participants.inhibitor_kills),
+        dragon_kills = coalesce(EXCLUDED.dragon_kills, match_participants.dragon_kills),
+        baron_kills = coalesce(EXCLUDED.baron_kills, match_participants.baron_kills),
+        objectives_stolen = coalesce(EXCLUDED.objectives_stolen, match_participants.objectives_stolen),
+        wards_placed = coalesce(EXCLUDED.wards_placed, match_participants.wards_placed),
+        wards_killed = coalesce(EXCLUDED.wards_killed, match_participants.wards_killed),
+        control_wards_bought = coalesce(EXCLUDED.control_wards_bought, match_participants.control_wards_bought),
+        largest_killing_spree = coalesce(EXCLUDED.largest_killing_spree, match_participants.largest_killing_spree),
+        largest_multi_kill = coalesce(EXCLUDED.largest_multi_kill, match_participants.largest_multi_kill),
+        solo_kills = coalesce(EXCLUDED.solo_kills, match_participants.solo_kills),
+        first_blood_kill = coalesce(EXCLUDED.first_blood_kill, match_participants.first_blood_kill),
+        first_tower_kill = coalesce(EXCLUDED.first_tower_kill, match_participants.first_tower_kill),
+        game_ended_in_surrender = coalesce(EXCLUDED.game_ended_in_surrender, match_participants.game_ended_in_surrender),
+        game_ended_in_early_surrender = coalesce(EXCLUDED.game_ended_in_early_surrender, match_participants.game_ended_in_early_surrender),
+        ext_synced = true,
         game_creation = EXCLUDED.game_creation, game_duration = EXCLUDED.game_duration,
         queue_id = EXCLUDED.queue_id,
         patch = coalesce(EXCLUDED.patch, match_participants.patch),
@@ -228,6 +310,7 @@ async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<nu
          damage, damage_taken, vision, champ_level, spell1, spell2, keystone, sub_style,
          items, double_kills, triple_kills, quadra_kills, penta_kills, kill_participation,
          perks, sub_perks, stat_perks,
+         individual_position, cs_total, cs_jungle, gold_spent, damage_mitigated, damage_to_objectives, damage_to_turrets, total_heal, heal_on_teammates, shield_on_teammates, cc_score, turret_kills, inhibitor_kills, dragon_kills, baron_kills, objectives_stolen, wards_placed, wards_killed, control_wards_bought, largest_killing_spree, largest_multi_kill, solo_kills, first_blood_kill, first_tower_kill, game_ended_in_surrender, game_ended_in_early_surrender, ext_synced,
          game_creation, game_duration, queue_id, patch, rank_pts)
       SELECT $1, t.match_id, t.platform, p->>'puuid', (o.ord - 1)::smallint,
              coalesce((p->>'teamId')::int, 0)::smallint, coalesce((p->>'win')::boolean, false),
@@ -246,6 +329,32 @@ async function backfillBatchSql(sql: Sql, fp: string, limit: number): Promise<nu
              CASE WHEN jsonb_typeof(p->'perks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'perks') x) END,
              CASE WHEN jsonb_typeof(p->'subPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'subPerks') x) END,
              CASE WHEN jsonb_typeof(p->'statPerks') = 'array' THEN ARRAY(SELECT (x)::int FROM jsonb_array_elements_text(p->'statPerks') x) END,
+             p->>'individualPosition',
+             (p->>'csTotal')::int,
+             (p->>'csJungle')::int,
+             (p->>'goldSpent')::int,
+             (p->>'damageMitigated')::int,
+             (p->>'damageToObjectives')::int,
+             (p->>'damageToTurrets')::int,
+             (p->>'totalHeal')::int,
+             (p->>'healOnTeammates')::int,
+             (p->>'shieldOnTeammates')::int,
+             (p->>'ccScore')::int,
+             (p->>'turretKills')::int::smallint,
+             (p->>'inhibitorKills')::int::smallint,
+             (p->>'dragonKills')::int::smallint,
+             (p->>'baronKills')::int::smallint,
+             (p->>'objectivesStolen')::int::smallint,
+             (p->>'wardsPlaced')::int::smallint,
+             (p->>'wardsKilled')::int::smallint,
+             (p->>'controlWardsBought')::int::smallint,
+             (p->>'largestKillingSpree')::int::smallint,
+             (p->>'largestMultiKill')::int::smallint,
+             (p->>'soloKills')::int::smallint,
+             (p->>'firstBloodKill')::boolean,
+             (p->>'firstTowerKill')::boolean,
+             (p->>'gameEndedInSurrender')::boolean,
+             (p->>'gameEndedInEarlySurrender')::boolean, true,
              t.game_creation, t.game_duration, t.queue_id, t.patch, t.rank_pts
       FROM todo t
       CROSS JOIN LATERAL jsonb_array_elements(
@@ -296,6 +405,111 @@ async function fillRuneColumnsBatch(sql: Sql, fp: string, limit: number): Promis
   );
   const r = (rows as unknown as { picked: number; n: number }[])[0];
   return r?.picked ?? 0;
+}
+
+const EXT_STATE_KEY = "participants:ext-fill";
+
+/** 확장 컬럼이 나중에 추가돼서, 먼저 적재된 행(ext_synced=false)을 JSON에서 채운다 */
+async function fillExtColumnsBatch(sql: Sql, fp: string, limit: number): Promise<number> {
+  const rows = await sql.unsafe(
+    `
+    WITH todo AS (
+      SELECT DISTINCT p.match_id FROM match_participants p
+      WHERE p.fp = $1 AND NOT p.ext_synced
+      LIMIT $2
+    ),
+    src AS (
+      SELECT m.match_id, pp->>'puuid' AS puuid,
+             pp->>'individualPosition' AS individual_position,
+             (pp->>'csTotal')::int AS cs_total,
+             (pp->>'csJungle')::int AS cs_jungle,
+             (pp->>'goldSpent')::int AS gold_spent,
+             (pp->>'damageMitigated')::int AS damage_mitigated,
+             (pp->>'damageToObjectives')::int AS damage_to_objectives,
+             (pp->>'damageToTurrets')::int AS damage_to_turrets,
+             (pp->>'totalHeal')::int AS total_heal,
+             (pp->>'healOnTeammates')::int AS heal_on_teammates,
+             (pp->>'shieldOnTeammates')::int AS shield_on_teammates,
+             (pp->>'ccScore')::int AS cc_score,
+             (pp->>'turretKills')::int::smallint AS turret_kills,
+             (pp->>'inhibitorKills')::int::smallint AS inhibitor_kills,
+             (pp->>'dragonKills')::int::smallint AS dragon_kills,
+             (pp->>'baronKills')::int::smallint AS baron_kills,
+             (pp->>'objectivesStolen')::int::smallint AS objectives_stolen,
+             (pp->>'wardsPlaced')::int::smallint AS wards_placed,
+             (pp->>'wardsKilled')::int::smallint AS wards_killed,
+             (pp->>'controlWardsBought')::int::smallint AS control_wards_bought,
+             (pp->>'largestKillingSpree')::int::smallint AS largest_killing_spree,
+             (pp->>'largestMultiKill')::int::smallint AS largest_multi_kill,
+             (pp->>'soloKills')::int::smallint AS solo_kills,
+             (pp->>'firstBloodKill')::boolean AS first_blood_kill,
+             (pp->>'firstTowerKill')::boolean AS first_tower_kill,
+             (pp->>'gameEndedInSurrender')::boolean AS game_ended_in_surrender,
+             (pp->>'gameEndedInEarlySurrender')::boolean AS game_ended_in_early_surrender
+      FROM todo t JOIN matches m ON m.fp = $1 AND m.match_id = t.match_id
+      CROSS JOIN LATERAL jsonb_array_elements(m.participants) pp
+    ),
+    upd AS (
+      UPDATE match_participants p
+      SET individual_position = s.individual_position, cs_total = s.cs_total, cs_jungle = s.cs_jungle, gold_spent = s.gold_spent, damage_mitigated = s.damage_mitigated, damage_to_objectives = s.damage_to_objectives, damage_to_turrets = s.damage_to_turrets, total_heal = s.total_heal, heal_on_teammates = s.heal_on_teammates, shield_on_teammates = s.shield_on_teammates, cc_score = s.cc_score, turret_kills = s.turret_kills, inhibitor_kills = s.inhibitor_kills, dragon_kills = s.dragon_kills, baron_kills = s.baron_kills, objectives_stolen = s.objectives_stolen, wards_placed = s.wards_placed, wards_killed = s.wards_killed, control_wards_bought = s.control_wards_bought, largest_killing_spree = s.largest_killing_spree, largest_multi_kill = s.largest_multi_kill, solo_kills = s.solo_kills, first_blood_kill = s.first_blood_kill, first_tower_kill = s.first_tower_kill, game_ended_in_surrender = s.game_ended_in_surrender, game_ended_in_early_surrender = s.game_ended_in_early_surrender, ext_synced = true
+      FROM src s
+      WHERE p.fp = $1 AND p.match_id = s.match_id AND p.puuid = s.puuid
+      RETURNING p.match_id
+    )
+    SELECT (SELECT count(*)::int FROM todo) AS picked FROM upd LIMIT 1`,
+    [fp, limit],
+  );
+  const r = (rows as unknown as { picked: number }[])[0];
+  // upd가 0행이면 SELECT도 0행 — todo가 남아 있는데 매칭이 안 되는 경우(참가자 JSON 불일치)를
+  // 무한 반복하지 않도록 그런 매치는 ext_synced=true로 마감한다
+  if (!r) {
+    await sql.unsafe(
+      `UPDATE match_participants p SET ext_synced = true
+       WHERE p.fp = $1 AND NOT p.ext_synced AND p.match_id IN (
+         SELECT DISTINCT match_id FROM match_participants WHERE fp = $1 AND NOT ext_synced LIMIT $2)`,
+      [fp, limit],
+    );
+    return 0;
+  }
+  return r.picked;
+}
+
+export async function getExtFillDone(): Promise<boolean> {
+  return (await getSetting<{ finished: boolean }>(EXT_STATE_KEY))?.finished === true;
+}
+
+async function runExtFillTick(fp: string): Promise<void> {
+  if (await getExtFillDone()) return;
+  if (await cache.get<number>(LOCK_KEY).catch(() => null)) return;
+  await cache.set(LOCK_KEY, Date.now(), 55).catch(() => {});
+  const sql = await getSql();
+  try {
+    const deadline = Date.now() + TICK_BUDGET_MS;
+    let done = 0;
+    let picked = -1;
+    while (Date.now() < deadline) {
+      picked = await fillExtColumnsBatch(sql, fp, 2_000);
+      if (picked === 0) {
+        const left = await sql`
+          SELECT count(*)::int AS n FROM match_participants WHERE fp = ${fp} AND NOT ext_synced`;
+        if (((left[0]?.n as number) ?? 0) === 0) break;
+        continue; // 마감 처리된 묶음이 있어 다음 묶음으로
+      }
+      done += picked;
+    }
+    const left = await sql`
+      SELECT count(*)::int AS n FROM match_participants WHERE fp = ${fp} AND NOT ext_synced`;
+    if (((left[0]?.n as number) ?? 0) === 0) {
+      await setSetting(EXT_STATE_KEY, { finished: true, at: Date.now() });
+      console.log("[participants] 확장 컬럼 채우기 완료");
+    } else if (done > 0) {
+      console.log(`[participants] 확장 컬럼 +${done}`);
+    }
+  } catch (e) {
+    console.error("[participants] 확장 컬럼 채우기 실패:", (e as Error)?.message);
+  } finally {
+    await cache.delete(LOCK_KEY).catch(() => {});
+  }
 }
 
 export async function getRunesFillDone(): Promise<boolean> {
@@ -375,7 +589,10 @@ export async function runParticipantsBackfillTick(fp: string): Promise<void> {
 
 /** 메인 적재가 끝난 뒤, 룬 컬럼이 비어 있는 행을 채운다 (50초 연속, 잠금 공유) */
 async function runRunesFillTick(fp: string): Promise<void> {
-  if (await getRunesFillDone()) return;
+  if (await getRunesFillDone()) {
+    await runExtFillTick(fp);
+    return;
+  }
   if (await cache.get<number>(LOCK_KEY).catch(() => null)) return;
   await cache.set(LOCK_KEY, Date.now(), 55).catch(() => {});
   const sql = await getSql();
