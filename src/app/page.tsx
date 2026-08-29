@@ -1,14 +1,12 @@
 import {
   ArrowRight,
   BarChart3,
-  Bot,
   Crown,
   Gauge,
   Radar,
   Sparkles,
   TrendingUp,
   Trophy,
-  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { InteractiveBackground } from "@/components/home/interactive-bg";
@@ -234,7 +232,7 @@ export default async function Home() {
       </section>
 
       {/* ── 도구 ───────────────────────────────────────────── */}
-      <section className="mx-auto mt-14 max-w-6xl space-y-4">
+      <section className="mx-auto mt-14 mb-10 max-w-6xl space-y-4">
         <div className="flex items-end justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Sparkles className="size-4 text-primary" />
@@ -244,7 +242,7 @@ export default async function Home() {
             모두 보기
           </Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {TOOLS.map(({ icon: Icon, label, desc, href, tile }) => (
             <SpotlightCard key={href} href={href} className="p-6">
               <span className={`mb-4 flex size-10 items-center justify-center rounded-xl ${tile}`}>
@@ -261,22 +259,6 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ── 디스코드 ───────────────────────────────────────── */}
-      <section className="mx-auto mt-6 mb-10 max-w-6xl">
-        <SpotlightCard href="/discord" spot="#5865F2" className="flex items-center gap-4 p-5 sm:p-6">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#5865F2]/15 text-[#5865F2]">
-            <Bot className="size-5.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-base font-semibold">디스코드 봇 초대하기</span>
-            <span className="block text-sm text-muted-foreground">
-              /rift 로 매칭 구간 조회, 팀 나누기·듀오 분석, 새 패치노트와 서비스 상태 알림을 여러분의 서버에서.
-            </span>
-          </span>
-          <Users className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
-          <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover/spot:translate-x-0.5" />
-        </SpotlightCard>
-      </section>
     </div>
   );
 }

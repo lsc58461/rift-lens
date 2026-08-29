@@ -1,5 +1,5 @@
 // 도구 목록 — /tools 허브와 GNB가 같은 정의를 공유한다.
-import { Heart, Sparkles, Swords, type LucideIcon } from "lucide-react";
+import { Bot, Heart, Sparkles, Swords, type LucideIcon } from "lucide-react";
 
 export interface ToolDef {
   icon: LucideIcon;
@@ -41,5 +41,15 @@ export const TOOLS: ToolDef[] = [
     href: "/recap",
     tile: "bg-amber-500/15 text-amber-500 dark:text-amber-400",
     accent: "hover:border-amber-500/40",
+  },
+  {
+    icon: Bot,
+    label: "디스코드 봇",
+    desc: "서버에서 바로 매칭 구간 조회·팀 나누기·패치 알림",
+    detail:
+      "디스코드 서버에 초대하면 /rift 매칭 구간 조회, /rift-team 팀 나누기, /rift-duo 듀오 분석을 쓸 수 있고, 새 패치노트와 서비스 상태를 채널로 알려드려요.",
+    href: "/discord",
+    tile: "bg-[#5865F2]/15 text-[#5865F2]",
+    accent: "hover:border-[#5865F2]/40",
   },
 ];
