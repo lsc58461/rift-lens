@@ -34,21 +34,29 @@ const goneKey = (region: string, g: string, t: string) =>
 // 유저가 직접 검색할 때 즉시 반영된다. 6h였을 땐 한 바퀴가 하루를 넘기면
 // 앞부분 정밀 스킵이 풀려 다음 바퀴가 다시 느려졌다.
 const RECENT_DEEP_MS = 36 * 60 * 60_000; // 한 바퀴가 하루를 넘겨도 앞부분 스킵이 유지되도록 여유
-async function deepAnalyzedWithin(
+// 빠른 추정만 된 사람도 하루 안이면 라이엇 콜 없이 통과 — 예전엔 정밀만 DB로
+// 스킵하고 빠른 추정은 매 바퀴 최신 매치 확인 콜(1~2개)을 냈다. 2.5만 명이면
+// 바퀴마다 2시간이 그 확인에 들어갔다. 그 사이 새 경기는 유저가 검색하면 즉시 반영.
+const RECENT_QUICK_MS = 24 * 60 * 60_000;
+
+async function analyzedWithin(
   platform: string,
   gameName: string,
   tagLine: string,
+  kind: "deep" | "quick",
   ms: number,
 ): Promise<boolean> {
   const sql = await getSql();
   const rows = await sql`
     SELECT updated_at FROM analyses
-    WHERE platform = ${platform} AND kind = 'deep'
+    WHERE platform = ${platform} AND kind = ${kind}
       AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}
     LIMIT 1`;
   const at = rows[0]?.updated_at as string | undefined;
   return !!at && Date.now() - new Date(at).getTime() < ms;
 }
+const deepAnalyzedWithin = (p: string, g: string, t: string, ms: number) =>
+  analyzedWithin(p, g, t, "deep", ms);
 
 export interface SweepResult {
   quickRefreshed: string[];
@@ -135,6 +143,16 @@ export async function runRefreshSweep(opts: {
     }
     // ② 최근 정밀분석 완료 — DB만 보고 건너뜀(재스캔 쿼터 낭비 방지)
     if (await deepAnalyzedWithin(r.region, r.gameName, r.tagLine, RECENT_DEEP_MS).catch(() => false)) {
+      skipped++;
+      await reportProgress().catch(() => {});
+      continue;
+    }
+    // ③ 빠른 추정이 24시간 이내 — 역시 DB만 보고 건너뜀 (정밀은 다음 바퀴에)
+    if (
+      await analyzedWithin(r.region, r.gameName, r.tagLine, "quick", RECENT_QUICK_MS).catch(
+        () => false,
+      )
+    ) {
       skipped++;
       await reportProgress().catch(() => {});
       continue;
