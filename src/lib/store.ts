@@ -1103,7 +1103,8 @@ export async function adminSummonerPage(
       `SELECT r.platform, r.game_name, r.tag_line, r.current_label,
               r.estimated_label, r.searched_at, ${STATE_SQL} AS state
        FROM recent_searches r ${AGG_SQL} ${where}
-       ORDER BY r.searched_at DESC LIMIT $5 OFFSET $6`,
+       ORDER BY r.searched_at DESC, r.platform, r.game_name_lower, r.tag_line_lower
+       LIMIT $5 OFFSET $6`,
       [algoVersion, like, filter, tier, limit, offset],
     ),
     sql.unsafe(
