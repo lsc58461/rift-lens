@@ -751,7 +751,8 @@ export async function harvestMissingBuildData(
   const rows = await sql`
     SELECT match_id FROM matches
     WHERE fp = ${fp} AND match_id = ANY(${matchIds})
-      AND NOT build_harvested AND jsonb_array_length(participants) > 0
+      AND NOT build_harvested
+      AND EXISTS (SELECT 1 FROM match_participants p WHERE p.fp = matches.fp AND p.match_id = matches.match_id)
     ORDER BY game_creation DESC LIMIT ${cap}`;
   for (const r of rows as unknown as { match_id: string }[]) {
     try {

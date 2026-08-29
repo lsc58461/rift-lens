@@ -2,7 +2,7 @@
 // puuid가 들어가는 테이블(summoners/matches/league_snapshots)은 API 키 지문(fp)으로 스코프.
 
 import "server-only";
-import { syncParticipantsFromMatch } from "@/lib/match-participants";
+import { loadMatchInfo, loadMatchesByPuuid, syncParticipantsFromMatch } from "@/lib/match-participants";
 import { getSql } from "./db";
 import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
@@ -83,23 +83,9 @@ export async function updateSummonerProfile(
 
 // ── 매치 (불변) ─────────────────────────────────────────
 
-export async function getMatchRow(
-  fp: string,
-  matchId: string,
-): Promise<MatchInfo | null> {
-  const sql = await getSql();
-  const rows = await sql`
-    SELECT match_id, game_creation, game_duration, queue_id, participants
-    FROM matches WHERE fp = ${fp} AND match_id = ${matchId}`;
-  const r = rows[0];
-  if (!r) return null;
-  return {
-    matchId: r.match_id as string,
-    gameCreation: Number(r.game_creation),
-    gameDuration: r.game_duration as number,
-    queueId: r.queue_id as number,
-    participants: r.participants as MatchInfo["participants"],
-  };
+/** 매치 1건 — 참가자 정규화 테이블에서 조립 (JSON 컬럼은 더 이상 읽지 않는다) */
+export function getMatchRow(fp: string, matchId: string): Promise<MatchInfo | null> {
+  return loadMatchInfo(fp, matchId);
 }
 
 export async function saveMatchRow(
@@ -687,24 +673,13 @@ export async function isRecentlySearched(
 }
 
 /** 특정 소환사가 참가한 저장된 매치들 (결산·궁합용, API 호출 없음) */
-export async function listMatchesForPuuid(
+export function listMatchesForPuuid(
   fp: string,
   puuid: string,
   limit = 500,
 ): Promise<MatchInfo[]> {
-  const sql = await getSql();
-  const rows = await sql`
-    SELECT match_id, game_creation, game_duration, queue_id, participants
-    FROM matches
-    WHERE fp = ${fp} AND participants @> ${sql.json([{ puuid }] as never)}
-    ORDER BY game_creation DESC LIMIT ${limit}`;
-  return rows.map((r) => ({
-    matchId: r.match_id as string,
-    gameCreation: Number(r.game_creation),
-    gameDuration: r.game_duration as number,
-    queueId: r.queue_id as number,
-    participants: r.participants as MatchInfo["participants"],
-  }));
+  // 참가자 테이블의 (fp, puuid, game_creation) 인덱스 — JSON 포함 검색보다 훨씬 빠르다
+  return loadMatchesByPuuid(fp, puuid, limit);
 }
 
 export async function getSetting<T>(key: string): Promise<T | null> {

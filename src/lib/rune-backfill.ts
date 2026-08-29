@@ -118,12 +118,14 @@ export async function runRunefillRound(origin?: string): Promise<void> {
       turbo ? fn() : withLowPriority(fn);
     const perRound = turbo ? TURBO_PER_ROUND : PER_ROUND;
     const rows = await sql.unsafe(
-      `SELECT match_id, platform,
-              ((participants->0 ? 'keystone') AND patch IS NOT NULL) AS body_ok,
-              build_harvested, fields_captured
-       FROM matches
-       WHERE fp = $1 AND ${PENDING_WHERE}
-       ORDER BY game_creation DESC LIMIT $2`,
+      `SELECT m.match_id, m.platform,
+              (EXISTS (SELECT 1 FROM match_participants p
+                       WHERE p.fp = m.fp AND p.match_id = m.match_id AND p.keystone IS NOT NULL)
+               AND m.patch IS NOT NULL) AS body_ok,
+              m.build_harvested, m.fields_captured
+       FROM matches m
+       WHERE m.fp = $1 AND ${PENDING_WHERE}
+       ORDER BY m.game_creation DESC LIMIT $2`,
       [fp, perRound],
     );
 

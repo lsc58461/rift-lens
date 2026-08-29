@@ -617,3 +617,142 @@ async function runRunesFillTick(fp: string): Promise<void> {
     await cache.delete(LOCK_KEY).catch(() => {});
   }
 }
+
+// ── 읽기: 참가자 행 → MatchInfo 조립 (JSON 제거 2단계) ─────────────────────
+// 컬럼 → MatchParticipant 필드. null은 키 자체를 빼서 JSON 시절의 "없음(undefined)"과
+// 같게 만든다 — getMatch의 "cs가 undefined면 재조회" 같은 판정이 그대로 통한다.
+const COL_TO_FIELD: [string, keyof MatchParticipant][] = [
+  ["champion_id", "championId"], ["champ_level", "champLevel"], ["cs", "cs"], ["gold", "goldEarned"],
+  ["damage", "damage"], ["damage_taken", "damageTaken"], ["vision", "visionScore"],
+  ["spell1", "spell1Id"], ["spell2", "spell2Id"], ["keystone", "keystone"], ["sub_style", "subStyle"],
+  ["perks", "perks"], ["sub_perks", "subPerks"], ["stat_perks", "statPerks"],
+  ["double_kills", "doubleKills"], ["triple_kills", "tripleKills"], ["quadra_kills", "quadraKills"],
+  ["penta_kills", "pentaKills"], ["kill_participation", "killParticipation"],
+  ["individual_position", "individualPosition"], ["cs_total", "csTotal"], ["cs_jungle", "csJungle"],
+  ["gold_spent", "goldSpent"], ["damage_mitigated", "damageMitigated"],
+  ["damage_to_objectives", "damageToObjectives"], ["damage_to_turrets", "damageToTurrets"],
+  ["total_heal", "totalHeal"], ["heal_on_teammates", "healOnTeammates"],
+  ["shield_on_teammates", "shieldOnTeammates"], ["cc_score", "ccScore"], ["turret_kills", "turretKills"],
+  ["inhibitor_kills", "inhibitorKills"], ["dragon_kills", "dragonKills"], ["baron_kills", "baronKills"],
+  ["objectives_stolen", "objectivesStolen"], ["wards_placed", "wardsPlaced"], ["wards_killed", "wardsKilled"],
+  ["control_wards_bought", "controlWardsBought"], ["largest_killing_spree", "largestKillingSpree"],
+  ["largest_multi_kill", "largestMultiKill"], ["solo_kills", "soloKills"],
+  ["first_blood_kill", "firstBloodKill"], ["first_tower_kill", "firstTowerKill"],
+  ["game_ended_in_surrender", "gameEndedInSurrender"],
+  ["game_ended_in_early_surrender", "gameEndedInEarlySurrender"],
+];
+
+type DbRow = Record<string, unknown>;
+
+function rowToParticipant(r: DbRow): MatchParticipant {
+  const p: Record<string, unknown> = {
+    puuid: r.puuid,
+    riotIdGameName: r.riot_game_name ?? "",
+    riotIdTagline: r.riot_tag_line ?? "",
+    teamId: Number(r.team_id),
+    win: !!r.win,
+    championName: r.champion_name,
+    kills: Number(r.kills),
+    deaths: Number(r.deaths),
+    assists: Number(r.assists),
+    teamPosition: r.team_position ?? "",
+  };
+  // 멀티킬·킬관여는 저장 시 0으로 기본값이 들어가지만, 확장 필드 미수집 매치(ext_synced=false,
+  // 옛 매치)에선 "없음"이 맞다 — 그 경우 0 대신 생략해 JSON 시절과 같게 둔다
+  const ext = r.ext_synced === true;
+  for (const [col, field] of COL_TO_FIELD) {
+    const v = r[col];
+    if (v === null || v === undefined) continue;
+    if (!ext && ["doubleKills", "tripleKills", "quadraKills", "pentaKills"].includes(field) && Number(v) === 0) continue;
+    p[field] = Array.isArray(v) ? v.map(Number) : v;
+  }
+  const items = r.items;
+  if (Array.isArray(items) && items.length > 0) p.items = items.map(Number);
+  return p as unknown as MatchParticipant;
+}
+
+const PARTICIPANT_SELECT = `
+  fp, match_id, platform, puuid, idx, team_id, win, champion_name, champion_id, team_position,
+  riot_game_name, riot_tag_line, kills, deaths, assists, cs, gold, damage, damage_taken, vision,
+  champ_level, spell1, spell2, keystone, sub_style, items, double_kills, triple_kills, quadra_kills,
+  penta_kills, kill_participation, perks, sub_perks, stat_perks, individual_position, cs_total,
+  cs_jungle, gold_spent, damage_mitigated, damage_to_objectives, damage_to_turrets, total_heal,
+  heal_on_teammates, shield_on_teammates, cc_score, turret_kills, inhibitor_kills, dragon_kills,
+  baron_kills, objectives_stolen, wards_placed, wards_killed, control_wards_bought,
+  largest_killing_spree, largest_multi_kill, solo_kills, first_blood_kill, first_tower_kill,
+  game_ended_in_surrender, game_ended_in_early_surrender, ext_synced`;
+
+interface MatchMetaRow {
+  match_id: string;
+  game_creation: string | number;
+  game_duration: number;
+  queue_id: number;
+  patch: string | null;
+  bans: unknown;
+  teams: unknown;
+}
+
+function assemble(meta: MatchMetaRow, parts: DbRow[]): MatchInfo {
+  const sorted = [...parts].sort((a, b) => Number(a.idx) - Number(b.idx));
+  const info: MatchInfo = {
+    matchId: meta.match_id,
+    gameCreation: Number(meta.game_creation),
+    gameDuration: meta.game_duration,
+    queueId: meta.queue_id,
+    participants: sorted.map(rowToParticipant),
+  };
+  if (meta.patch) info.patch = meta.patch;
+  if (Array.isArray(meta.bans) && meta.bans.length > 0) info.bans = meta.bans as number[];
+  if (Array.isArray(meta.teams) && meta.teams.length > 0) info.teams = meta.teams as MatchInfo["teams"];
+  return info;
+}
+
+/** 매치 1건 — matches(메타) + match_participants(참가자 10행)로 조립 */
+export async function loadMatchInfo(fp: string, matchId: string): Promise<MatchInfo | null> {
+  const sql = await getSql();
+  const [metaRows, parts] = await Promise.all([
+    sql`SELECT match_id, game_creation, game_duration, queue_id, patch, bans, teams
+        FROM matches WHERE fp = ${fp} AND match_id = ${matchId}`,
+    sql.unsafe(
+      `SELECT ${PARTICIPANT_SELECT} FROM match_participants WHERE fp = $1 AND match_id = $2`,
+      [fp, matchId],
+    ),
+  ]);
+  const meta = metaRows[0] as unknown as MatchMetaRow | undefined;
+  if (!meta) return null;
+  const rows = parts as unknown as DbRow[];
+  if (rows.length === 0) return null; // 참가자 행이 없으면(적재 전) 없는 매치로 — 호출자가 재조회
+  return assemble(meta, rows);
+}
+
+/** 특정 소환사가 참가한 저장된 매치들 (최신순) — mp_puuid_time_idx 인덱스 사용 */
+export async function loadMatchesByPuuid(fp: string, puuid: string, limit: number): Promise<MatchInfo[]> {
+  const sql = await getSql();
+  const ids = (await sql`
+    SELECT match_id FROM match_participants
+    WHERE fp = ${fp} AND puuid = ${puuid}
+    ORDER BY game_creation DESC LIMIT ${limit}`) as unknown as { match_id: string }[];
+  if (ids.length === 0) return [];
+  const matchIds = ids.map((r) => r.match_id);
+  const [metaRows, parts] = await Promise.all([
+    sql`SELECT match_id, game_creation, game_duration, queue_id, patch, bans, teams
+        FROM matches WHERE fp = ${fp} AND match_id = ANY(${matchIds})`,
+    sql.unsafe(
+      `SELECT ${PARTICIPANT_SELECT} FROM match_participants WHERE fp = $1 AND match_id = ANY($2)`,
+      [fp, matchIds],
+    ),
+  ]);
+  const byId = new Map<string, DbRow[]>();
+  for (const r of parts as unknown as DbRow[]) {
+    const id = String(r.match_id);
+    (byId.get(id) ?? byId.set(id, []).get(id)!).push(r);
+  }
+  const metaById = new Map((metaRows as unknown as MatchMetaRow[]).map((m) => [m.match_id, m]));
+  return matchIds
+    .map((id) => {
+      const meta = metaById.get(id);
+      const rows = byId.get(id);
+      return meta && rows?.length ? assemble(meta, rows) : null;
+    })
+    .filter((m): m is MatchInfo => m !== null);
+}
