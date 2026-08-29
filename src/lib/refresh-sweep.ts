@@ -19,7 +19,7 @@ import { cache } from "@/lib/cache";
 import { updateRecentSearchRank } from "@/lib/store";
 import { getSql } from "@/lib/db";
 import { canon } from "@/lib/identity";
-import { RiotApiError } from "@/lib/riot/types";
+import { type PlatformRegion, RiotApiError } from "@/lib/riot/types";
 
 // 계정이 사라진(404) 소환사는 7일간 건너뛴다 — 매 라운드 같은 계정을
 // 재시도하며 실패 수만 불리던 문제 방지. 닉변이면 puuid 폴백이 먼저 잡는다.
@@ -90,6 +90,8 @@ export async function runRefreshSweep(opts: {
   /** 목록에서 이어서 볼 시작 위치 — 라운드마다 처음부터 재스캔하면 앞쪽
    *  소환사들의 최신 매치 확인(라이엇 콜)에 예산을 다 써서 뒤로 못 간다 */
   startIndex?: number;
+  /** 순회할 목록을 바깥에서 주면(전체 갱신 큐) 최근 검색 목록 대신 이걸 쓴다 */
+  list?: { region: PlatformRegion; gameName: string; tagLine: string }[];
   /** 소환사 하나를 처리할 때마다 호출 — 라운드 중 실시간 진행 표시용.
    *  scanned는 목록 전체 기준 절대 위치 */
   onProgress?: (p: {
@@ -102,7 +104,7 @@ export async function runRefreshSweep(opts: {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
   // 상한을 두면 그 뒤 소환사는 자동 갱신에서 영영 빠진다 — 전량 순회한다
-  const all = await getRecentSearches(Infinity); // 최근 검색 순
+  const all = opts.list ?? (await getRecentSearches(Infinity)); // 큐 또는 최근 검색 순
   const startIndex = Math.min(Math.max(0, opts.startIndex ?? 0), all.length);
   const recent = all.slice(startIndex);
   let scanned = 0; // 이번 스윕에서 처리(또는 건너뜀)한 수

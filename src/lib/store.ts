@@ -1060,6 +1060,49 @@ export async function adminTierCounts(q: string): Promise<Record<string, number>
   return out;
 }
 
+/** 전체 갱신 바퀴용 큐 생성 — 상태 우선순위 → 최근 검색순으로 순번을 박는다.
+ *  반환: 큐 길이. 이전 바퀴 큐는 지운다(같은 fp). */
+export async function buildRefreshQueue(
+  fp: string,
+  passId: number,
+  algoVersion: number,
+): Promise<number> {
+  const sql = await getSql();
+  await sql`DELETE FROM refresh_queue WHERE fp = ${fp} AND pass_id <> ${passId}`;
+  await sql`DELETE FROM refresh_queue WHERE fp = ${fp} AND pass_id = ${passId}`;
+  const rows = await sql.unsafe(
+    `INSERT INTO refresh_queue (fp, pass_id, pos, platform, game_name, tag_line, prio)
+     SELECT $2, $3, row_number() OVER (ORDER BY prio, searched_at DESC, platform, game_name_lower, tag_line_lower),
+            platform, game_name, tag_line, prio
+     FROM (
+       SELECT r.platform, r.game_name, r.tag_line, r.game_name_lower, r.tag_line_lower, r.searched_at,
+              CASE ${STATE_SQL}
+                WHEN 'none' THEN 0 WHEN 'quick-stale' THEN 1 WHEN 'quick' THEN 2
+                WHEN 'deep-stale' THEN 3 ELSE 4 END AS prio
+       FROM recent_searches r ${AGG_SQL}
+     ) q
+     RETURNING pos`,
+    [algoVersion, fp, passId],
+  );
+  return (rows as unknown as unknown[]).length;
+}
+
+export interface RefreshQueueRow {
+  pos: number;
+  platform: PlatformRegion;
+  game_name: string;
+  tag_line: string;
+  prio: number;
+}
+
+export async function listRefreshQueue(fp: string, passId: number): Promise<RefreshQueueRow[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT pos, platform, game_name, tag_line, prio FROM refresh_queue
+    WHERE fp = ${fp} AND pass_id = ${passId} ORDER BY pos`;
+  return rows as unknown as RefreshQueueRow[];
+}
+
 /** 상태별 개수 (검색어·티어 반영) */
 export async function adminSummonerCounts(
   algoVersion: number,

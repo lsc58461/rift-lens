@@ -10,6 +10,9 @@
 import "server-only";
 import { runRefreshSweep } from "@/lib/refresh-sweep";
 import { withLowPriority } from "@/lib/riot/limiter";
+import { ALGO_VERSION } from "@/lib/mmr/estimate";
+import { riotKeyFp } from "@/lib/riot/client";
+import { buildRefreshQueue, listRefreshQueue } from "@/lib/store";
 import { chainNextRound } from "@/lib/round-chain";
 import { claimRound, getSetting, setSetting } from "@/lib/store";
 
@@ -48,6 +51,8 @@ export interface RefreshAllState {
   passWork: number;
   /** 현재 바퀴 시작 시각 — 남은 시간 추정은 바퀴 단위 속도로 */
   passStartedAt: number;
+  /** 현재 바퀴의 큐 id(refresh_queue.pass_id). 0이면 큐 없음(레거시) */
+  passId: number;
   startedAt: number;
   updatedAt: number;
   lastError: string | null;
@@ -69,6 +74,7 @@ function empty(): RefreshAllState {
     passes: 0,
     passWork: 0,
     passStartedAt: Date.now(),
+    passId: 0,
     startedAt: Date.now(),
     updatedAt: Date.now(),
     lastError: null,
@@ -83,8 +89,16 @@ async function save(s: RefreshAllState): Promise<void> {
   await setSetting(STATE_KEY, { ...s, updatedAt: Date.now() });
 }
 
+/** 새 바퀴 큐 생성 — 상태 우선순위(캐시 만료 먼저) → 최근 검색순으로 순서 고정 */
+async function newPassQueue(prevPassId: number): Promise<{ passId: number; total: number }> {
+  const passId = (prevPassId || 0) + 1;
+  const total = await buildRefreshQueue(riotKeyFp(), passId, ALGO_VERSION);
+  return { passId, total };
+}
+
 export async function beginRefreshAll(): Promise<RefreshAllState> {
-  const next: RefreshAllState = { ...empty(), running: true };
+  const q = await newPassQueue(0);
+  const next: RefreshAllState = { ...empty(), running: true, passId: q.passId, target: q.total };
   await save(next);
   return next;
 }
@@ -102,6 +116,7 @@ export async function resumeRefreshAll(): Promise<RefreshAllState> {
     lastError: null,
     // 커서 도입 전 상태엔 없을 수 있는 필드 보정
     cursor: s.cursor ?? 0,
+    passId: s.passId ?? 0,
     passes: s.passes ?? 0,
     passWork: s.passWork ?? 0,
     passStartedAt: s.passStartedAt ?? Date.now(),
@@ -164,11 +179,22 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     let lastProgressSave = 0;
     // 스윕 전체(최신 매치 확인·빠른 추정·정밀)를 저우선순위로 — 예전엔 정밀만
     // 저우선순위라 빠른 추정·매치 확인 콜이 유저 검색과 동등하게 경쟁했다
+    // 큐가 없는 옛 상태(passId 0)면 지금 만든다 — 그 시점부터 순서 고정
+    let passId = state.passId ?? 0;
+    if (!passId) {
+      const q = await newPassQueue(0);
+      passId = q.passId;
+      const cur = await getRefreshAllState();
+      if (cur) await save({ ...cur, passId, target: q.total });
+    }
+    const queue = await listRefreshQueue(riotKeyFp(), passId);
+    const list = queue.map((r) => ({ region: r.platform, gameName: r.game_name, tagLine: r.tag_line }));
     const d = await withLowPriority(() => runRefreshSweep({
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
       startIndex: cursor,
+      list,
       shouldContinue,
       onProgress: async (p) => {
         if (Date.now() - lastProgressSave < 2_000) return;
@@ -220,6 +246,10 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
         state.running = false;
         state.done = true;
       } else {
+        // 다음 바퀴 — 큐를 새로 만들어 상태 우선순위로 다시 정렬
+        const q = await newPassQueue(fresh.passId ?? 0);
+        state.passId = q.passId;
+        state.target = q.total;
         state.passes = (fresh.passes ?? 0) + 1;
         state.passWork = 0;
         state.passStartedAt = Date.now();

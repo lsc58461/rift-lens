@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const action = req.nextUrl.searchParams.get("action") ?? "start";
-  if (cronAuth && action !== "continue") {
+  // 서버 시크릿은 continue 외에 start/stop도 허용 (운영 스크립트용). resume은 관리자만.
+  if (cronAuth && !["continue", "start", "stop"].includes(action)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   if (action === "stop") {

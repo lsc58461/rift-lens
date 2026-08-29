@@ -301,6 +301,20 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS mp_patch_rank_idx ON match_participants (fp, patch, rank_pts);
     CREATE INDEX IF NOT EXISTS mp_name_idx ON match_participants (fp, lower(riot_game_name), lower(riot_tag_line));
 
+    -- 전체 갱신 순회 큐 — 바퀴(pass) 시작 때 순서를 고정 스냅샷으로 만든다.
+    -- 상태 우선순위(캐시 만료 → 빠른 스테일 → 빠른 → 정밀 스테일 → 정밀 최신) 순.
+    -- 순회 중 상태가 바뀌어도 순번이 안 움직여 커서 누락이 없다.
+    CREATE TABLE IF NOT EXISTS refresh_queue (
+      fp text NOT NULL,
+      pass_id int NOT NULL,
+      pos int NOT NULL,
+      platform text NOT NULL,
+      game_name text NOT NULL,
+      tag_line text NOT NULL,
+      prio smallint NOT NULL,
+      PRIMARY KEY (fp, pass_id, pos)
+    );
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,
