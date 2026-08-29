@@ -117,7 +117,7 @@ export default async function Home() {
         </p>
 
         <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-200 fill-mode-backwards">
-          <SpotlightCard className="p-4 shadow-2xl shadow-primary/10 sm:p-5">
+          <SpotlightCard className="z-20 p-4 shadow-2xl shadow-primary/10 sm:p-5">
             <SearchForm />
           </SpotlightCard>
           {recent.length > 0 && (
