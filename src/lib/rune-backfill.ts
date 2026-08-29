@@ -4,7 +4,6 @@
 
 import "server-only";
 import { cache } from "@/lib/cache";
-import { resyncMatches } from "@/lib/match-participants";
 import { getSql } from "@/lib/db";
 import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
 import { withLowPriority } from "@/lib/riot/limiter";
@@ -177,12 +176,10 @@ export async function runRunefillRound(origin?: string): Promise<void> {
         // fields_captured도 true로 박아 이 매치가 무한 재시도되지 않게 한다.
         const permanent = e instanceof RiotApiError && e.status === 404;
         if (permanent) {
+          // 라이엇에 없는 매치 — 플래그만 마감(참가자 데이터는 있는 그대로 둔다)
           await sql`
-            UPDATE matches
-            SET participants = jsonb_set(participants, '{0,keystone}', 'null'),
-                build_harvested = true, fields_captured = true
+            UPDATE matches SET build_harvested = true, fields_captured = true
             WHERE fp = ${fp} AND match_id = ${r.match_id}`.catch(() => {});
-          await resyncMatches(fp, [r.match_id]).catch(() => {});
         }
       }
     }

@@ -38,7 +38,8 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS summoners_canon_idx
     ON summoners (fp, platform, lower(normalize(game_name, NFKC)), lower(normalize(tag_line, NFKC)));
 
-    -- 매치 상세 (불변 데이터)
+    -- 매치 메타 (불변 데이터). participants(jsonb)는 2026-08-30부터 쓰지 않는다 —
+    -- 참가자는 match_participants 가 유일한 원본이고, 이 컬럼은 옛 행 잔재('[]'로 비움).
     CREATE TABLE IF NOT EXISTS matches (
       fp text NOT NULL,
       match_id text NOT NULL,
