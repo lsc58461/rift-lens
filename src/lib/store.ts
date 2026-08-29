@@ -627,15 +627,21 @@ export async function listRecentSearches(
   const sql = await getSql();
   // Infinity면 전량 — 크론 전체 갱신은 상한이 있으면 그 뒤 소환사가
   // 자동 갱신에서 영영 빠지므로 제한 없이 순회해야 한다
+  // 정렬은 반드시 결정적이어야 한다 — 전체 갱신이 "몇 번째"(커서)로 이어서 훑는데,
+  // 시드는 searched_at이 전부 같아(2000-01-01) 동률 순서가 라운드마다 바뀌면
+  // 같은 사람을 여러 번 보고 어떤 사람은 영영 못 본다(실제로 6,418명 누락됐던 사고).
   const rows = Number.isFinite(limit)
     ? await sql`
         SELECT platform, game_name, tag_line, current_label, current_tier,
                estimated_label, estimated_tier, estimated_points, searched_at
-        FROM recent_searches ORDER BY searched_at DESC LIMIT ${limit}`
+        FROM recent_searches
+        ORDER BY searched_at DESC, platform, game_name_lower, tag_line_lower
+        LIMIT ${limit}`
     : await sql`
         SELECT platform, game_name, tag_line, current_label, current_tier,
                estimated_label, estimated_tier, estimated_points, searched_at
-        FROM recent_searches ORDER BY searched_at DESC`;
+        FROM recent_searches
+        ORDER BY searched_at DESC, platform, game_name_lower, tag_line_lower`;
   return rows as unknown as RecentSearchRow[];
 }
 
