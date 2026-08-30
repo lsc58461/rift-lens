@@ -94,22 +94,17 @@ export async function saveMatchRow(
   match: MatchInfo,
 ): Promise<void> {
   const sql = await getSql();
-  const bans = sql.json((match.bans ?? []) as never);
-  const teams = sql.json((match.teams ?? []) as never);
   // 참가자는 match_participants 가 유일한 원본. 먼저 참가자 행을 쓰고 — 실패하면 던져서
   // 반쪽 저장(메타만 있고 참가자 없음)을 막는다 — 그다음 matches 엔 메타만 남긴다.
   await syncParticipantsFromMatch(fp, platform, match);
   await syncTeamsAndBans(fp, match);
   await sql`
-    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, patch, bans, teams, fields_captured)
+    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, patch, fields_captured)
     VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},
             ${match.gameDuration}, ${match.queueId},
-            ${match.patch ?? null}, ${bans}, ${teams}, true)
+            ${match.patch ?? null}, true)
     ON CONFLICT (fp, match_id) DO UPDATE
     SET patch = coalesce(EXCLUDED.patch, matches.patch),
-        -- 밴·팀요약은 새 캡처가 있으면 갱신, 없으면(빈값) 기존 유지
-        bans = CASE WHEN EXCLUDED.bans = '[]'::jsonb THEN matches.bans ELSE EXCLUDED.bans END,
-        teams = CASE WHEN EXCLUDED.teams = '[]'::jsonb THEN matches.teams ELSE EXCLUDED.teams END,
         fields_captured = true`;
 }
 
