@@ -12,6 +12,7 @@ import { LogoMark } from "@/components/logo-mark";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/ui/sonner";
+import { CrawlerProbe } from "@/components/crawler-probe";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -77,6 +78,7 @@ export default function RootLayout({
           </div>
 
           <AnnouncementBanner />
+          <CrawlerProbe />
           <header className="sticky top-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
             <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4">
               <Link href="/" className="group flex items-center gap-2">

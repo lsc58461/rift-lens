@@ -177,6 +177,15 @@ const SCHEMA_SQL = `
       at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS visit_log_at_idx ON visit_log (at DESC);
+    -- 크롤러(봇) 방문 집계 — 봇·시간대 단위 (src/lib/crawler-log.ts, 30일 보관)
+    CREATE TABLE IF NOT EXISTS crawler_hits (
+      bot text NOT NULL,
+      hour timestamptz NOT NULL,
+      hits int NOT NULL DEFAULT 0,
+      last_at timestamptz NOT NULL DEFAULT now(),
+      last_path text,
+      PRIMARY KEY (bot, hour)
+    );
 
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch text;
     -- 확장 필드 캡처 완료 표시 — 도입 전 매치는 false라, 백필이 본문을 재수집해

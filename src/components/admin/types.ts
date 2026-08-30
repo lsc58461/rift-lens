@@ -46,6 +46,7 @@ export interface AdminStatus {
   summonerCounts: Record<string, number>;
   tiers: { tier: string | null; n: number }[];
   hourly: { hour: number; visits: number; summoners: number }[];
+  crawlers?: { bot: string; hits24h: number; hits7d: number; lastAt: number; lastPath: string | null }[];
 }
 
 export type AnalysisState = AdminStatus["summoners"][number]["analysis"];

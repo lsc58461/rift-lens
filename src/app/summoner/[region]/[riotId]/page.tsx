@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { apexLadderEntry, ensureApexCutoffs } from "@/lib/apex-ladder";
 import { withLowPriority } from "@/lib/riot/limiter";
+import { isCrawlerUa } from "@/lib/crawler-log";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
@@ -252,10 +253,7 @@ export default async function SummonerPage({
   // 크롤러(OG 미리보기 봇·검색엔진)는 분석을 유발하거나 기록을 남기지 않는다.
   // 저장된 결과가 있으면 그대로 보여주고(SEO 유지), 없으면 안내만 반환.
   const ua = (await headers()).get("user-agent") ?? "";
-  const isBot =
-    /bot|crawl|spider|scrap|facebookexternalhit|kakaotalk|slack|twitter|discord|telegram|whatsapp|preview|embed/i.test(
-      ua,
-    );
+  const isBot = isCrawlerUa(ua);
 
   const platform = region as PlatformRegion;
 

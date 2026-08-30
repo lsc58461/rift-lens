@@ -3,6 +3,7 @@ import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
 import { getDashboardStats, getSummonerPage } from "@/lib/admin-summoners";
 import { getRunnerStatus, listQueue } from "@/lib/mmr/deep-jobs";
 import { getRateLimitStatus } from "@/lib/riot/rate-status";
+import { crawlerStats } from "@/lib/crawler-log";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +14,13 @@ export async function GET(req: NextRequest) {
 
   // 이 라우트는 대시보드가 2초마다 폴링한다 — 무거운 집계를 넣지 말 것.
   // 목록은 최근 10명만, 상태별 개수는 SQL 집계, 통계는 60초 캐시를 쓴다.
-  const [running, waiting, rate, top, stats] = await Promise.all([
+  const [running, waiting, rate, top, stats, crawlers] = await Promise.all([
     getRunnerStatus(),
     listQueue(),
     getRateLimitStatus(),
     getSummonerPage({ page: 1, size: 10 }),
     getDashboardStats(),
+    crawlerStats().catch(() => []),
   ]);
 
   return NextResponse.json({
@@ -30,6 +32,7 @@ export async function GET(req: NextRequest) {
     summonerCounts: top.counts,
     tiers: stats.tiers,
     hourly: stats.hourly,
+    crawlers,
     serverTime: Date.now(),
   });
 }
