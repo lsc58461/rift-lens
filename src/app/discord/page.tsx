@@ -27,7 +27,7 @@ const FEATURES = [
     icon: BellRing,
     title: "패치노트 · 상태 알림",
     command: "/rift-alerts",
-    description: "새 패치노트가 뜨면 이미지와 함께, 서비스 점검·복구 소식도 지정한 채널로 알려드려요.",
+    description: "새 패치노트가 뜨면 이미지와 함께, Rift Lens 업데이트 내역과 서비스 점검·복구 소식도 지정한 채널로 알려드려요.",
     tile: "bg-amber-500/12 text-amber-500 dark:text-amber-400",
   },
 ] as const;

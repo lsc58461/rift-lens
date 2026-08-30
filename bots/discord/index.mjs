@@ -7,6 +7,7 @@ import postgres from "postgres";
 const SITE = "https://rift-lens.xyz";
 const CHECK_INTERVAL_MS = 60_000;
 const PATCH_CHECK_INTERVAL_MS = 30 * 60_000; // 새 패치 감지 주기(30분)
+const CHANGELOG_CHECK_INTERVAL_MS = 10 * 60_000; // 업데이트 내역 감지 주기(10분)
 const FAIL_THRESHOLD = 3; // 연속 실패 N회부터 다운으로 판정 (일시 오류 오탐 방지)
 
 const sql = postgres(process.env.DATABASE_URL, { max: 2, connect_timeout: 10 });
@@ -205,6 +206,58 @@ async function patchLoop() {
   await setLastAnnouncedPatch(latest);
 }
 
+// ── 업데이트 내역 알림 ──────────────────────────────────
+// changelog_entries(관리자가 /admin/updates 에서 관리)에 새 항목이 생기면 알림 채널로.
+// 같은 날짜 행에 항목이 덧붙는 경우가 많아, 행별로 "알린 항목 수"를 기억해 새 항목만 보낸다
+// (app_settings 'discord:changelog_seen' = { "<id>": n }).
+const TAG_EMOJI = { "신규": "✨", "개선": "🔧", "수정": "🐛" };
+
+async function getChangelogSeen() {
+  const r = await sql`SELECT value FROM app_settings WHERE key = 'discord:changelog_seen'`.catch(() => []);
+  const v = r[0]?.value;
+  return v && typeof v === "object" ? v : null;
+}
+async function setChangelogSeen(seen) {
+  await sql`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES ('discord:changelog_seen', ${sql.json(seen)}, now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`.catch(() => {});
+}
+
+async function changelogLoop() {
+  const rows = await sql`
+    SELECT id, entry_date, title, items FROM changelog_entries
+    WHERE published ORDER BY entry_date DESC, id DESC LIMIT 20`.catch(() => null);
+  if (!rows) return;
+  const seen = await getChangelogSeen();
+  const next = {};
+  for (const r of rows) next[String(r.id)] = Array.isArray(r.items) ? r.items.length : 0;
+  // 첫 실행(기록 없음)엔 기준만 저장하고 알리지 않는다 — 봇 재시작 스팸 방지
+  if (!seen) {
+    await setChangelogSeen(next);
+    return;
+  }
+  // 오래된 순으로 — 여러 건이면 시간순으로 올라간다
+  for (const r of [...rows].reverse()) {
+    const items = Array.isArray(r.items) ? r.items : [];
+    const already = Number(seen[String(r.id)] ?? 0);
+    const fresh = items.slice(already);
+    if (fresh.length === 0) continue;
+    const lines = fresh
+      .map((it) => `${TAG_EMOJI[it?.tag] ?? "•"} **${it?.tag ?? ""}** ${it?.text ?? ""}`.trim())
+      .join("\n");
+    const embed = new EmbedBuilder()
+      .setColor(0xa855f7)
+      .setTitle(`📝 Rift Lens 업데이트 — ${r.title}`)
+      .setDescription(`${lines}\n\n${SITE}/updates`)
+      .setURL(`${SITE}/updates`)
+      .setFooter({ text: r.entry_date })
+      .setTimestamp();
+    await broadcast(embed);
+  }
+  await setChangelogSeen(next);
+}
+
 client.once("clientReady", async () => {
   console.log(`[bot] 로그인: ${client.user.tag}, 길드 ${client.guilds.cache.size}개`);
   await loadDownState();
@@ -217,6 +270,8 @@ client.once("clientReady", async () => {
   setInterval(healthLoop, CHECK_INTERVAL_MS);
   patchLoop().catch(() => {});
   setInterval(() => patchLoop().catch(() => {}), PATCH_CHECK_INTERVAL_MS);
+  changelogLoop().catch(() => {});
+  setInterval(() => changelogLoop().catch(() => {}), CHANGELOG_CHECK_INTERVAL_MS);
 });
 
 // 길드에서 쫓겨나면 등록된 알림 채널도 정리
