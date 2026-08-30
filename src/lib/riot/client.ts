@@ -70,8 +70,8 @@ async function riotFetch<T>(url: string): Promise<T> {
     if (prio === "high" && attempt === 0) {
       // [임시 진단] 고우선 호출 출처 — 확인 후 제거
       const path = url.replace(/^https:\/\/[^/]+/, "").split("?")[0].replace(/[A-Za-z0-9_-]{30,}/g, "…").slice(0, 70);
-      const frames = (new Error().stack ?? "").split("
-").slice(2, 8).map((f) => f.trim().replace(/^at /, "").replace(/\(.*\/(\.next\/)?/, "(")).join(" <- ");
+      const frames = (new Error().stack ?? "").split(String.fromCharCode(10)).slice(2, 8)
+        .map((f) => f.trim().replace(/^at /, "").replace(/\(.*\/(\.next\/)?/, "(")).join(" <- ");
       console.log(`[prio:high] ${path} :: ${frames}`);
     }
     await riotLimiter.acquire(prio);
