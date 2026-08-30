@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { apexLadderEntry, ensureApexCutoffs } from "@/lib/apex-ladder";
+import { withLowPriority } from "@/lib/riot/limiter";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
@@ -281,6 +282,19 @@ export default async function SummonerPage({
   // (try/catch는 렌더 에러를 잡지 못하므로 안에서 JSX를 구성하지 않는다)
   let botNoData = false;
   try {
+    if (isBot) {
+      // 크롤러(Ahrefs·구글 등)엔 라이엇 호출을 하지 않는다 — 저장된 결과만 보여주고 없으면 안내.
+      // (크롤러가 분당 수 회 긁으면서 고우선 호출로 한도 예약(hot)을 계속 켜 백그라운드
+      //  갱신이 60%로 묶이던 문제, 2026-08-30)
+      const deepStored = await getStoredResult("deep", platform, gameName, tagLine);
+      const stored = deepStored ?? (await getStoredResult("quick", platform, gameName, tagLine));
+      if (stored) {
+        result = stored;
+        mode = deepStored ? "deep" : "quick";
+      } else {
+        botNoData = true;
+      }
+    } else {
     const latestMatchId = await getLatestMatchId(platform, gameName, tagLine);
     const deep = await getFreshDeepResult(
       platform,
@@ -311,6 +325,7 @@ export default async function SummonerPage({
           result = await runQuickAnalysis(platform, gameName, tagLine);
         }
       }
+    }
     }
   } catch (e) {
     if (e instanceof RiotApiError && e.status === 404) {
@@ -383,7 +398,7 @@ export default async function SummonerPage({
   let selfPuuid: string | null = null; // 닉변 승계용 — 아래 조회에서 확보
   let profileIconId = result.profileIconId ?? null;
   let summonerLevel = result.summonerLevel ?? null;
-  if (profileIconId === null) {
+  if (profileIconId === null && !isBot) {
     try {
       const acct = await getAccountByRiotId(platform, gameName, tagLine);
       selfPuuid = acct.puuid;
@@ -402,7 +417,10 @@ export default async function SummonerPage({
   let peak: { label: string; tier: string; at: number; pts: number } | null = null;
   let seasonRanks: SeasonRankRow[] = [];
   try {
-    const acct = await getAccountByRiotId(platform, gameName, tagLine);
+    // 크롤러는 캐시 미스 시에도 저우선으로 — 한도 예약(hot)을 켜지 않는다
+    const acct = isBot
+      ? await withLowPriority(() => getAccountByRiotId(platform, gameName, tagLine))
+      : await getAccountByRiotId(platform, gameName, tagLine);
     selfPuuid = acct.puuid;
     const history = await getLeagueHistory(platform, acct.puuid);
     lpInsight = computeLpInsight(history);
