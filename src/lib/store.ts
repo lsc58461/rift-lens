@@ -1149,8 +1149,8 @@ export async function buildRefreshQueue(
      FROM (
        SELECT r.platform, r.game_name, r.tag_line, r.game_name_lower, r.tag_line_lower, r.searched_at,
               CASE ${STATE_SQL}
-                WHEN 'none' THEN 0 WHEN 'quick-stale' THEN 1 WHEN 'quick' THEN 2
-                WHEN 'deep-stale' THEN 3 ELSE 4 END AS prio
+                WHEN 'none' THEN 0 WHEN 'deep-stale' THEN 1 WHEN 'quick-stale' THEN 2
+                WHEN 'quick' THEN 3 ELSE 4 END AS prio
        FROM recent_searches r ${AGG_SQL}
      ) q
      RETURNING pos`,
