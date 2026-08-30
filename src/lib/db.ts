@@ -82,6 +82,7 @@ const SCHEMA_SQL = `
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_fresh_blood boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_inactive boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS other_entries jsonb;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS player_id int; -- players.id (puuid 사전)
     ALTER TABLE league_snapshots DROP COLUMN IF EXISTS cols_synced;
     CREATE INDEX IF NOT EXISTS league_snap_idx
     ON league_snapshots (fp, platform, puuid, created_at DESC);

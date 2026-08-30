@@ -2,7 +2,7 @@
 // puuid가 들어가는 테이블(summoners/matches/league_snapshots)은 API 키 지문(fp)으로 스코프.
 
 import "server-only";
-import { loadMatchInfo, loadMatchesByPuuid, syncParticipantsFromMatch, syncTeamsAndBans } from "@/lib/match-participants";
+import { loadMatchInfo, loadMatchesByPuuid, resolvePlayerIds, syncParticipantsFromMatch, syncTeamsAndBans } from "@/lib/match-participants";
 import { getSql } from "./db";
 import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
@@ -258,6 +258,7 @@ export async function insertLeagueSnapshot(
   const flexLp = flex?.leaguePoints ?? null;
   const flexWins = flex?.wins ?? null;
   const flexLosses = flex?.losses ?? null;
+  const playerId = (await resolvePlayerIds(sql, [puuid])).get(puuid) ?? null;
 
   // 직전 스냅샷과 값이 같으면 새 행을 만들지 않고 관측 시각만 갱신한다.
   // (변화가 없는데 행을 쌓으면 히스토리에 의미 없는 중복만 늘고,
@@ -286,12 +287,12 @@ export async function insertLeagueSnapshot(
        solo_hot_streak, solo_veteran, solo_fresh_blood, solo_inactive,
        flex_tier, flex_rank, flex_lp, flex_wins, flex_losses,
        flex_hot_streak, flex_veteran, flex_fresh_blood, flex_inactive,
-       other_entries)
+       other_entries, player_id)
     VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank}, ${lp}, ${wins}, ${losses},
             ${solo?.hotStreak ?? null}, ${solo?.veteran ?? null}, ${solo?.freshBlood ?? null}, ${solo?.inactive ?? null},
             ${flexTier}, ${flexRank}, ${flexLp}, ${flexWins}, ${flexLosses},
             ${flex?.hotStreak ?? null}, ${flex?.veteran ?? null}, ${flex?.freshBlood ?? null}, ${flex?.inactive ?? null},
-            ${other.length ? sql.json(other as never) : null})`;
+            ${other.length ? sql.json(other as never) : null}, ${playerId})`;
 }
 
 export interface LeagueSnapRow {
