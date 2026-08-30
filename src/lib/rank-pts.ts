@@ -100,10 +100,15 @@ export async function countRankPtsPending(): Promise<number> {
 export async function invalidateRankPtsForPuuids(puuids: string[]): Promise<void> {
   if (puuids.length === 0) return;
   const sql = await getSql();
+  const fp = riotKeyFp();
   await sql`
-    UPDATE matches SET rank_pts = NULL
-    WHERE fp = ${riotKeyFp()}
-      AND rank_pts IS NOT NULL
-      AND participants @> ANY(${puuids.map((p) => JSON.stringify([{ puuid: p }]))}::jsonb[])`;
-  await sql`UPDATE match_participants SET rank_pts = NULL WHERE fp = ${riotKeyFp()}`.catch(() => {});
+    UPDATE matches m SET rank_pts = NULL
+    WHERE m.fp = ${fp} AND m.rank_pts IS NOT NULL
+      AND EXISTS (SELECT 1 FROM match_participants p
+                  WHERE p.fp = m.fp AND p.match_id = m.match_id AND p.puuid = ANY(${puuids}))`;
+  await sql`
+    UPDATE match_participants p SET rank_pts = NULL
+    WHERE p.fp = ${fp} AND p.rank_pts IS NOT NULL
+      AND p.match_id IN (SELECT match_id FROM match_participants
+                         WHERE fp = ${fp} AND puuid = ANY(${puuids}))`.catch(() => {});
 }

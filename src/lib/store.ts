@@ -96,19 +96,16 @@ export async function saveMatchRow(
   const sql = await getSql();
   const bans = sql.json((match.bans ?? []) as never);
   const teams = sql.json((match.teams ?? []) as never);
-  // 참가자는 정규화 테이블이 유일한 원본 (2026-08-30, JSON 제거 3단계).
-  // 먼저 참가자 행을 쓰고 — 실패하면 던져서 반쪽 저장(메타만 있고 참가자 없음)을 막는다 —
-  // 그다음 matches엔 메타(시각·큐·패치·밴·팀요약·플래그)만 남긴다. participants 컬럼은
-  // 옛 행의 잔재로만 남으며 새 행은 빈 배열을 넣는다.
+  // 참가자는 match_participants 가 유일한 원본. 먼저 참가자 행을 쓰고 — 실패하면 던져서
+  // 반쪽 저장(메타만 있고 참가자 없음)을 막는다 — 그다음 matches 엔 메타만 남긴다.
   await syncParticipantsFromMatch(fp, platform, match);
   await sql`
-    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, participants, patch, bans, teams, fields_captured)
+    INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, patch, bans, teams, fields_captured)
     VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},
-            ${match.gameDuration}, ${match.queueId}, '[]'::jsonb,
+            ${match.gameDuration}, ${match.queueId},
             ${match.patch ?? null}, ${bans}, ${teams}, true)
     ON CONFLICT (fp, match_id) DO UPDATE
-    SET participants = '[]'::jsonb,
-        patch = coalesce(EXCLUDED.patch, matches.patch),
+    SET patch = coalesce(EXCLUDED.patch, matches.patch),
         -- 밴·팀요약은 새 캡처가 있으면 갱신, 없으면(빈값) 기존 유지
         bans = CASE WHEN EXCLUDED.bans = '[]'::jsonb THEN matches.bans ELSE EXCLUDED.bans END,
         teams = CASE WHEN EXCLUDED.teams = '[]'::jsonb THEN matches.teams ELSE EXCLUDED.teams END,

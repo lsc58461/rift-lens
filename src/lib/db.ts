@@ -38,8 +38,7 @@ const SCHEMA_SQL = `
     CREATE INDEX IF NOT EXISTS summoners_canon_idx
     ON summoners (fp, platform, lower(normalize(game_name, NFKC)), lower(normalize(tag_line, NFKC)));
 
-    -- 매치 메타 (불변 데이터). participants(jsonb)는 2026-08-30부터 쓰지 않는다 —
-    -- 참가자는 match_participants 가 유일한 원본이고, 이 컬럼은 옛 행 잔재('[]'로 비움).
+    -- 매치 메타 (불변 데이터). 참가자는 match_participants 가 유일한 원본 (2026-08-30 JSON 제거).
     CREATE TABLE IF NOT EXISTS matches (
       fp text NOT NULL,
       match_id text NOT NULL,
@@ -47,10 +46,11 @@ const SCHEMA_SQL = `
       game_creation bigint NOT NULL,
       game_duration int NOT NULL,
       queue_id int NOT NULL,
-      participants jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (fp, match_id)
     );
+    -- 옛 participants(jsonb) 컬럼 제거 — 데이터는 전부 match_participants 로 옮겨졌다
+    ALTER TABLE matches DROP COLUMN IF EXISTS participants;
 
     -- 랭크 스냅샷 — 조회 시점마다 적재(히스토리). LP 득실 추적의 기반
     CREATE TABLE IF NOT EXISTS league_snapshots (

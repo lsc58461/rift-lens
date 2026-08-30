@@ -16,8 +16,6 @@ import { releaseDeepRunnerOnShutdown } from "@/lib/mmr/deep-jobs";
 import { setApexCutoffs } from "@/lib/mmr/rank";
 import { getRefreshAllState, releaseRefreshAllRound } from "@/lib/refresh-all";
 import { getRunefillState, releaseRunefillRound } from "@/lib/rune-backfill";
-import { runParticipantsBackfillTick } from "@/lib/match-participants";
-import { riotKeyFp } from "@/lib/riot/client";
 import { runSeasonArchiveTick } from "@/lib/season-archive";
 import { apexCutoffsFromSnapshots } from "@/lib/store";
 
@@ -94,13 +92,6 @@ export function registerNode(): void {
       .catch((e) => console.error("[apex] 이름 보충 실패:", (e as Error)?.message));
   setTimeout(() => void fillNames(), 90_000).unref();
   setInterval(() => void fillNames(), 10 * 60_000).unref();
-  // 참가자 정규화 테이블 적재 — 미적재 매치가 있을 때만 일한다(DB만 사용)
-  const participantsTick = () =>
-    runParticipantsBackfillTick(riotKeyFp()).catch((e) =>
-      console.error("[participants] 틱 실패:", (e as Error)?.message),
-    );
-  setTimeout(() => void participantsTick(), 40_000).unref();
-  setInterval(() => void participantsTick(), 60_000).unref();
   // 시즌 마감 랭크 확정 — 예약이 있고 수집 창 안일 때만 일한다(아니면 즉시 반환)
   setInterval(
     () => runSeasonArchiveTick().catch((e) => console.error("[season] 틱 실패:", (e as Error)?.message)),
