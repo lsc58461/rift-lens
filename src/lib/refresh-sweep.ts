@@ -5,6 +5,7 @@
 // 걸리므로, 반드시 이 함수를 직접 호출한다.
 
 import "server-only";
+import { getAccountByRiotId } from "@/lib/riot/client";
 import {
   ensureQueuedAndSchedule,
   getFreshDeepResult,
@@ -127,7 +128,8 @@ export async function runRefreshSweep(opts: {
   let failed = 0;
   const failures: { who: string; error: string }[] = [];
 
-  for (const r of recent) {
+  for (const queued of recent) {
+    let r = queued; // 닉변이면 아래에서 새 이름으로 바뀐다
     if (elapsed() > opts.budgetMs || quickRefreshed.length >= opts.limit) {
       brokeEarly = true;
       break;
@@ -160,6 +162,13 @@ export async function runRefreshSweep(opts: {
       continue;
     }
     try {
+      // 닉변 승계 — 옛 이름이면 getAccountByRiotId 가 새 이름으로 옮겨 준다(recent_searches·analyses 행 rename).
+      // 이후 단계는 새 이름으로 진행해야 분석이 새 이름에 저장되고 옛 이름 404 로 실패하지 않는다.
+      const acct = await getAccountByRiotId(r.region, r.gameName, r.tagLine);
+      if (canon(acct.gameName) !== canon(r.gameName) || canon(acct.tagLine) !== canon(r.tagLine)) {
+        console.log(`[sweep] 닉변 승계 ${r.gameName}#${r.tagLine} → ${acct.gameName}#${acct.tagLine}`);
+        r = { ...r, gameName: acct.gameName, tagLine: acct.tagLine };
+      }
       const latest = await getLatestMatchId(r.region, r.gameName, r.tagLine);
       if (await getFreshDeepResult(r.region, r.gameName, r.tagLine, latest)) {
         skipped++;
