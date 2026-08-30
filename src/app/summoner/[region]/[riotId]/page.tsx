@@ -427,14 +427,28 @@ export default async function SummonerPage({
     ).catch(() => {});
   }
 
+  await ensureApexCutoffs(); // 마스터 이상 컷(그마·챌) 최신화 — 라벨 재계산 전에
+  // 챌·그마 승격/강등은 라이엇이 일괄 반영해서, 저장된 분석(최대 24h+)의 티어가 래더(30분 폴링)와
+  // 어긋날 수 있다 — 래더가 더 새로우면 현재 티어·LP·전적은 래더 기준으로 보여준다
+  const ladder = result.soloEntry && selfPuuid ? await apexLadderEntry(selfPuuid, platform).catch(() => null) : null;
+  const soloEntry =
+    result.soloEntry && ladder && ladder.fetchedAt > (result.analyzedAt ?? 0)
+      ? { ...result.soloEntry, tier: ladder.tier, rank: "I", leaguePoints: ladder.lp, wins: ladder.wins, losses: ladder.losses }
+      : result.soloEntry;
+  // 저장된 라벨 대신 지금 기준으로 다시 라벨링 — 마스터 이상 컷이 갱신되거나
+  // 예전 결과가 포인트 역산 라벨을 갖고 있어도 화면은 항상 현재 기준으로 맞춘다
+  const currentRank = soloEntry
+    ? entryToRank(soloEntry.tier, soloEntry.rank, soloEntry.leaguePoints)
+    : result.currentRank;
+
   // 봇 트래픽은 최근 검색에 기록하지 않는다
   if (!isBot)
     await recordSearch({
       region: platform,
       gameName: result.account.gameName,
       tagLine: result.account.tagLine,
-      currentLabel: result.currentRank?.label ?? null,
-      currentTier: result.currentRank?.tier ?? null,
+      currentLabel: currentRank?.label ?? null,
+      currentTier: currentRank?.tier ?? null,
       estimatedLabel: result.estimatedRank?.label ?? null,
       estimatedTier: result.estimatedRank?.tier ?? null,
       estimatedPoints: result.estimatedPoints,
@@ -443,8 +457,6 @@ export default async function SummonerPage({
 
   const {
     account,
-    soloEntry: storedSoloEntry,
-    currentRank: storedCurrentRank,
     currentPoints,
     estimatedRank: storedEstimatedRank,
     gap,
@@ -453,19 +465,6 @@ export default async function SummonerPage({
     sampledPlayers,
     confidence,
   } = result;
-  await ensureApexCutoffs(); // 마스터 이상 컷(그마·챌) 최신화 — 라벨 재계산 전에
-  // 챌·그마 승격/강등은 라이엇이 일괄 반영해서, 저장된 분석(최대 24h+)의 티어가 래더(30분 폴링)와
-  // 어긋날 수 있다 — 래더가 더 새로우면 현재 티어·LP·전적은 래더 기준으로 보여준다
-  const ladder = storedSoloEntry && selfPuuid ? await apexLadderEntry(selfPuuid, platform).catch(() => null) : null;
-  const soloEntry =
-    storedSoloEntry && ladder && ladder.fetchedAt > (result.analyzedAt ?? 0)
-      ? { ...storedSoloEntry, tier: ladder.tier, rank: "I", leaguePoints: ladder.lp, wins: ladder.wins, losses: ladder.losses }
-      : storedSoloEntry;
-  // 저장된 라벨 대신 지금 기준으로 다시 라벨링 — 마스터 이상 컷이 갱신되거나
-  // 예전 결과가 포인트 역산 라벨을 갖고 있어도 화면은 항상 현재 기준으로 맞춘다
-  const currentRank = soloEntry
-    ? entryToRank(soloEntry.tier, soloEntry.rank, soloEntry.leaguePoints)
-    : storedCurrentRank;
   const estimatedRank =
     estimatedPointsOf(result) !== null
       ? pointsToRank(estimatedPointsOf(result)!)
