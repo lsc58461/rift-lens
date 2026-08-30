@@ -7,6 +7,7 @@ import "server-only";
 import type { Sql } from "postgres";
 import { getSql } from "@/lib/db";
 import type { MatchInfo, MatchParticipant, PlatformRegion } from "@/lib/riot/types";
+import { matchIdOf, matchNo } from "@/lib/match-id";
 
 type ParticipantRow = Record<string, unknown>;
 
@@ -46,7 +47,7 @@ function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, num
     .map((p, idx) => {
       const row: ParticipantRow = {
         fp,
-        match_id: m.matchId,
+        match_id: matchNo(m.matchId),
         platform,
         player_id: ids.get(p.puuid),
         idx,
@@ -129,9 +130,10 @@ export async function syncParticipantsFromMatch(
 /** 팀 요약·밴 행 기록 — 새 캡처가 있을 때만 교체(빈값이면 기존 유지) */
 export async function syncTeamsAndBans(fp: string, match: MatchInfo): Promise<void> {
   const sql = await getSql();
+  const mid = matchNo(match.matchId);
   if (match.teams && match.teams.length > 0) {
     const rows = match.teams.map((t) => ({
-      fp, match_id: match.matchId, team_id: t.teamId, win: t.win,
+      fp, match_id: mid, team_id: t.teamId, win: t.win,
       first_blood: t.firstBlood ?? null, first_tower: t.firstTower ?? null,
       dragon: t.dragon ?? null, herald: t.herald ?? null, baron: t.baron ?? null,
       tower: t.tower ?? null, inhibitor: t.inhibitor ?? null, atakhan: t.atakhan ?? null,
@@ -145,8 +147,8 @@ export async function syncTeamsAndBans(fp: string, match: MatchInfo): Promise<vo
   }
   // 밴: 팀·픽순서가 있는 상세가 있으면 그걸, 없으면 플랫 목록(옛 형식)
   const bans = match.teamBans && match.teamBans.length > 0
-    ? match.teamBans.map((b) => ({ fp, match_id: match.matchId, champion_id: b.championId, team_id: b.teamId, pick_turn: b.pickTurn }))
-    : (match.bans ?? []).map((id) => ({ fp, match_id: match.matchId, champion_id: id, team_id: null, pick_turn: null }));
+    ? match.teamBans.map((b) => ({ fp, match_id: mid, champion_id: b.championId, team_id: b.teamId, pick_turn: b.pickTurn }))
+    : (match.bans ?? []).map((id) => ({ fp, match_id: mid, champion_id: id, team_id: null, pick_turn: null }));
   // 같은 챔피언이 두 번 잡히는 경우(데이터 오류) 하나만
   const seen = new Set<number>();
   const uniq = bans.filter((b) => b.champion_id > 0 && !seen.has(b.champion_id) && seen.add(b.champion_id));
@@ -175,14 +177,20 @@ function teamRowToInfo(t: TeamRow): NonNullable<MatchInfo["teams"]>[number] {
 async function loadTeamsAndBans(sql: Sql, fp: string, matchIds: string[]) {
   const [teams, bans] = await Promise.all([
     sql`SELECT match_id, team_id, win, first_blood, first_tower, dragon, herald, baron, tower, inhibitor, atakhan
-        FROM match_teams WHERE fp = ${fp} AND match_id = ANY(${matchIds}) ORDER BY team_id` as unknown as Promise<TeamRow[]>,
+        FROM match_teams WHERE fp = ${fp} AND match_id = ANY(${matchIds}::bigint[]) ORDER BY team_id` as unknown as Promise<TeamRow[]>,
     sql`SELECT match_id, champion_id, team_id, pick_turn
-        FROM match_bans WHERE fp = ${fp} AND match_id = ANY(${matchIds}) ORDER BY team_id NULLS LAST, pick_turn NULLS LAST, champion_id` as unknown as Promise<BanRow[]>,
+        FROM match_bans WHERE fp = ${fp} AND match_id = ANY(${matchIds}::bigint[]) ORDER BY team_id NULLS LAST, pick_turn NULLS LAST, champion_id` as unknown as Promise<BanRow[]>,
   ]);
   const teamsBy = new Map<string, TeamRow[]>();
-  for (const t of teams) (teamsBy.get(t.match_id) ?? teamsBy.set(t.match_id, []).get(t.match_id)!).push(t);
+  for (const t of teams) {
+    const k = String(t.match_id);
+    (teamsBy.get(k) ?? teamsBy.set(k, []).get(k)!).push(t);
+  }
   const bansBy = new Map<string, BanRow[]>();
-  for (const b of bans) (bansBy.get(b.match_id) ?? bansBy.set(b.match_id, []).get(b.match_id)!).push(b);
+  for (const b of bans) {
+    const k = String(b.match_id);
+    (bansBy.get(k) ?? bansBy.set(k, []).get(k)!).push(b);
+  }
   return { teamsBy, bansBy };
 }
 
@@ -231,7 +239,8 @@ const PARTICIPANT_SELECT = `${COLS.map((c) => `mp.${c}`).join(", ")}, pl.puuid`;
 const PARTICIPANT_FROM = `FROM match_participants mp JOIN players pl ON pl.id = mp.player_id`;
 
 interface MatchMetaRow {
-  match_id: string;
+  match_id: string | number; // bigint — postgres.js 는 문자열로 준다
+  platform: string;
   game_creation: string | number;
   game_duration: number;
   queue_id: number;
@@ -241,7 +250,7 @@ interface MatchMetaRow {
 function assemble(meta: MatchMetaRow, parts: ParticipantRow[]): MatchInfo {
   const sorted = [...parts].sort((a, b) => Number(a.idx) - Number(b.idx));
   const info: MatchInfo = {
-    matchId: meta.match_id,
+    matchId: matchIdOf(meta.match_id, meta.platform),
     gameCreation: Number(meta.game_creation),
     gameDuration: meta.game_duration,
     queueId: meta.queue_id,
@@ -254,21 +263,22 @@ function assemble(meta: MatchMetaRow, parts: ParticipantRow[]): MatchInfo {
 /** 매치 1건 — matches(메타) + match_participants(참가자 10행) 조립 */
 export async function loadMatchInfo(fp: string, matchId: string): Promise<MatchInfo | null> {
   const sql = await getSql();
+  const mid = matchNo(matchId);
   const [metaRows, parts, tb] = await Promise.all([
-    sql`SELECT match_id, game_creation, game_duration, queue_id, patch
-        FROM matches WHERE fp = ${fp} AND match_id = ${matchId}`,
+    sql`SELECT match_id, platform, game_creation, game_duration, queue_id, patch
+        FROM matches WHERE fp = ${fp} AND match_id = ${mid}`,
     sql.unsafe(
       `SELECT ${PARTICIPANT_SELECT} ${PARTICIPANT_FROM} WHERE mp.fp = $1 AND mp.match_id = $2`,
-      [fp, matchId],
+      [fp, mid],
     ),
-    loadTeamsAndBans(sql, fp, [matchId]),
+    loadTeamsAndBans(sql, fp, [mid]),
   ]);
   const meta = metaRows[0] as unknown as MatchMetaRow | undefined;
   if (!meta) return null;
   const rows = parts as unknown as ParticipantRow[];
   if (rows.length === 0) return null; // 참가자 행이 없으면 없는 매치로 — 호출자가 재조회
   const info = assemble(meta, rows);
-  attachTeamsAndBans(info, tb.teamsBy.get(matchId), tb.bansBy.get(matchId));
+  attachTeamsAndBans(info, tb.teamsBy.get(mid), tb.bansBy.get(mid));
   return info;
 }
 
@@ -278,14 +288,14 @@ export async function loadMatchesByPuuid(fp: string, puuid: string, limit: numbe
   const ids = (await sql`
     SELECT match_id FROM match_participants
     WHERE fp = ${fp} AND player_id = (SELECT id FROM players WHERE puuid = ${puuid})
-    ORDER BY game_creation DESC LIMIT ${limit}`) as unknown as { match_id: string }[];
+    ORDER BY game_creation DESC LIMIT ${limit}`) as unknown as { match_id: string | number }[];
   if (ids.length === 0) return [];
-  const matchIds = ids.map((r) => r.match_id);
+  const matchIds = ids.map((r) => String(r.match_id)); // bigint 숫자 문자열
   const [metaRows, parts, tb] = await Promise.all([
-    sql`SELECT match_id, game_creation, game_duration, queue_id, patch
-        FROM matches WHERE fp = ${fp} AND match_id = ANY(${matchIds})`,
+    sql`SELECT match_id, platform, game_creation, game_duration, queue_id, patch
+        FROM matches WHERE fp = ${fp} AND match_id = ANY(${matchIds}::bigint[])`,
     sql.unsafe(
-      `SELECT ${PARTICIPANT_SELECT} ${PARTICIPANT_FROM} WHERE mp.fp = $1 AND mp.match_id = ANY($2)`,
+      `SELECT ${PARTICIPANT_SELECT} ${PARTICIPANT_FROM} WHERE mp.fp = $1 AND mp.match_id = ANY($2::bigint[])`,
       [fp, matchIds],
     ),
     loadTeamsAndBans(sql, fp, matchIds),
@@ -295,7 +305,7 @@ export async function loadMatchesByPuuid(fp: string, puuid: string, limit: numbe
     const id = String(r.match_id);
     (byId.get(id) ?? byId.set(id, []).get(id)!).push(r);
   }
-  const metaById = new Map((metaRows as unknown as MatchMetaRow[]).map((m) => [m.match_id, m]));
+  const metaById = new Map((metaRows as unknown as MatchMetaRow[]).map((m) => [String(m.match_id), m]));
   return matchIds
     .map((id) => {
       const meta = metaById.get(id);

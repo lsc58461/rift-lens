@@ -75,12 +75,13 @@ export async function recomputeRankPtsBatch(limit = 500): Promise<number> {
     RETURNING m.match_id, m.rank_pts`,
     [fp, limit],
   );
-  const updated = rows as unknown as { match_id: string; rank_pts: number }[];
+  const updated = (rows as unknown as { match_id: string | number; rank_pts: number }[])
+    .map((r) => ({ match_id: Number(r.match_id), rank_pts: r.rank_pts })); // bigint → 숫자(2^53 이내)
   if (updated.length > 0) {
     // 참가자 정규화 테이블에도 같은 값 전파
     await sql`
       UPDATE match_participants p SET rank_pts = v.rank_pts
-      FROM (SELECT * FROM jsonb_to_recordset(${sql.json(updated as never)}) AS x(match_id text, rank_pts real)) v
+      FROM (SELECT * FROM jsonb_to_recordset(${sql.json(updated as never)}) AS x(match_id bigint, rank_pts real)) v
       WHERE p.fp = ${fp} AND p.match_id = v.match_id`.catch(() => {});
   }
   return updated.length;

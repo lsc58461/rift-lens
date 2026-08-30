@@ -1,4 +1,5 @@
 import "server-only";
+import { matchIdOf, matchNo } from "@/lib/match-id";
 import { createHash } from "crypto";
 import {
   currentPriority,
@@ -738,7 +739,7 @@ export async function harvestStartItems(
 
   await sql`
     UPDATE matches SET build_harvested = true
-    WHERE fp = ${fp} AND match_id = ${matchId}`.catch(() => {});
+    WHERE fp = ${fp} AND match_id = ${matchNo(matchId)}`.catch(() => {});
 }
 
 /** 분석에 쓰인 매치 중 빌드 데이터(시작 아이템·코어 순서)가 아직 없는 것을
@@ -755,18 +756,19 @@ export async function harvestMissingBuildData(
   const fp = keyFp();
   const rows = await sql`
     SELECT match_id FROM matches
-    WHERE fp = ${fp} AND match_id = ANY(${matchIds})
+    WHERE fp = ${fp} AND match_id = ANY(${matchIds.map(matchNo)}::bigint[])
       AND NOT build_harvested
       AND EXISTS (SELECT 1 FROM match_participants p WHERE p.fp = matches.fp AND p.match_id = matches.match_id)
     ORDER BY game_creation DESC LIMIT ${cap}`;
-  for (const r of rows as unknown as { match_id: string }[]) {
+  for (const r of rows as unknown as { match_id: string | number }[]) {
+    const mid = matchIdOf(r.match_id, platform); // DB bigint → "KR_…"
     try {
       const tl = await withLowPriorityFn(() =>
-        getMatchTimeline(platform, r.match_id),
+        getMatchTimeline(platform, mid),
       );
-      await harvestStartItems(platform, r.match_id, tl);
+      await harvestStartItems(platform, mid, tl);
       // 수확용으로 받은 타임라인 캐시는 남기지 않는다 (KV 비대 방지)
-      await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
+      await cache.delete(`timeline:${fp}:${mid}`).catch(() => {});
     } catch (e) {
       // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 다음 기회에
       if (e instanceof RiotApiError && e.status === 404) {

@@ -3,6 +3,7 @@
 // 저우선순위라 유저 검색이 먼저다.
 
 import "server-only";
+import { matchIdOf } from "@/lib/match-id";
 import { cache } from "@/lib/cache";
 import { getSql } from "@/lib/db";
 import { getMatch, getMatchTimeline, harvestStartItems, riotKeyFp } from "@/lib/riot/client";
@@ -145,19 +146,20 @@ export async function runRunefillRound(origin?: string): Promise<void> {
     }[]) {
       // 5개마다 취소 확인
       if (i++ % 5 === 0 && !((await getRunefillState())?.running ?? false)) break;
+      const mid = matchIdOf(r.match_id, r.platform); // DB bigint → "KR_…"
       try {
         // 본문 재수집이 필요한 경우: 룬/패치 누락(!body_ok) 또는 확장 필드 미캡처.
         // getMatch(force)가 밴·팀·participant 확장 필드까지 다시 저장하고
         // fields_captured=true로 만든다.
         if (!r.body_ok || !r.fields_captured) {
-          await runAt(() => getMatch(r.platform, r.match_id, true));
+          await runAt(() => getMatch(r.platform, mid, true));
         }
         // 타임라인 빌드 수확은 아직 안 한 매치만 (이미 수확했으면 콜 낭비 안 함)
         if (!r.build_harvested) {
           await runAt(() =>
-            getMatchTimeline(r.platform, r.match_id).then(async (tl) => {
-              await harvestStartItems(r.platform, r.match_id, tl);
-              await cache.delete(`timeline:${fp}:${r.match_id}`).catch(() => {});
+            getMatchTimeline(r.platform, mid).then(async (tl) => {
+              await harvestStartItems(r.platform, mid, tl);
+              await cache.delete(`timeline:${fp}:${mid}`).catch(() => {});
             }),
           ).catch(async (e) => {
             // 타임라인이 진짜 없는 매치(404)만 완료 표시 — 일시 오류는 재시도 여지

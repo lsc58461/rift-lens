@@ -41,7 +41,7 @@ const SCHEMA_SQL = `
     -- 매치 메타 (불변 데이터). 참가자는 match_participants 가 유일한 원본 (2026-08-30 JSON 제거).
     CREATE TABLE IF NOT EXISTS matches (
       fp text NOT NULL,
-      match_id text NOT NULL,
+      match_id bigint NOT NULL, -- 'KR_' 접두어 뺀 숫자 (src/lib/match-id.ts)
       platform text NOT NULL,
       game_creation bigint NOT NULL,
       game_duration int NOT NULL,
@@ -283,7 +283,7 @@ const SCHEMA_SQL = `
     );
     CREATE TABLE IF NOT EXISTS match_participants (
       fp text NOT NULL,
-      match_id text NOT NULL,
+      match_id bigint NOT NULL, -- 'KR_' 접두어 뺀 숫자 (src/lib/match-id.ts)
       platform text NOT NULL,
       player_id int NOT NULL, -- players.id (puuid 사전)
       idx smallint NOT NULL,
@@ -370,7 +370,7 @@ const SCHEMA_SQL = `
     -- 경기 밴 (경기당 최대 10행) — 챔피언 통계 밴률 집계가 인덱스를 탄다
     CREATE TABLE IF NOT EXISTS match_bans (
       fp text NOT NULL,
-      match_id text NOT NULL,
+      match_id bigint NOT NULL, -- 'KR_' 접두어 뺀 숫자 (src/lib/match-id.ts)
       champion_id int NOT NULL,
       team_id smallint,
       pick_turn smallint,
@@ -380,7 +380,7 @@ const SCHEMA_SQL = `
     -- 경기 팀 요약 (경기당 2행) — 스코어보드 팀 오브젝트 비교
     CREATE TABLE IF NOT EXISTS match_teams (
       fp text NOT NULL,
-      match_id text NOT NULL,
+      match_id bigint NOT NULL, -- 'KR_' 접두어 뺀 숫자 (src/lib/match-id.ts)
       team_id smallint NOT NULL,
       win boolean NOT NULL,
       first_blood boolean,

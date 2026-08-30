@@ -4,6 +4,7 @@
 import "server-only";
 import { loadMatchInfo, loadMatchesByPuuid, resolvePlayerIds, syncParticipantsFromMatch, syncTeamsAndBans } from "@/lib/match-participants";
 import { getSql } from "./db";
+import { matchNo } from "./match-id";
 import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "./riot/types";
@@ -100,7 +101,7 @@ export async function saveMatchRow(
   await syncTeamsAndBans(fp, match);
   await sql`
     INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, patch, fields_captured)
-    VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},
+    VALUES (${fp}, ${matchNo(match.matchId)}, ${platform}, ${match.gameCreation},
             ${match.gameDuration}, ${match.queueId},
             ${match.patch ?? null}, true)
     ON CONFLICT (fp, match_id) DO UPDATE
