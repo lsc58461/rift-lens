@@ -26,8 +26,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Priority = "high" | "low";
 
-// 호출 경로 전체에 priority 인자를 뚫는 대신 ALS 컨텍스트로 전달한다
-const priorityContext = new AsyncLocalStorage<Priority>();
+// 호출 경로 전체에 priority 인자를 뚫는 대신 ALS 컨텍스트로 전달한다.
+// ※ Turbopack 이 이 모듈을 서버 청크마다 복제해서, 모듈 변수로 두면 withLowPriority 를
+//   부른 청크와 client.ts 가 읽는 청크의 ALS 가 달라 "high" 로 새어 나갔다(2026-08-30) —
+//   프로세스 전역(globalThis)에 하나만 둔다. 리미터 인스턴스도 같은 이유로 전역.
+const g = globalThis as unknown as {
+  __riftPriorityCtx?: AsyncLocalStorage<Priority>;
+  __riftLimiter?: RateLimiter;
+};
+const priorityContext = (g.__riftPriorityCtx ??= new AsyncLocalStorage<Priority>());
 
 /** 이 콜백 안에서 발생하는 라이엇 API 호출을 저우선순위로 처리 */
 export function withLowPriority<T>(fn: () => Promise<T>): Promise<T> {
@@ -260,7 +267,7 @@ function limitsFromEnv(): Array<{ capacity: number; windowMs: number }> | null {
   return limits.length > 0 ? limits : null;
 }
 
-export const riotLimiter = new RateLimiter(
+export const riotLimiter: RateLimiter = (g.__riftLimiter ??= new RateLimiter(
   limitsFromEnv() ??
     (process.env.RIOT_KEY_TYPE === "prod"
       ? [
@@ -271,4 +278,4 @@ export const riotLimiter = new RateLimiter(
           { capacity: 18, windowMs: 1_000 },
           { capacity: 95, windowMs: 120_000 },
         ]),
-);
+));

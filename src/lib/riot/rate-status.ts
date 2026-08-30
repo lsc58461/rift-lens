@@ -18,7 +18,8 @@ const PUBLISH_INTERVAL_MS = 3_000;
 const NODE_TTL_SEC = 15; // 죽은 인스턴스는 알아서 사라진다
 const IDLE_TICKS_BEFORE_STOP = 3;
 
-const nodeId = randomUUID().slice(0, 8);
+// 프로세스당 하나 — 청크별 모듈 복제본이 각자 다른 id 로 발행해 인스턴스 수가 부풀던 문제 방지
+const nodeId = ((globalThis as unknown as { __riftNodeId?: string }).__riftNodeId ??= randomUUID().slice(0, 8));
 const nodeKey = `${NODE_PREFIX}${nodeId}`;
 
 interface NodeEntry extends LimiterSnapshot {

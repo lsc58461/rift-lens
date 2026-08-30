@@ -66,15 +66,7 @@ async function riotFetch<T>(url: string): Promise<T> {
   // 429는 다른 인스턴스와의 합산 한도 초과일 수 있어 더 끈질기게 재시도한다
   for (let attempt = 0; attempt < 6; attempt++) {
     trackRateLimiter(); // 어드민 관측용 — 대기가 시작되기 전에 발행을 켠다
-    const prio = currentPriority();
-    if (prio === "high" && attempt === 0) {
-      // [임시 진단] 고우선 호출 출처 — 확인 후 제거
-      const path = url.replace(/^https:\/\/[^/]+/, "").split("?")[0].replace(/[A-Za-z0-9_-]{30,}/g, "…").slice(0, 70);
-      const frames = (new Error().stack ?? "").split(String.fromCharCode(10)).slice(2, 8)
-        .map((f) => f.trim().replace(/^at /, "").replace(/\(.*\/(\.next\/)?/, "(")).join(" <- ");
-      console.log(`[prio:high] ${path} :: ${frames}`);
-    }
-    await riotLimiter.acquire(prio);
+    await riotLimiter.acquire(currentPriority());
     let res: Response;
     try {
       res = await fetch(url, {
