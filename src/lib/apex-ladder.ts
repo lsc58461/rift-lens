@@ -139,6 +139,20 @@ export async function fillApexNames(platform: PlatformRegion = "kr", limit = 100
 }
 
 /** 랭킹 페이지용 명단 (이름은 summoners 테이블에서 조인) */
+/** 특정 소환사의 래더(챌·그마) 행 — 없으면(마스터 이하) null. 30분 폴링이라 저장 분석보다 새롭다 */
+export async function apexLadderEntry(
+  puuid: string,
+  platform: PlatformRegion = "kr",
+): Promise<{ tier: ApexLadderTier; lp: number; wins: number; losses: number; fetchedAt: number } | null> {
+  const sql = await getSql();
+  const rows = (await sql`
+    SELECT tier, lp, wins, losses, (extract(epoch from fetched_at) * 1000)::bigint AS fetched_at
+    FROM apex_ladder WHERE fp = ${riotKeyFp()} AND platform = ${platform} AND puuid = ${puuid}
+    LIMIT 1`) as unknown as { tier: ApexLadderTier; lp: number; wins: number; losses: number; fetched_at: string | number }[];
+  const r = rows[0];
+  return r ? { tier: r.tier, lp: r.lp, wins: r.wins, losses: r.losses, fetchedAt: Number(r.fetched_at) } : null;
+}
+
 export async function getApexLadder(
   tier: ApexLadderTier,
   platform: PlatformRegion = "kr",

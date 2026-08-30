@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ensureApexCutoffs } from "@/lib/apex-ladder";
+import { apexLadderEntry, ensureApexCutoffs } from "@/lib/apex-ladder";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
@@ -443,7 +443,7 @@ export default async function SummonerPage({
 
   const {
     account,
-    soloEntry,
+    soloEntry: storedSoloEntry,
     currentRank: storedCurrentRank,
     currentPoints,
     estimatedRank: storedEstimatedRank,
@@ -454,6 +454,13 @@ export default async function SummonerPage({
     confidence,
   } = result;
   await ensureApexCutoffs(); // 마스터 이상 컷(그마·챌) 최신화 — 라벨 재계산 전에
+  // 챌·그마 승격/강등은 라이엇이 일괄 반영해서, 저장된 분석(최대 24h+)의 티어가 래더(30분 폴링)와
+  // 어긋날 수 있다 — 래더가 더 새로우면 현재 티어·LP·전적은 래더 기준으로 보여준다
+  const ladder = storedSoloEntry && selfPuuid ? await apexLadderEntry(selfPuuid, platform).catch(() => null) : null;
+  const soloEntry =
+    storedSoloEntry && ladder && ladder.fetchedAt > (result.analyzedAt ?? 0)
+      ? { ...storedSoloEntry, tier: ladder.tier, rank: "I", leaguePoints: ladder.lp, wins: ladder.wins, losses: ladder.losses }
+      : storedSoloEntry;
   // 저장된 라벨 대신 지금 기준으로 다시 라벨링 — 마스터 이상 컷이 갱신되거나
   // 예전 결과가 포인트 역산 라벨을 갖고 있어도 화면은 항상 현재 기준으로 맞춘다
   const currentRank = soloEntry
