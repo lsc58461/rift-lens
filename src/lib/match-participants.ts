@@ -95,7 +95,8 @@ const UPSERT_SET = [
 
 /** puuid → players.id (없으면 등록). DO UPDATE 로 기존 행도 RETURNING 되게 한다. */
 export async function resolvePlayerIds(sql: Sql, puuids: string[]): Promise<Map<string, number>> {
-  const uniq = [...new Set(puuids.filter(Boolean))];
+  // 정렬해서 넣는다 — 동시 저장(인스턴스 3개·백필)이 같은 순서로 행 락을 잡아 데드락을 피한다
+  const uniq = [...new Set(puuids.filter(Boolean))].sort();
   if (uniq.length === 0) return new Map();
   const rows = (await sql`
     INSERT INTO players (puuid) SELECT unnest(${uniq}::text[])
