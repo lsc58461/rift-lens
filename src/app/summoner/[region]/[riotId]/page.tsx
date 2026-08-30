@@ -46,7 +46,11 @@ import {
   getStoredResult,
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
-import { pointsToRank, TIER_COLORS, entryToRank, isApexPoints, rankToPoints } from "@/lib/mmr/rank";
+import { pointsToRank, TIER_COLORS, TIERS, entryToRank, isApexPoints, rankToPoints } from "@/lib/mmr/rank";
+
+// 시즌 최고 비교키 — 티어 우선, 그다음 점수. 마스터 이상은 같은 LP라도 챌 > 그마 > 마스터
+// (라이엇이 승격을 일괄 반영해서 같은 LP가 다른 티어로 관측될 수 있다)
+const peakKey = (tier: string, pts: number) => TIERS.indexOf(tier as (typeof TIERS)[number]) * 100_000 + pts;
 import {
   computeLpInsight,
   hasLpSignal,
@@ -408,7 +412,7 @@ export default async function SummonerPage({
       const at = new Date(h.created_at).getTime();
       if (at < seasonStart) continue;
       const pts = rankToPoints(h.solo_tier, h.solo_rank ?? "IV", h.solo_lp);
-      if (!peak || pts > peak.pts) {
+      if (!peak || peakKey(h.solo_tier, pts) > peakKey(peak.tier, peak.pts)) {
         peak = { ...entryToRank(h.solo_tier, h.solo_rank ?? "IV", h.solo_lp), at, pts };
       }
     }
@@ -440,6 +444,13 @@ export default async function SummonerPage({
   const currentRank = soloEntry
     ? entryToRank(soloEntry.tier, soloEntry.rank, soloEntry.leaguePoints)
     : result.currentRank;
+  // 래더로 보정된 현재 랭크가 관측 최고보다 높으면 시즌 최고도 그걸로
+  if (soloEntry && ladder && currentRank) {
+    const pts = rankToPoints(soloEntry.tier, soloEntry.rank, soloEntry.leaguePoints);
+    if (!peak || peakKey(soloEntry.tier, pts) > peakKey(peak.tier, peak.pts)) {
+      peak = { ...currentRank, at: ladder.fetchedAt, pts };
+    }
+  }
 
   // 봇 트래픽은 최근 검색에 기록하지 않는다
   if (!isBot)

@@ -1,7 +1,7 @@
 // 티어/디비전/LP ↔ 단일 수치(포인트) 변환.
 // 아이언4 0LP = 0pt, 디비전당 100pt, 티어당 400pt. 마스터 이상은 2800 + LP.
 
-const TIERS = [
+export const TIERS = [
   "IRON",
   "BRONZE",
   "SILVER",
