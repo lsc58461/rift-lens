@@ -122,12 +122,52 @@ export async function latestLeagueSnapshot(
 ): Promise<LeagueEntry[] | null> {
   const sql = await getSql();
   const rows = await sql`
-    SELECT entries, created_at FROM league_snapshots
+    SELECT ${sql.unsafe(SNAP_COLS)}, created_at FROM league_snapshots
     WHERE fp = ${fp} AND platform = ${platform} AND puuid = ${puuid}
     ORDER BY created_at DESC LIMIT 1`;
-  const r = rows[0];
-  if (!r || !fresh(r.created_at as string, maxAgeMs)) return null;
-  return r.entries as LeagueEntry[];
+  const r = rows[0] as unknown as (SnapCols & { created_at: string }) | undefined;
+  if (!r || !fresh(r.created_at, maxAgeMs)) return null;
+  return snapToEntries(r);
+}
+
+// 스냅샷 컬럼 ↔ LeagueEntry[] (entries jsonb 제거 후 조립용)
+const SNAP_COLS = `solo_tier, solo_rank, solo_lp, solo_wins, solo_losses,
+  solo_hot_streak, solo_veteran, solo_fresh_blood, solo_inactive,
+  flex_tier, flex_rank, flex_lp, flex_wins, flex_losses,
+  flex_hot_streak, flex_veteran, flex_fresh_blood, flex_inactive, other_entries`;
+interface SnapCols {
+  solo_tier: string | null; solo_rank: string | null; solo_lp: number | null;
+  solo_wins: number | null; solo_losses: number | null;
+  solo_hot_streak: boolean | null; solo_veteran: boolean | null;
+  solo_fresh_blood: boolean | null; solo_inactive: boolean | null;
+  flex_tier: string | null; flex_rank: string | null; flex_lp: number | null;
+  flex_wins: number | null; flex_losses: number | null;
+  flex_hot_streak: boolean | null; flex_veteran: boolean | null;
+  flex_fresh_blood: boolean | null; flex_inactive: boolean | null;
+  other_entries: LeagueEntry[] | null;
+}
+function snapToEntries(r: SnapCols): LeagueEntry[] {
+  const out: LeagueEntry[] = [];
+  const build = (
+    q: string, t: string | null, rk: string | null, lp: number | null, w: number | null,
+    l: number | null, hs: boolean | null, vt: boolean | null, fb: boolean | null, ia: boolean | null,
+  ) => {
+    if (!t) return;
+    const e: LeagueEntry = {
+      queueType: q, tier: t, rank: rk ?? "I", leaguePoints: lp ?? 0, wins: w ?? 0, losses: l ?? 0,
+    };
+    if (hs !== null) e.hotStreak = hs;
+    if (vt !== null) e.veteran = vt;
+    if (fb !== null) e.freshBlood = fb;
+    if (ia !== null) e.inactive = ia;
+    out.push(e);
+  };
+  build("RANKED_SOLO_5x5", r.solo_tier, r.solo_rank, r.solo_lp, r.solo_wins, r.solo_losses,
+    r.solo_hot_streak, r.solo_veteran, r.solo_fresh_blood, r.solo_inactive);
+  build("RANKED_FLEX_SR", r.flex_tier, r.flex_rank, r.flex_lp, r.flex_wins, r.flex_losses,
+    r.flex_hot_streak, r.flex_veteran, r.flex_fresh_blood, r.flex_inactive);
+  if (Array.isArray(r.other_entries)) out.push(...r.other_entries);
+  return out;
 }
 
 /** 최근 3일 스냅샷에서 그랜드마스터·챌린저의 실제 LP 컷(하위 5%)을 뽑는다.
@@ -210,11 +250,18 @@ export async function insertLeagueSnapshot(
 ): Promise<void> {
   const sql = await getSql();
   const solo = entries.find((e) => e.queueType === "RANKED_SOLO_5x5");
+  const flex = entries.find((e) => e.queueType === "RANKED_FLEX_SR");
+  const other = entries.filter((e) => e !== solo && e !== flex);
   const tier = solo?.tier ?? null;
   const rank = solo?.rank ?? null;
   const lp = solo?.leaguePoints ?? null;
   const wins = solo?.wins ?? null;
   const losses = solo?.losses ?? null;
+  const flexTier = flex?.tier ?? null;
+  const flexRank = flex?.rank ?? null;
+  const flexLp = flex?.leaguePoints ?? null;
+  const flexWins = flex?.wins ?? null;
+  const flexLosses = flex?.losses ?? null;
 
   // 직전 스냅샷과 값이 같으면 새 행을 만들지 않고 관측 시각만 갱신한다.
   // (변화가 없는데 행을 쌓으면 히스토리에 의미 없는 중복만 늘고,
@@ -231,14 +278,24 @@ export async function insertLeagueSnapshot(
       AND solo_lp IS NOT DISTINCT FROM ${lp}
       AND solo_wins IS NOT DISTINCT FROM ${wins}
       AND solo_losses IS NOT DISTINCT FROM ${losses}
+      AND flex_tier IS NOT DISTINCT FROM ${flexTier}
+      AND flex_rank IS NOT DISTINCT FROM ${flexRank}
+      AND flex_lp IS NOT DISTINCT FROM ${flexLp}
     RETURNING 1`;
   if (touched.length > 0) return;
 
   await sql`
     INSERT INTO league_snapshots
-      (fp, platform, puuid, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses, entries)
-    VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank},
-            ${lp}, ${wins}, ${losses},
+      (fp, platform, puuid, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses,
+       solo_hot_streak, solo_veteran, solo_fresh_blood, solo_inactive,
+       flex_tier, flex_rank, flex_lp, flex_wins, flex_losses,
+       flex_hot_streak, flex_veteran, flex_fresh_blood, flex_inactive,
+       other_entries, cols_synced, entries)
+    VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank}, ${lp}, ${wins}, ${losses},
+            ${solo?.hotStreak ?? null}, ${solo?.veteran ?? null}, ${solo?.freshBlood ?? null}, ${solo?.inactive ?? null},
+            ${flexTier}, ${flexRank}, ${flexLp}, ${flexWins}, ${flexLosses},
+            ${flex?.hotStreak ?? null}, ${flex?.veteran ?? null}, ${flex?.freshBlood ?? null}, ${flex?.inactive ?? null},
+            ${other.length ? sql.json(other as never) : null}, true,
             ${sql.json(entries as never)})`;
 }
 

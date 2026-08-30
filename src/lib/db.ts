@@ -66,6 +66,22 @@ const SCHEMA_SQL = `
       entries jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    -- entries(jsonb)를 컬럼으로 분해 (2026-08-30): 솔로 플래그·자유랭크 전부, 그 외 큐는 other_entries
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_hot_streak boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_veteran boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_fresh_blood boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_inactive boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_tier text;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_rank text;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_lp int;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_wins int;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_losses int;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_hot_streak boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_veteran boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_fresh_blood boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_inactive boolean;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS other_entries jsonb;
+    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS cols_synced boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS league_snap_idx
     ON league_snapshots (fp, platform, puuid, created_at DESC);
     -- rank_pts 계산은 platform 없이 (fp, puuid)로 최신 스냅샷을 찾으므로 전용 인덱스

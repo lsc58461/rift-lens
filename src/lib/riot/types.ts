@@ -18,12 +18,16 @@ export interface RiotAccount {
 }
 
 export interface LeagueEntry {
-  queueType: string; // RANKED_SOLO_5x5 | RANKED_FLEX_SR
+  queueType: string; // RANKED_SOLO_5x5 | RANKED_FLEX_SR | 그 외(프리메이드·이벤트)
   tier: string; // IRON..CHALLENGER
   rank: string; // I..IV
   leaguePoints: number;
   wins: number;
   losses: number;
+  hotStreak?: boolean;
+  veteran?: boolean;
+  freshBlood?: boolean;
+  inactive?: boolean;
 }
 
 export interface MatchParticipant {
