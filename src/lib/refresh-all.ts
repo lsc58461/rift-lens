@@ -214,6 +214,14 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       if (fresh) await save({ ...fresh, roundActive: false });
       return;
     }
+    // 라운드 도는 사이 "취소 후 새로 시작"이나 커서 되돌리기가 있었으면(시작 시각·커서가
+    // 내가 점유할 때와 다름) 내 커서로 덮어쓰지 않는다 — 옛 라운드가 새 바퀴의 커서를
+    // 6천으로 밀어 올려 앞쪽을 통째로 건너뛰던 사고(2026-08-30) 방지
+    if (fresh.startedAt !== state.startedAt || (fresh.cursor ?? 0) !== cursor) {
+      console.log(`[refresh-all] 바퀴가 바뀌어 옛 라운드 결과를 버림 (cursor ${cursor} → ${fresh.cursor})`);
+      await save({ ...fresh, roundActive: false });
+      return;
+    }
     const didWork = refreshed > 0 || deep > 0;
     const passWork = (fresh.passWork ?? 0) + refreshed + deep;
     state = {
