@@ -39,8 +39,6 @@ const BASE_COLS = [
   "game_creation", "game_duration", "queue_id", "patch", "rank_pts",
 ];
 const COLS = [...BASE_COLS, ...COL_TO_FIELD.map(([c]) => c)];
-// [전환 중] PK 교체 전까지 puuid 컬럼(NOT NULL)도 함께 기록 — 교체 후 제거
-const WRITE_COLS = [...COLS, "puuid"];
 
 function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, number>): ParticipantRow[] {
   return m.participants
@@ -51,7 +49,6 @@ function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, num
         match_id: m.matchId,
         platform,
         player_id: ids.get(p.puuid),
-        puuid: p.puuid,
         idx,
         team_id: p.teamId,
         win: p.win,
@@ -111,7 +108,7 @@ async function upsertRows(sql: Sql, rows: ParticipantRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500);
     await sql`
-      INSERT INTO match_participants ${sql(chunk, ...WRITE_COLS)}
+      INSERT INTO match_participants ${sql(chunk, ...COLS)}
       ON CONFLICT (fp, match_id, player_id) DO UPDATE SET ${sql.unsafe(UPSERT_SET)}`;
   }
 }
