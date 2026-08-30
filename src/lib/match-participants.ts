@@ -34,13 +34,13 @@ const COL_TO_FIELD: [string, keyof MatchParticipant][] = [
 const MULTIKILL_COLS = ["double_kills", "triple_kills", "quadra_kills", "penta_kills"];
 
 const BASE_COLS = [
-  "fp", "match_id", "platform", "puuid", "idx", "team_id", "win", "champion_name", "team_position",
+  "fp", "match_id", "platform", "puuid", "player_id", "idx", "team_id", "win", "champion_name", "team_position",
   "riot_game_name", "riot_tag_line", "kills", "deaths", "assists", "items", "ext_synced",
   "game_creation", "game_duration", "queue_id", "patch", "rank_pts",
 ];
 const COLS = [...BASE_COLS, ...COL_TO_FIELD.map(([c]) => c)];
 
-function toRows(fp: string, platform: string, m: MatchInfo): ParticipantRow[] {
+function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, number>): ParticipantRow[] {
   return m.participants
     .filter((p) => p && p.puuid)
     .map((p, idx) => {
@@ -49,6 +49,7 @@ function toRows(fp: string, platform: string, m: MatchInfo): ParticipantRow[] {
         match_id: m.matchId,
         platform,
         puuid: p.puuid,
+        player_id: ids.get(p.puuid) ?? null,
         idx,
         team_id: p.teamId,
         win: p.win,
@@ -88,8 +89,20 @@ const UPSERT_SET = [
     .filter((c) => !MULTIKILL_COLS.includes(c))
     .map((c) => `${c} = coalesce(EXCLUDED.${c}, match_participants.${c})`),
   "patch = coalesce(EXCLUDED.patch, match_participants.patch)",
+  "player_id = coalesce(EXCLUDED.player_id, match_participants.player_id)",
   "ext_synced = true",
 ].join(", ");
+
+/** puuid → players.id (없으면 등록). DO UPDATE 로 기존 행도 RETURNING 되게 한다. */
+export async function resolvePlayerIds(sql: Sql, puuids: string[]): Promise<Map<string, number>> {
+  const uniq = [...new Set(puuids.filter(Boolean))];
+  if (uniq.length === 0) return new Map();
+  const rows = (await sql`
+    INSERT INTO players (puuid) SELECT unnest(${uniq}::text[])
+    ON CONFLICT (puuid) DO UPDATE SET puuid = EXCLUDED.puuid
+    RETURNING id, puuid`) as unknown as { id: number; puuid: string }[];
+  return new Map(rows.map((r) => [r.puuid, r.id]));
+}
 
 async function upsertRows(sql: Sql, rows: ParticipantRow[]): Promise<void> {
   if (rows.length === 0) return;
@@ -108,7 +121,8 @@ export async function syncParticipantsFromMatch(
   match: MatchInfo,
 ): Promise<void> {
   const sql = await getSql();
-  await upsertRows(sql, toRows(fp, platform, match));
+  const ids = await resolvePlayerIds(sql, match.participants.map((p) => p?.puuid));
+  await upsertRows(sql, toRows(fp, platform, match, ids));
 }
 
 /** 팀 요약·밴 행 기록 — 새 캡처가 있을 때만 교체(빈값이면 기존 유지) */

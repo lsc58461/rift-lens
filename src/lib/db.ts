@@ -339,6 +339,13 @@ const SCHEMA_SQL = `
     ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS game_ended_in_early_surrender boolean;
     -- 확장 필드(위 컬럼들)를 JSON에서 옮겼는지 — 컬럼이 나중에 추가돼 기존 행 채우기용
     ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS ext_synced boolean NOT NULL DEFAULT false;
+    -- 플레이어 사전: puuid(78자) ↔ 정수 id. 참가자 행은 player_id 만 갖는다 (2026-08-30).
+    -- 키 이관 때 puuid 가 전부 바뀌어도 여기 puuid 만 갈아끼우면 참가자 행은 그대로.
+    CREATE TABLE IF NOT EXISTS players (
+      id int GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      puuid text NOT NULL UNIQUE
+    );
+    ALTER TABLE match_participants ADD COLUMN IF NOT EXISTS player_id int;
     CREATE INDEX IF NOT EXISTS mp_patch_champ_idx ON match_participants (fp, patch, champion_name);
     CREATE INDEX IF NOT EXISTS mp_puuid_time_idx ON match_participants (fp, puuid, game_creation DESC);
     CREATE INDEX IF NOT EXISTS mp_patch_rank_idx ON match_participants (fp, patch, rank_pts);
