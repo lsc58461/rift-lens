@@ -13,9 +13,31 @@ const sql = postgres(process.env.DATABASE_URL, { max: 2, connect_timeout: 10 });
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // ── 헬스체크 ────────────────────────────────────────────
+// 다운 상태는 DB(app_settings 'discord:down_since')에도 둔다 — 배포로 봇이 재시작되면
+// 메모리 상태가 날아가 복구 알림을 못 보내던 문제(2026-08-30) 방지.
 let failCount = 0;
 let isDown = false;
 let downSince = null;
+
+async function loadDownState() {
+  const r = await sql`SELECT value FROM app_settings WHERE key = 'discord:down_since'`.catch(() => []);
+  const since = Number(r[0]?.value);
+  if (Number.isFinite(since) && since > 0) {
+    isDown = true;
+    downSince = since;
+    console.log(`[bot] 재시작 전 다운 상태 복원 (since ${new Date(since).toISOString()})`);
+  }
+}
+async function saveDownState(since) {
+  if (since) {
+    await sql`
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ('discord:down_since', ${sql.json(since)}, now())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`.catch(() => {});
+  } else {
+    await sql`DELETE FROM app_settings WHERE key = 'discord:down_since'`.catch(() => {});
+  }
+}
 
 async function checkOnce() {
   try {
@@ -58,6 +80,7 @@ async function healthLoop() {
       isDown = false;
       const dur = downSince ? fmtDuration(Date.now() - downSince) : "?";
       downSince = null;
+      await saveDownState(null);
       await broadcast(
         new EmbedBuilder()
           .setColor(0x22c55e)
@@ -72,6 +95,7 @@ async function healthLoop() {
     if (!isDown && failCount >= FAIL_THRESHOLD) {
       isDown = true;
       downSince = Date.now();
+      await saveDownState(downSince);
       await broadcast(
         new EmbedBuilder()
           .setColor(0xef4444)
@@ -181,8 +205,9 @@ async function patchLoop() {
   await setLastAnnouncedPatch(latest);
 }
 
-client.once("clientReady", () => {
+client.once("clientReady", async () => {
   console.log(`[bot] 로그인: ${client.user.tag}, 길드 ${client.guilds.cache.size}개`);
+  await loadDownState();
   // 상태에 링크는 클릭이 안 되므로 커맨드 안내를 띄운다 (주소는 봇 프로필 소개에)
   client.user.setActivity({
     type: ActivityType.Custom,
