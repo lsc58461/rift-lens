@@ -229,7 +229,7 @@ async function findCandidates(limit: number): Promise<Candidate[]> {
       LIMIT ${limit * 2}
     ),
     named AS (
-      SELECT DISTINCT ON (c.puuid) c.puuid, c.gc,
+      SELECT DISTINCT ON (c.puuid) c.puuid, c.player_id, c.gc,
              mp.riot_game_name AS name, mp.riot_tag_line AS tag, mp.platform, mp.match_id AS mid
       FROM cand c
       JOIN match_participants mp ON mp.fp = ${fp} AND mp.player_id = c.player_id
@@ -239,7 +239,7 @@ async function findCandidates(limit: number): Promise<Candidate[]> {
     FROM named n
     LEFT JOIN LATERAL (
       SELECT solo_tier, solo_rank, solo_lp FROM league_snapshots l
-      WHERE l.fp = ${fp} AND l.platform = n.platform AND l.puuid = n.puuid
+      WHERE l.fp = ${fp} AND l.platform = n.platform AND l.player_id = n.player_id
         AND l.solo_tier IS NOT NULL
       ORDER BY l.created_at DESC LIMIT 1) ls ON true
     WHERE NOT EXISTS (

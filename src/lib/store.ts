@@ -119,7 +119,8 @@ export async function latestLeagueSnapshot(
   const sql = await getSql();
   const rows = await sql`
     SELECT ${sql.unsafe(SNAP_COLS)}, created_at FROM league_snapshots
-    WHERE fp = ${fp} AND platform = ${platform} AND puuid = ${puuid}
+    WHERE fp = ${fp} AND platform = ${platform}
+      AND player_id = (SELECT id FROM players WHERE puuid = ${puuid})
     ORDER BY created_at DESC LIMIT 1`;
   const r = rows[0] as unknown as (SnapCols & { created_at: string }) | undefined;
   if (!r || !fresh(r.created_at, maxAgeMs)) return null;
@@ -175,11 +176,11 @@ export async function apexCutoffsFromSnapshots(): Promise<{
   const sql = await getSql();
   const rows = await sql`
     WITH latest AS (
-      SELECT DISTINCT ON (puuid) puuid, solo_tier, solo_lp
+      SELECT DISTINCT ON (player_id) player_id, solo_tier, solo_lp
       FROM league_snapshots
       WHERE created_at > now() - interval '3 days'
         AND solo_tier IN ('GRANDMASTER', 'CHALLENGER') AND solo_lp IS NOT NULL
-      ORDER BY puuid, created_at DESC)
+      ORDER BY player_id, created_at DESC)
     SELECT solo_tier AS tier, count(*)::int AS n,
            percentile_cont(0.05) WITHIN GROUP (ORDER BY solo_lp) AS cut
     FROM latest GROUP BY 1`;
@@ -216,9 +217,10 @@ export async function nearestRankSnapshots(
     SELECT q.puuid, q.at, s.solo_tier, s.solo_rank, s.solo_lp,
            (extract(epoch from s.created_at) * 1000)::bigint AS snap_at
     FROM jsonb_to_recordset(${sql.json(pairs as never)}) AS q(puuid text, at bigint)
+    JOIN players pl ON pl.puuid = q.puuid
     CROSS JOIN LATERAL (
       SELECT solo_tier, solo_rank, solo_lp, created_at FROM league_snapshots l
-      WHERE l.fp = ${fp} AND l.platform = ${platform} AND l.puuid = q.puuid
+      WHERE l.fp = ${fp} AND l.platform = ${platform} AND l.player_id = pl.id
         AND l.solo_tier IS NOT NULL
       ORDER BY abs(extract(epoch from l.created_at) * 1000 - q.at) LIMIT 1
     ) s`;
@@ -258,7 +260,8 @@ export async function insertLeagueSnapshot(
   const flexLp = flex?.leaguePoints ?? null;
   const flexWins = flex?.wins ?? null;
   const flexLosses = flex?.losses ?? null;
-  const playerId = (await resolvePlayerIds(sql, [puuid])).get(puuid) ?? null;
+  const playerId = (await resolvePlayerIds(sql, [puuid])).get(puuid);
+  if (!playerId) throw new Error(`player id 미해결: ${puuid.slice(0, 12)}`);
 
   // 직전 스냅샷과 값이 같으면 새 행을 만들지 않고 관측 시각만 갱신한다.
   // (변화가 없는데 행을 쌓으면 히스토리에 의미 없는 중복만 늘고,
@@ -267,7 +270,7 @@ export async function insertLeagueSnapshot(
     UPDATE league_snapshots SET created_at = now()
     WHERE id = (
       SELECT id FROM league_snapshots
-      WHERE fp = ${fp} AND puuid = ${puuid}
+      WHERE fp = ${fp} AND player_id = ${playerId}
       ORDER BY created_at DESC LIMIT 1
     )
       AND solo_tier IS NOT DISTINCT FROM ${tier}
@@ -283,12 +286,12 @@ export async function insertLeagueSnapshot(
 
   await sql`
     INSERT INTO league_snapshots
-      (fp, platform, puuid, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses,
+      (fp, platform, solo_tier, solo_rank, solo_lp, solo_wins, solo_losses,
        solo_hot_streak, solo_veteran, solo_fresh_blood, solo_inactive,
        flex_tier, flex_rank, flex_lp, flex_wins, flex_losses,
        flex_hot_streak, flex_veteran, flex_fresh_blood, flex_inactive,
        other_entries, player_id)
-    VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank}, ${lp}, ${wins}, ${losses},
+    VALUES (${fp}, ${platform}, ${tier}, ${rank}, ${lp}, ${wins}, ${losses},
             ${solo?.hotStreak ?? null}, ${solo?.veteran ?? null}, ${solo?.freshBlood ?? null}, ${solo?.inactive ?? null},
             ${flexTier}, ${flexRank}, ${flexLp}, ${flexWins}, ${flexLosses},
             ${flex?.hotStreak ?? null}, ${flex?.veteran ?? null}, ${flex?.freshBlood ?? null}, ${flex?.inactive ?? null},
@@ -314,7 +317,8 @@ export async function latestLeagueSnapshotAny(
   const rows = await sql`
     SELECT solo_tier, solo_rank, solo_lp, solo_wins, solo_losses, created_at
     FROM league_snapshots
-    WHERE fp = ${fp} AND platform = ${platform} AND puuid = ${puuid}
+    WHERE fp = ${fp} AND platform = ${platform}
+      AND player_id = (SELECT id FROM players WHERE puuid = ${puuid})
     ORDER BY created_at DESC LIMIT 1`;
   return (rows[0] as LeagueSnapRow | undefined) ?? null;
 }
@@ -330,7 +334,8 @@ export async function listLeagueSnapshots(
   const rows = await sql`
     SELECT solo_tier, solo_rank, solo_lp, solo_wins, solo_losses, created_at
     FROM league_snapshots
-    WHERE fp = ${fp} AND platform = ${platform} AND puuid = ${puuid}
+    WHERE fp = ${fp} AND platform = ${platform}
+      AND player_id = (SELECT id FROM players WHERE puuid = ${puuid})
     ORDER BY created_at ASC LIMIT ${limit}`;
   return rows as unknown as LeagueSnapRow[];
 }
@@ -855,7 +860,7 @@ export async function listLegacyIdentities(
   const rows = await sql`
     SELECT s.platform, s.game_name, s.tag_line, s.fp AS old_fp, s.puuid AS old_puuid,
            (SELECT count(*) FROM league_snapshots ls
-             WHERE ls.fp = s.fp AND ls.puuid = s.puuid) AS snaps
+             WHERE ls.fp = s.fp AND ls.player_id = (SELECT id FROM players WHERE puuid = s.puuid)) AS snaps
     FROM summoners s
     WHERE s.fp <> ${curFp}
     ORDER BY snaps DESC
@@ -873,18 +878,21 @@ export async function migrateLegacyIdentity(
   newPuuid: string,
 ): Promise<number> {
   const sql = await getSql();
+  // puuid 는 players 사전에만 있다 — 새 puuid 의 id 를 확보해 스냅샷을 그쪽으로 옮긴다
+  const newId = (await resolvePlayerIds(sql, [newPuuid])).get(newPuuid);
+  if (!newId) throw new Error("player id 미해결");
   const moved = await sql`
     UPDATE league_snapshots
-    SET fp = ${newFp}, puuid = ${newPuuid}
-    WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}
+    SET fp = ${newFp}, player_id = ${newId}
+    WHERE fp = ${id.old_fp} AND player_id = (SELECT id FROM players WHERE puuid = ${id.old_puuid})
       AND NOT EXISTS (
         SELECT 1 FROM league_snapshots x
-        WHERE x.fp = ${newFp} AND x.puuid = ${newPuuid}
+        WHERE x.fp = ${newFp} AND x.player_id = ${newId}
           AND x.created_at = league_snapshots.created_at)
     RETURNING 1`;
   await sql`
     DELETE FROM league_snapshots
-    WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}`;
+    WHERE fp = ${id.old_fp} AND player_id = (SELECT id FROM players WHERE puuid = ${id.old_puuid})`;
   await sql`
     DELETE FROM summoners
     WHERE fp = ${id.old_fp} AND puuid = ${id.old_puuid}`;

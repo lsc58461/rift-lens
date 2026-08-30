@@ -57,7 +57,7 @@ const SCHEMA_SQL = `
       id bigserial PRIMARY KEY,
       fp text NOT NULL,
       platform text NOT NULL,
-      puuid text NOT NULL,
+      player_id int NOT NULL, -- players.id (puuid 사전)
       solo_tier text,
       solo_rank text,
       solo_lp int,
@@ -82,13 +82,12 @@ const SCHEMA_SQL = `
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_fresh_blood boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_inactive boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS other_entries jsonb;
-    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS player_id int; -- players.id (puuid 사전)
     ALTER TABLE league_snapshots DROP COLUMN IF EXISTS cols_synced;
-    CREATE INDEX IF NOT EXISTS league_snap_idx
-    ON league_snapshots (fp, platform, puuid, created_at DESC);
-    -- rank_pts 계산은 platform 없이 (fp, puuid)로 최신 스냅샷을 찾으므로 전용 인덱스
-    CREATE INDEX IF NOT EXISTS league_snap_puuid_idx
-    ON league_snapshots (fp, puuid, created_at DESC);
+    -- puuid 인덱스 2개(사실상 중복) → player_id 하나로 (2026-08-30)
+    DROP INDEX IF EXISTS league_snap_idx;
+    DROP INDEX IF EXISTS league_snap_puuid_idx;
+    CREATE INDEX IF NOT EXISTS league_snap_player_idx
+    ON league_snapshots (fp, player_id, created_at DESC);
 
     -- 분석 결과 (quick/deep) — 소환사·종류당 1행 upsert
     CREATE TABLE IF NOT EXISTS analyses (

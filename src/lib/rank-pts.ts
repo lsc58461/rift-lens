@@ -1,5 +1,5 @@
 // 매치 평균 랭크점수 계산 + 랭크 브라켓 정의.
-// 참가자 puuid를 league_snapshots(최신)에 조인해 rankToPoints와 같은 스케일로
+// 참가자 player_id를 league_snapshots(최신)에 조인해 rankToPoints와 같은 스케일로
 // 점수화하고 평균낸다. 랭크 필터(챔피언 통계)의 근거가 된다.
 import "server-only";
 import { getSql } from "@/lib/db";
@@ -60,11 +60,10 @@ export async function recomputeRankPtsBatch(limit = 500): Promise<number> {
              count(pts.p) AS known
       FROM todo t
       JOIN match_participants mp ON mp.fp = $1 AND mp.match_id = t.match_id
-      JOIN players pl ON pl.id = mp.player_id
       LEFT JOIN LATERAL (
         SELECT ${LS_POINTS} AS p
         FROM league_snapshots ls
-        WHERE ls.fp = $1 AND ls.puuid = pl.puuid
+        WHERE ls.fp = $1 AND ls.player_id = mp.player_id
         ORDER BY ls.created_at DESC LIMIT 1
       ) pts ON true
       GROUP BY t.match_id
