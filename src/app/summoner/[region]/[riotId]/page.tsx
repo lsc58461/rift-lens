@@ -46,11 +46,12 @@ import {
   getStoredResult,
   runQuickAnalysis,
 } from "@/lib/mmr/deep-jobs";
-import { pointsToRank, TIER_COLORS, TIERS, entryToRank, isApexPoints, rankToPoints } from "@/lib/mmr/rank";
+import { APEX_TIERS, pointsToRank, TIER_COLORS, TIERS, entryToRank, isApexPoints, rankToPoints } from "@/lib/mmr/rank";
 
 // 시즌 최고 비교키 — 티어 우선, 그다음 점수. 마스터 이상은 같은 LP라도 챌 > 그마 > 마스터
 // (라이엇이 승격을 일괄 반영해서 같은 LP가 다른 티어로 관측될 수 있다)
-const peakKey = (tier: string, pts: number) => TIERS.indexOf(tier as (typeof TIERS)[number]) * 100_000 + pts;
+const TIER_ORDER: readonly string[] = [...TIERS, ...APEX_TIERS]; // IRON..CHALLENGER
+const peakKey = (tier: string, pts: number) => TIER_ORDER.indexOf(tier) * 100_000 + pts;
 import {
   computeLpInsight,
   hasLpSignal,

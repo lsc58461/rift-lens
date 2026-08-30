@@ -11,7 +11,7 @@ export const TIERS = [
   "DIAMOND",
 ] as const;
 
-const APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"] as const;
+export const APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"] as const;
 const APEX_BASE = TIERS.length * 400; // 2800
 
 // 마스터 이상은 LP만으로 티어가 정해지지 않는다(그마·챌은 인원 컷). 포인트를
