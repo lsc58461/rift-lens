@@ -219,11 +219,12 @@ async function findCandidates(limit: number): Promise<Candidate[]> {
   // 최신 경기 이름과 최신 스냅샷 티어를 붙인다 (JSON 펼치기 없음)
   const rows = await sql`
     WITH cand AS (
-      SELECT mp.puuid, max(mp.game_creation) AS gc
+      SELECT mp.player_id, pl.puuid, max(mp.game_creation) AS gc
       FROM match_participants mp
+      JOIN players pl ON pl.id = mp.player_id
       WHERE mp.fp = ${fp} AND mp.riot_game_name <> '' AND mp.riot_tag_line <> ''
-        AND NOT EXISTS (SELECT 1 FROM recent_searches r WHERE r.puuid = mp.puuid)
-      GROUP BY mp.puuid
+        AND NOT EXISTS (SELECT 1 FROM recent_searches r WHERE r.puuid = pl.puuid)
+      GROUP BY mp.player_id, pl.puuid
       ORDER BY gc DESC
       LIMIT ${limit * 2}
     ),
@@ -231,7 +232,7 @@ async function findCandidates(limit: number): Promise<Candidate[]> {
       SELECT DISTINCT ON (c.puuid) c.puuid, c.gc,
              mp.riot_game_name AS name, mp.riot_tag_line AS tag, mp.platform, mp.match_id AS mid
       FROM cand c
-      JOIN match_participants mp ON mp.fp = ${fp} AND mp.puuid = c.puuid
+      JOIN match_participants mp ON mp.fp = ${fp} AND mp.player_id = c.player_id
       ORDER BY c.puuid, mp.game_creation DESC
     )
     SELECT n.name, n.tag, n.puuid, ls.solo_tier AS tier, ls.solo_rank AS rank, ls.solo_lp AS lp

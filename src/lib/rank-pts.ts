@@ -60,10 +60,11 @@ export async function recomputeRankPtsBatch(limit = 500): Promise<number> {
              count(pts.p) AS known
       FROM todo t
       JOIN match_participants mp ON mp.fp = $1 AND mp.match_id = t.match_id
+      JOIN players pl ON pl.id = mp.player_id
       LEFT JOIN LATERAL (
         SELECT ${LS_POINTS} AS p
         FROM league_snapshots ls
-        WHERE ls.fp = $1 AND ls.puuid = mp.puuid
+        WHERE ls.fp = $1 AND ls.puuid = pl.puuid
         ORDER BY ls.created_at DESC LIMIT 1
       ) pts ON true
       GROUP BY t.match_id
@@ -105,10 +106,12 @@ export async function invalidateRankPtsForPuuids(puuids: string[]): Promise<void
     UPDATE matches m SET rank_pts = NULL
     WHERE m.fp = ${fp} AND m.rank_pts IS NOT NULL
       AND EXISTS (SELECT 1 FROM match_participants p
-                  WHERE p.fp = m.fp AND p.match_id = m.match_id AND p.puuid = ANY(${puuids}))`;
+                  WHERE p.fp = m.fp AND p.match_id = m.match_id
+                    AND p.player_id IN (SELECT id FROM players WHERE puuid = ANY(${puuids})))`;
   await sql`
     UPDATE match_participants p SET rank_pts = NULL
     WHERE p.fp = ${fp} AND p.rank_pts IS NOT NULL
       AND p.match_id IN (SELECT match_id FROM match_participants
-                         WHERE fp = ${fp} AND puuid = ANY(${puuids}))`.catch(() => {});
+                         WHERE fp = ${fp}
+                           AND player_id IN (SELECT id FROM players WHERE puuid = ANY(${puuids})))`.catch(() => {});
 }

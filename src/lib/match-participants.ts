@@ -34,11 +34,13 @@ const COL_TO_FIELD: [string, keyof MatchParticipant][] = [
 const MULTIKILL_COLS = ["double_kills", "triple_kills", "quadra_kills", "penta_kills"];
 
 const BASE_COLS = [
-  "fp", "match_id", "platform", "puuid", "player_id", "idx", "team_id", "win", "champion_name", "team_position",
+  "fp", "match_id", "platform", "player_id", "idx", "team_id", "win", "champion_name", "team_position",
   "riot_game_name", "riot_tag_line", "kills", "deaths", "assists", "items", "ext_synced",
   "game_creation", "game_duration", "queue_id", "patch", "rank_pts",
 ];
 const COLS = [...BASE_COLS, ...COL_TO_FIELD.map(([c]) => c)];
+// [전환 중] PK 교체 전까지 puuid 컬럼(NOT NULL)도 함께 기록 — 교체 후 제거
+const WRITE_COLS = [...COLS, "puuid"];
 
 function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, number>): ParticipantRow[] {
   return m.participants
@@ -48,8 +50,8 @@ function toRows(fp: string, platform: string, m: MatchInfo, ids: Map<string, num
         fp,
         match_id: m.matchId,
         platform,
+        player_id: ids.get(p.puuid),
         puuid: p.puuid,
-        player_id: ids.get(p.puuid) ?? null,
         idx,
         team_id: p.teamId,
         win: p.win,
@@ -89,7 +91,6 @@ const UPSERT_SET = [
     .filter((c) => !MULTIKILL_COLS.includes(c))
     .map((c) => `${c} = coalesce(EXCLUDED.${c}, match_participants.${c})`),
   "patch = coalesce(EXCLUDED.patch, match_participants.patch)",
-  "player_id = coalesce(EXCLUDED.player_id, match_participants.player_id)",
   "ext_synced = true",
 ].join(", ");
 
@@ -110,8 +111,8 @@ async function upsertRows(sql: Sql, rows: ParticipantRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500);
     await sql`
-      INSERT INTO match_participants ${sql(chunk, ...COLS)}
-      ON CONFLICT (fp, match_id, puuid) DO UPDATE SET ${sql.unsafe(UPSERT_SET)}`;
+      INSERT INTO match_participants ${sql(chunk, ...WRITE_COLS)}
+      ON CONFLICT (fp, match_id, player_id) DO UPDATE SET ${sql.unsafe(UPSERT_SET)}`;
   }
 }
 
@@ -123,7 +124,9 @@ export async function syncParticipantsFromMatch(
 ): Promise<void> {
   const sql = await getSql();
   const ids = await resolvePlayerIds(sql, match.participants.map((p) => p?.puuid));
-  await upsertRows(sql, toRows(fp, platform, match, ids));
+  const rows = toRows(fp, platform, match, ids);
+  if (rows.some((r) => !r.player_id)) throw new Error(`player id 미해결: ${match.matchId}`);
+  await upsertRows(sql, rows);
 }
 
 /** 팀 요약·밴 행 기록 — 새 캡처가 있을 때만 교체(빈값이면 기존 유지) */
@@ -226,7 +229,9 @@ function rowToParticipant(r: ParticipantRow): MatchParticipant {
   return p as unknown as MatchParticipant;
 }
 
-const PARTICIPANT_SELECT = COLS.join(", ");
+// 읽기: 참가자 컬럼 + players 조인으로 puuid
+const PARTICIPANT_SELECT = `${COLS.map((c) => `mp.${c}`).join(", ")}, pl.puuid`;
+const PARTICIPANT_FROM = `FROM match_participants mp JOIN players pl ON pl.id = mp.player_id`;
 
 interface MatchMetaRow {
   match_id: string;
@@ -256,7 +261,7 @@ export async function loadMatchInfo(fp: string, matchId: string): Promise<MatchI
     sql`SELECT match_id, game_creation, game_duration, queue_id, patch
         FROM matches WHERE fp = ${fp} AND match_id = ${matchId}`,
     sql.unsafe(
-      `SELECT ${PARTICIPANT_SELECT} FROM match_participants WHERE fp = $1 AND match_id = $2`,
+      `SELECT ${PARTICIPANT_SELECT} ${PARTICIPANT_FROM} WHERE mp.fp = $1 AND mp.match_id = $2`,
       [fp, matchId],
     ),
     loadTeamsAndBans(sql, fp, [matchId]),
@@ -275,7 +280,7 @@ export async function loadMatchesByPuuid(fp: string, puuid: string, limit: numbe
   const sql = await getSql();
   const ids = (await sql`
     SELECT match_id FROM match_participants
-    WHERE fp = ${fp} AND puuid = ${puuid}
+    WHERE fp = ${fp} AND player_id = (SELECT id FROM players WHERE puuid = ${puuid})
     ORDER BY game_creation DESC LIMIT ${limit}`) as unknown as { match_id: string }[];
   if (ids.length === 0) return [];
   const matchIds = ids.map((r) => r.match_id);
@@ -283,7 +288,7 @@ export async function loadMatchesByPuuid(fp: string, puuid: string, limit: numbe
     sql`SELECT match_id, game_creation, game_duration, queue_id, patch
         FROM matches WHERE fp = ${fp} AND match_id = ANY(${matchIds})`,
     sql.unsafe(
-      `SELECT ${PARTICIPANT_SELECT} FROM match_participants WHERE fp = $1 AND match_id = ANY($2)`,
+      `SELECT ${PARTICIPANT_SELECT} ${PARTICIPANT_FROM} WHERE mp.fp = $1 AND mp.match_id = ANY($2)`,
       [fp, matchIds],
     ),
     loadTeamsAndBans(sql, fp, matchIds),
