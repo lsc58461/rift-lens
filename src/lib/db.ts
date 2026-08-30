@@ -63,9 +63,10 @@ const SCHEMA_SQL = `
       solo_lp int,
       solo_wins int,
       solo_losses int,
-      entries jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    -- 옛 entries(jsonb) 제거 — 컬럼(solo_*/flex_*/other_entries)으로 전부 옮김 (2026-08-30)
+    ALTER TABLE league_snapshots DROP COLUMN IF EXISTS entries;
     -- entries(jsonb)를 컬럼으로 분해 (2026-08-30): 솔로 플래그·자유랭크 전부, 그 외 큐는 other_entries
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_hot_streak boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS solo_veteran boolean;
@@ -81,7 +82,7 @@ const SCHEMA_SQL = `
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_fresh_blood boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS flex_inactive boolean;
     ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS other_entries jsonb;
-    ALTER TABLE league_snapshots ADD COLUMN IF NOT EXISTS cols_synced boolean NOT NULL DEFAULT false;
+    ALTER TABLE league_snapshots DROP COLUMN IF EXISTS cols_synced;
     CREATE INDEX IF NOT EXISTS league_snap_idx
     ON league_snapshots (fp, platform, puuid, created_at DESC);
     -- rank_pts 계산은 platform 없이 (fp, puuid)로 최신 스냅샷을 찾으므로 전용 인덱스

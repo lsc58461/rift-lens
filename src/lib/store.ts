@@ -290,13 +290,12 @@ export async function insertLeagueSnapshot(
        solo_hot_streak, solo_veteran, solo_fresh_blood, solo_inactive,
        flex_tier, flex_rank, flex_lp, flex_wins, flex_losses,
        flex_hot_streak, flex_veteran, flex_fresh_blood, flex_inactive,
-       other_entries, cols_synced, entries)
+       other_entries)
     VALUES (${fp}, ${platform}, ${puuid}, ${tier}, ${rank}, ${lp}, ${wins}, ${losses},
             ${solo?.hotStreak ?? null}, ${solo?.veteran ?? null}, ${solo?.freshBlood ?? null}, ${solo?.inactive ?? null},
             ${flexTier}, ${flexRank}, ${flexLp}, ${flexWins}, ${flexLosses},
             ${flex?.hotStreak ?? null}, ${flex?.veteran ?? null}, ${flex?.freshBlood ?? null}, ${flex?.inactive ?? null},
-            ${other.length ? sql.json(other as never) : null}, true,
-            ${sql.json(entries as never)})`;
+            ${other.length ? sql.json(other as never) : null})`;
 }
 
 export interface LeagueSnapRow {
