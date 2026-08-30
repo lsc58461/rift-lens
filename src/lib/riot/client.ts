@@ -472,7 +472,7 @@ export async function getMatch(
     teamId: number;
     win: boolean;
     objectives?: Record<string, { first?: boolean; kills?: number }>;
-    bans?: { championId: number }[];
+    bans?: { championId: number; pickTurn?: number }[];
   }
   const raw = await riotFetch<{
     info: {
@@ -499,6 +499,11 @@ export async function getMatch(
     bans: (raw.info.teams ?? [])
       .flatMap((t) => (t.bans ?? []).map((b) => b.championId))
       .filter((id) => typeof id === "number" && id > 0),
+    teamBans: (raw.info.teams ?? []).flatMap((t) =>
+      (t.bans ?? [])
+        .filter((b) => typeof b.championId === "number" && b.championId > 0)
+        .map((b, i) => ({ teamId: t.teamId, championId: b.championId, pickTurn: b.pickTurn ?? i + 1 })),
+    ),
     teams: (raw.info.teams ?? []).map((t) => {
       const o = t.objectives ?? {};
       return {

@@ -2,7 +2,7 @@
 // puuid가 들어가는 테이블(summoners/matches/league_snapshots)은 API 키 지문(fp)으로 스코프.
 
 import "server-only";
-import { loadMatchInfo, loadMatchesByPuuid, syncParticipantsFromMatch } from "@/lib/match-participants";
+import { loadMatchInfo, loadMatchesByPuuid, syncParticipantsFromMatch, syncTeamsAndBans } from "@/lib/match-participants";
 import { getSql } from "./db";
 import { canon } from "./identity";
 import type { MmrEstimate } from "./mmr/estimate";
@@ -99,6 +99,7 @@ export async function saveMatchRow(
   // 참가자는 match_participants 가 유일한 원본. 먼저 참가자 행을 쓰고 — 실패하면 던져서
   // 반쪽 저장(메타만 있고 참가자 없음)을 막는다 — 그다음 matches 엔 메타만 남긴다.
   await syncParticipantsFromMatch(fp, platform, match);
+  await syncTeamsAndBans(fp, match);
   await sql`
     INSERT INTO matches (fp, match_id, platform, game_creation, game_duration, queue_id, patch, bans, teams, fields_captured)
     VALUES (${fp}, ${match.matchId}, ${platform}, ${match.gameCreation},

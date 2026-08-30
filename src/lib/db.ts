@@ -363,6 +363,33 @@ const SCHEMA_SQL = `
       PRIMARY KEY (fp, pass_id, pos)
     );
 
+    -- 경기 밴 (경기당 최대 10행) — 챔피언 통계 밴률 집계가 인덱스를 탄다
+    CREATE TABLE IF NOT EXISTS match_bans (
+      fp text NOT NULL,
+      match_id text NOT NULL,
+      champion_id int NOT NULL,
+      team_id smallint,
+      pick_turn smallint,
+      PRIMARY KEY (fp, match_id, champion_id)
+    );
+    CREATE INDEX IF NOT EXISTS match_bans_champ_idx ON match_bans (fp, champion_id);
+    -- 경기 팀 요약 (경기당 2행) — 스코어보드 팀 오브젝트 비교
+    CREATE TABLE IF NOT EXISTS match_teams (
+      fp text NOT NULL,
+      match_id text NOT NULL,
+      team_id smallint NOT NULL,
+      win boolean NOT NULL,
+      first_blood boolean,
+      first_tower boolean,
+      dragon smallint,
+      herald smallint,
+      baron smallint,
+      tower smallint,
+      inhibitor smallint,
+      atakhan smallint,
+      PRIMARY KEY (fp, match_id, team_id)
+    );
+
     -- 문의·버그 신고 접수함 (/feedback → 관리자 문의함). notified는 예약 컬럼(현재 미사용).
     CREATE TABLE IF NOT EXISTS feedback (
       id bigserial PRIMARY KEY,

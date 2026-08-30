@@ -399,19 +399,20 @@ async function buildStats(
     }))
     .sort((a, b) => b.games - a.games);
 
-  // ── 밴 집계 — matches.bans(챔피언 id 배열)를 펼쳐 챔피언별 밴 매치 수를 센다.
-  // 밴 캡처 도입 후 매치만 대상이라, 분모(밴 캡처된 매치 수)도 따로 구해 밴률을 낸다.
+  // ── 밴 집계 — match_bans(경기당 밴 행)를 매치(패치·구간 필터)와 조인해 챔피언별 밴 매치 수.
+  // 밴 캡처 도입 후 매치만 대상이라, 분모(밴이 있는 매치 수)도 따로 구해 밴률을 낸다.
   const [banRows, banTotalRows] = await Promise.all([
     runQuery(sql, `
-      SELECT (b.val #>> '{}')::int AS champ_id, count(*)::int AS n
+      SELECT b.champion_id AS champ_id, count(DISTINCT b.match_id)::int AS n
       FROM matches m
-      CROSS JOIN LATERAL jsonb_array_elements(m.bans) b(val)
+      JOIN match_bans b ON b.fp = m.fp AND b.match_id = m.match_id
       WHERE m.fp = $1 ${patchFilter}
-      GROUP BY (b.val #>> '{}')::int`,
+      GROUP BY b.champion_id`,
       [fp],
     ),
     runQuery(sql, `SELECT count(*)::int AS n FROM matches m
-       WHERE m.fp = $1 AND jsonb_array_length(m.bans) > 0 ${patchFilter}`,
+       WHERE m.fp = $1 ${patchFilter}
+         AND EXISTS (SELECT 1 FROM match_bans b WHERE b.fp = m.fp AND b.match_id = m.match_id)`,
       [fp],
     ),
   ]);

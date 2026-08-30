@@ -118,6 +118,8 @@ export interface MatchInfo {
   bans?: number[];
   /** 팀별 오브젝트 요약 — 캡처 전 매치엔 없음 */
   teams?: MatchTeam[];
+  /** 팀별 밴 상세(픽 순서) — match_bans 저장용. 옛 매치(플랫 bans만 있음)엔 없음 */
+  teamBans?: { teamId: number; championId: number; pickTurn: number }[];
   participants: MatchParticipant[];
 }
 
