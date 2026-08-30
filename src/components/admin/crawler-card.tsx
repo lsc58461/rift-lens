@@ -51,10 +51,10 @@ export function CrawlerCard({ crawlers }: { crawlers: CrawlerStat[] }) {
               <thead className="text-xs text-muted-foreground">
                 <tr className="border-b border-border/60">
                   <th className="py-1.5 pr-3 text-left font-medium">봇</th>
-                  <th className="py-1.5 px-2 text-right font-medium">24시간</th>
-                  <th className="py-1.5 px-2 text-right font-medium">7일</th>
+                  <th className="py-1.5 px-2 text-right font-medium whitespace-nowrap">24시간</th>
+                  <th className="py-1.5 px-2 text-right font-medium whitespace-nowrap">7일</th>
                   <th className="py-1.5 px-2 text-right font-medium whitespace-nowrap">마지막</th>
-                  <th className="py-1.5 pl-3 text-left font-medium">마지막 경로</th>
+                  <th className="py-1.5 pl-3 text-left font-medium whitespace-nowrap">마지막 경로</th>
                 </tr>
               </thead>
               <tbody>
