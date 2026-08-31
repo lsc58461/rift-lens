@@ -7,25 +7,47 @@ const CHOSUNG = [
 ] as const;
 
 /** 비교용 정규화 — NFKC·소문자·공백 제거.
- *  NFKC 는 호환 자모(ㄱ U+3131)를 조합형 초성(U+1100)으로 바꿔 버리므로 다시 호환 자모로 되돌린다
- *  (초성 질의 "ㅅㅁ" 가 DB 의 hangul_chosung 출력·[ㄱ-ㅎ] 판정과 같은 글자로 남게) */
+ *  NFKC 는 호환 자모(ㄱ U+3131, ㄽ U+313D)를 조합형 자모로 바꿔 버리므로 자모 구간은 NFKC 를 건너뛴다.
+ *  겹자모·겹모음은 낱자모로 푼다 — IME 가 "ㄹ"+"ㅅ"을 "ㄽ", "ㅗ"+"ㅏ"를 "ㅘ"로 합치므로 */
 export function compact(s: string): string {
   return s
-    .normalize("NFKC")
+    .replace(/[^\u3131-\u318e]+/g, (seg) => seg.normalize("NFKC"))
     .toLowerCase()
     .replace(/\s+/g, "")
-    .replace(/[ᄀ-ᄒ]/g, (ch) => CHOSUNG[ch.charCodeAt(0) - 0x1100])
-    // 겹자모는 낱자모로 — "ㄹ"+"ㅅ"을 치면 IME 가 "ㄽ" 한 글자로 합치므로 초성 질의 "ㄹㅅ"과 같게
-    .replace(/[ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄ]/g, (ch) => CLUSTER[ch] ?? ch);
+    .replace(/[ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄㅘㅙㅚㅝㅞㅟㅢ]/g, (ch) => CLUSTER[ch] ?? ch);
 }
 
 const CLUSTER: Record<string, string> = {
   "ㄳ": "ㄱㅅ", "ㄵ": "ㄴㅈ", "ㄶ": "ㄴㅎ", "ㄺ": "ㄹㄱ", "ㄻ": "ㄹㅁ", "ㄼ": "ㄹㅂ",
   "ㄽ": "ㄹㅅ", "ㄾ": "ㄹㅌ", "ㄿ": "ㄹㅍ", "ㅀ": "ㄹㅎ", "ㅄ": "ㅂㅅ",
+  "ㅘ": "ㅗㅏ", "ㅙ": "ㅗㅐ", "ㅚ": "ㅗㅣ", "ㅝ": "ㅜㅓ", "ㅞ": "ㅜㅔ", "ㅟ": "ㅜㅣ", "ㅢ": "ㅡㅣ",
 };
 
+// 두벌식 자판 — 영문 키 → 자모 ("fltls" → ㄹㅣㅅㅣㄴ = 리신, "ft" → ㄹㅅ)
+const KEY_TO_JAMO: Record<string, string> = {
+  r: "ㄱ", R: "ㄲ", s: "ㄴ", e: "ㄷ", E: "ㄸ", f: "ㄹ", a: "ㅁ", q: "ㅂ", Q: "ㅃ", t: "ㅅ", T: "ㅆ",
+  d: "ㅇ", w: "ㅈ", W: "ㅉ", c: "ㅊ", z: "ㅋ", x: "ㅌ", v: "ㅍ", g: "ㅎ",
+  k: "ㅏ", o: "ㅐ", i: "ㅑ", O: "ㅒ", j: "ㅓ", p: "ㅔ", u: "ㅕ", P: "ㅖ", h: "ㅗ", y: "ㅛ",
+  n: "ㅜ", b: "ㅠ", m: "ㅡ", l: "ㅣ",
+};
+
+/** 영문만 친 질의를 두벌식 자모 열로 — 영문이 아니면 "" */
+export function englishToJamo(q: string): string {
+  const s = q.replace(/\s+/g, "");
+  if (!s || !/^[a-zA-Z]+$/.test(s)) return "";
+  let out = "";
+  for (const ch of s) out += KEY_TO_JAMO[ch] ?? KEY_TO_JAMO[ch.toLowerCase()] ?? "";
+  return out;
+}
+
+/** 자모 열이 자음만인가 (→ 초성 질의로 본다) */
+export function consonantsOnly(j: string): boolean {
+  return j.length > 0 && !/[ㅏ-ㅣ]/.test(j);
+}
+
+// 중성 — 겹모음은 낱모음으로 풀어 둔다(ㅘ → ㅗㅏ), 질의 쪽 풀기·영타(두 키)와 같은 규칙
 const JUNG = [
-  "ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅘ", "ㅙ", "ㅚ", "ㅛ", "ㅜ", "ㅝ", "ㅞ", "ㅟ", "ㅠ", "ㅡ", "ㅢ", "ㅣ",
+  "ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅗㅏ", "ㅗㅐ", "ㅗㅣ", "ㅛ", "ㅜ", "ㅜㅓ", "ㅜㅔ", "ㅜㅣ", "ㅠ", "ㅡ", "ㅡㅣ", "ㅣ",
 ] as const;
 // 받침 — 겹받침은 낱자모로 풀어 둔다(닭 → ㄷㅏㄹㄱ), 질의 쪽 겹자모 풀기와 같은 규칙
 const JONG = [
@@ -73,7 +95,12 @@ export function matchesKo(target: string, query: string): boolean {
   if (!q) return true;
   const t = compact(target);
   if (t.includes(q)) return true;
-  if (!hasHangul(q)) return false;
-  // 초성만 친 경우("ㄹㅅ") → 초성 열 비교, 그 외("릿", "리시") → 자모 열 비교
-  return chosung(t).includes(q) || jamo(t).includes(jamo(q));
+  if (hasHangul(q)) {
+    // 초성만 친 경우("ㄹㅅ") → 초성 열 비교, 그 외("릿", "리시") → 자모 열 비교
+    return chosung(t).includes(q) || jamo(t).includes(jamo(q));
+  }
+  // 영타("fltls" = 리신, "ft" = ㄹㅅ) — 한글 이름을 영문 자판 그대로 친 경우
+  const ej = englishToJamo(query);
+  if (!ej) return false;
+  return consonantsOnly(ej) ? chosung(t).includes(ej) : jamo(t).includes(ej);
 }
