@@ -11,6 +11,7 @@ import { cache, cached } from "@/lib/cache";
 import { getSql as getDbSql } from "@/lib/db";
 import { getCompletedItemIds, getDDragonVersion } from "@/lib/ddragon";
 import { canon } from "@/lib/identity";
+import { compact } from "@/lib/hangul";
 import {
   clearRenameMapping,
   findSummonerByName,
@@ -166,10 +167,12 @@ export async function getAccountByRiotId(
     account.gameName,
     account.tagLine,
   );
-  // 닉변 감지 — 입력한 이름과 실제 반환된 이름이 다르면(대소문자 제외) 이력 기록
+  // 닉변 감지 — 입력한 이름과 실제 반환된 이름이 다르면 이력 기록.
+  // 라이엇은 띄어쓰기·대소문자를 무시하고 같은 계정을 돌려주므로("hideonbush" → "Hide on bush")
+  // 그 차이는 닉변이 아니다 — compact(공백 제거) 기준으로 비교한다
   if (
-    canon(gameName) !== canon(account.gameName) ||
-    canon(tagLine) !== canon(account.tagLine)
+    compact(gameName) !== compact(account.gameName) ||
+    compact(tagLine) !== compact(account.tagLine)
   ) {
     await recordNameChange(
       platform,

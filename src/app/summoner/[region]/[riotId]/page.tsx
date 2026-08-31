@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apexLadderEntry, ensureApexCutoffs } from "@/lib/apex-ladder";
 import { withLowPriority } from "@/lib/riot/limiter";
 import { isCrawlerUa } from "@/lib/crawler-log";
+import { compact } from "@/lib/hangul";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
 import {
   Crown,
@@ -270,6 +271,18 @@ export default async function SummonerPage({
       redirect(
         `/summoner/${region}/${encodeURIComponent(knownId)}?renamed=${encodeURIComponent(decoded)}`,
       );
+    }
+  }
+
+  // 띄어쓰기·대소문자만 다른 입력("hideonbush#kr1")은 라이엇이 같은 계정으로 풀어준다 —
+  // 표기·저장 키가 갈라지지 않게 정식 표기 URL 로 보낸다 (계정 조회는 24h 캐시라 콜 부담 없음, 봇 제외)
+  if (!isBot) {
+    const acct0 = await getAccountByRiotId(platform, gameName, tagLine).catch(() => null);
+    if (acct0) {
+      const canonicalId = `${acct0.gameName}#${acct0.tagLine}`.normalize("NFKC");
+      if (canonicalId !== decoded && compact(canonicalId) === compact(decoded)) {
+        redirect(`/summoner/${region}/${encodeURIComponent(canonicalId)}`);
+      }
     }
   }
 
