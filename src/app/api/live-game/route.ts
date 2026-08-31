@@ -1,5 +1,5 @@
 // 현재 진행 중인 게임 — 소환사 페이지의 "지금 게임 중" 카드가 페이지 로드 뒤 따로 부른다
-// (페이지 렌더를 늦추지 않기 위해). 랭크 게임(솔로·자유)만. Spectator-v5 1콜(60초 캐시) + 참가자 랭크는 72h 스냅샷
+// (페이지 렌더를 늦추지 않기 위해). 솔로랭크만. Spectator-v5 1콜(60초 캐시) + 참가자 랭크는 72h 스냅샷
 // 캐시 위주, 없는 사람만 3초 예산 안에서 조회하고 나머지는 응답 뒤 저우선으로 채운다.
 import { NextResponse, after, type NextRequest } from "next/server";
 import {
@@ -32,7 +32,7 @@ const QUEUE_LABEL: Record<number, string> = {
   1900: "URF",
 };
 
-const RANKED_QUEUES = new Set([420, 440]); // 솔로랭크 · 자유랭크
+const RANKED_QUEUES = new Set([420]); // 솔로랭크만 (사이트 기준 큐)
 
 export interface LivePlayer {
   puuid: string;
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
   try {
     const account = await getAccountByRiotId(platform, gameName, tagLine);
     const game = await getActiveGame(platform, account.puuid);
-    // 랭크 게임(솔로·자유)만 추적 — 일반·칼바람·아레나 등은 게임 중이어도 카드를 띄우지 않는다
+    // 솔로랭크만 추적 — 자유랭크·일반·칼바람 등은 게임 중이어도 카드를 띄우지 않는다
     if (!game || !RANKED_QUEUES.has(game.gameQueueConfigId ?? -1)) {
       return NextResponse.json({ inGame: false } satisfies LiveGameResponse);
     }
