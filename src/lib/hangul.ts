@@ -12,6 +12,8 @@ const CHOSUNG = [
 export function compact(s: string): string {
   return s
     .replace(/[^\u3131-\u318e]+/g, (seg) => seg.normalize("NFKC"))
+    // \ud638\ucd9c \uc804\uc5d0 \uc774\ubbf8 NFKC \ub97c \uac70\uccd0 \uc870\ud569\ud615 \uc790\ubaa8(U+1100~)\uac00 \ub41c \uae00\uc790\ub294 \ud638\ud658 \uc790\ubaa8\ub85c \ub418\ub3cc\ub9b0\ub2e4
+    .replace(/[\u1100-\u11ff]/g, (ch) => conjoiningToCompat(ch))
     .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/[ㄳㄵㄶㄺㄻㄼㄽㄾㄿㅀㅄㅘㅙㅚㅝㅞㅟㅢ]/g, (ch) => CLUSTER[ch] ?? ch);
@@ -22,6 +24,17 @@ const CLUSTER: Record<string, string> = {
   "ㄽ": "ㄹㅅ", "ㄾ": "ㄹㅌ", "ㄿ": "ㄹㅍ", "ㅀ": "ㄹㅎ", "ㅄ": "ㅂㅅ",
   "ㅘ": "ㅗㅏ", "ㅙ": "ㅗㅐ", "ㅚ": "ㅗㅣ", "ㅝ": "ㅜㅓ", "ㅞ": "ㅜㅔ", "ㅟ": "ㅜㅣ", "ㅢ": "ㅡㅣ",
 };
+
+// 조합형 자모(NFKC 결과) → 호환 자모. 초성 U+1100~1112, 중성 U+1161~1175, 종성 U+11A8~11C2
+const JUNG_COMPAT = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
+const JONG_COMPAT = "ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+function conjoiningToCompat(ch: string): string {
+  const c = ch.charCodeAt(0);
+  if (c >= 0x1100 && c <= 0x1112) return CHOSUNG[c - 0x1100];
+  if (c >= 0x1161 && c <= 0x1175) return JUNG_COMPAT[c - 0x1161];
+  if (c >= 0x11a8 && c <= 0x11c2) return JONG_COMPAT[c - 0x11a8];
+  return ch;
+}
 
 // 두벌식 자판 — 영문 키 → 자모 ("fltls" → ㄹㅣㅅㅣㄴ = 리신, "ft" → ㄹㅅ)
 const KEY_TO_JAMO: Record<string, string> = {
