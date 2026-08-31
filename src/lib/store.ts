@@ -996,6 +996,24 @@ export async function purgeExpiredCache(limit = 5000): Promise<number> {
  * 표시되고 링크도 엉뚱한 곳으로 간다. 우리가 이미 아는 계정은 이 조회로
  * 현재 이름으로 바로잡는다 (API 호출 없음).
  */
+/** puuid → 우리가 추정한 매칭 구간(등록된 소환사만). 현재 게임 카드용 */
+export async function estimatesByPuuid(
+  platform: PlatformRegion,
+  puuids: string[],
+): Promise<Map<string, { label: string; tier: string }>> {
+  const out = new Map<string, { label: string; tier: string }>();
+  if (puuids.length === 0) return out;
+  const sql = await getSql();
+  const rows = (await sql`
+    SELECT puuid, estimated_label, estimated_tier FROM recent_searches
+    WHERE platform = ${platform} AND puuid = ANY(${puuids})
+      AND estimated_label IS NOT NULL AND estimated_tier IS NOT NULL`) as unknown as {
+    puuid: string; estimated_label: string; estimated_tier: string;
+  }[];
+  for (const r of rows) out.set(r.puuid, { label: r.estimated_label, tier: r.estimated_tier });
+  return out;
+}
+
 export async function currentNamesByPuuid(
   fp: string,
   puuids: string[],

@@ -293,6 +293,48 @@ export async function getSummoner(
   return summoner;
 }
 
+// ── 현재 진행 중인 게임 (Spectator-v5) ──────────────────────────────
+export interface ActiveGameParticipant {
+  puuid: string;
+  riotId?: string; // "이름#태그" (라이엇이 주는 그대로)
+  championId: number;
+  teamId: number;
+  spell1Id: number;
+  spell2Id: number;
+  bot: boolean;
+}
+export interface ActiveGame {
+  gameId: number;
+  gameQueueConfigId?: number;
+  gameMode?: string;
+  gameStartTime: number; // epoch ms — 로딩 화면 동안엔 0
+  gameLength: number; // 초
+  participants: ActiveGameParticipant[];
+  bannedChampions?: { championId: number; teamId: number; pickTurn: number }[];
+}
+
+const LIVE_TTL_SEC = 60;
+
+/** 지금 게임 중인지 — 결과(진행 중/아님)를 60초 캐시해 새로고침 연타에도 콜 1번. 아니면 null */
+export async function getActiveGame(
+  platform: PlatformRegion,
+  puuid: string,
+): Promise<ActiveGame | null> {
+  const key = `live:${keyFp()}:${platform}:${puuid}`;
+  const hit = await cache.get<{ game: ActiveGame | null }>(key);
+  if (hit) return hit.game;
+  let game: ActiveGame | null = null;
+  try {
+    game = await riotFetch<ActiveGame>(
+      `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${puuid}`,
+    );
+  } catch (e) {
+    if (!(e instanceof RiotApiError && e.status === 404)) throw e;
+  }
+  await cache.set(key, { game }, LIVE_TTL_SEC);
+  return game;
+}
+
 /**
  * 현재 랭크(솔로랭크/자유랭크) 조회. 언랭이면 빈 배열.
  * league_snapshots에 히스토리로 적재된다 (향후 LP 득실 추적 기반).

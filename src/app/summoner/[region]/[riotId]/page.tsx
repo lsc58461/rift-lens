@@ -41,6 +41,7 @@ import {
   tierEmblemUrl,
 } from "@/lib/ddragon";
 import { StaleRefresh } from "@/components/stale-refresh";
+import { LiveGameCard } from "@/components/live-game-card";
 import {
   getFreshDeepResult,
   getFreshQuickResult,
@@ -579,6 +580,9 @@ export default async function SummonerPage({
           <SearchForm compact />
         </div>
       </div>
+
+      {/* 지금 게임 중이면 같은 게임의 소환사들 — 클라이언트에서 따로 조회(페이지 렌더 지연 없음, 크롤러는 안 부름) */}
+      {!isBot && <LiveGameCard region={region} gameName={gameName} tagLine={tagLine} />}
 
       {/* 본문 2단 — 좌: 매칭 구간 요약 / 우: 추이·전적.
           넓은 화면에서 스크롤을 줄이려고 정보 카드를 옆으로 세운다. */}
