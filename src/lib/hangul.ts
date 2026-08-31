@@ -6,9 +6,15 @@ const CHOSUNG = [
   "ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ",
 ] as const;
 
-/** 비교용 정규화 — NFKC·소문자·공백 제거 */
+/** 비교용 정규화 — NFKC·소문자·공백 제거.
+ *  NFKC 는 호환 자모(ㄱ U+3131)를 조합형 초성(U+1100)으로 바꿔 버리므로 다시 호환 자모로 되돌린다
+ *  (초성 질의 "ㅅㅁ" 가 DB 의 hangul_chosung 출력·[ㄱ-ㅎ] 판정과 같은 글자로 남게) */
 export function compact(s: string): string {
-  return s.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+  return s
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[ᄀ-ᄒ]/g, (ch) => CHOSUNG[ch.charCodeAt(0) - 0x1100]);
 }
 
 /** 한글 음절은 초성으로, 나머지 글자는 그대로 (예: "리 신" → "ㄹㅅ", "Kai'Sa" → "kai'sa") */
