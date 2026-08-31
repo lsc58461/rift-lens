@@ -6,6 +6,7 @@ import { loadMatchInfo, loadMatchesByPuuid, resolvePlayerIds, syncParticipantsFr
 import { getSql } from "./db";
 import { matchNo } from "./match-id";
 import { canon } from "./identity";
+import { compact, hasChosung } from "./hangul";
 import type { MmrEstimate } from "./mmr/estimate";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "./riot/types";
 
@@ -739,15 +740,36 @@ export async function searchRecentSummoners(
   limit = 8,
 ): Promise<SummonerSuggestion[]> {
   const sql = await getSql();
-  const q = `%${canon(query)}%`;
+  // 띄어쓰기 무시("hideonbush" → "Hide on bush") + 초성("ㅍㅇㅋ" → "페이커")
+  const qc = compact(query);
+  if (!qc) return [];
+  const like = `%${qc}%`;
+  const cho = hasChosung(qc);
   const rows = await sql`
     SELECT game_name, tag_line, current_label, current_tier
     FROM recent_searches
     WHERE platform = ${platform}
-      AND (game_name_lower LIKE ${q}
-           OR game_name_lower || '#' || tag_line_lower LIKE ${q})
+      AND (replace(game_name_lower, ' ', '') LIKE ${like}
+           OR replace(game_name_lower || '#' || tag_line_lower, ' ', '') LIKE ${like}
+           OR (${cho} AND hangul_chosung(replace(game_name_lower, ' ', '')) LIKE ${like}))
     ORDER BY searched_at DESC LIMIT ${limit}`;
   return rows as unknown as SummonerSuggestion[];
+}
+
+/** 띄어쓰기를 무시하고 이름이 같은 등록 소환사 — "hideonbush#kr1" 처럼 붙여 검색해도 찾아준다 */
+export async function findRegisteredByCompactName(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+): Promise<{ gameName: string; tagLine: string } | null> {
+  const sql = await getSql();
+  const rows = (await sql`
+    SELECT game_name, tag_line FROM recent_searches
+    WHERE platform = ${platform}
+      AND replace(game_name_lower, ' ', '') = ${compact(gameName)}
+      AND tag_line_lower = ${canon(tagLine)}
+    ORDER BY searched_at DESC LIMIT 1`) as unknown as { game_name: string; tag_line: string }[];
+  return rows[0] ? { gameName: rows[0].game_name, tagLine: rows[0].tag_line } : null;
 }
 
 /** 최근 30일 내 검색된 소환사인지 — 디스코드 알림 대상 필터 */

@@ -4,6 +4,7 @@
 // 모달에서 평균 지표·포지션별 성적·추천 스펠/아이템/룬을 자세히 보여준다.
 
 import { useEffect, useMemo, useState } from "react";
+import { matchesKo } from "@/lib/hangul";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, ChevronRight, Flame, Search, X } from "lucide-react";
@@ -159,13 +160,12 @@ export function ChampionsTable({
   };
 
   const rows = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const query = q.trim();
     let list = stats.champions;
     if (query) {
+      // 영문 키·한글 이름 모두 — 띄어쓰기 무시("리신") + 초성("ㄹㅅ") 검색
       list = list.filter(
-        (c) =>
-          c.champ.toLowerCase().includes(query) ||
-          championNameKo(names, c.champ).toLowerCase().includes(query),
+        (c) => matchesKo(c.champ, query) || matchesKo(championNameKo(names, c.champ), query),
       );
     }
     if (lane !== "all") {

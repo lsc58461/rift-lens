@@ -105,6 +105,16 @@ const SCHEMA_SQL = `
       PRIMARY KEY (platform, game_name_lower, tag_line_lower, kind)
     );
 
+    -- 한글 음절 → 초성 (자동완성 초성 검색용, src/lib/hangul.ts 의 chosung 과 동일 규칙)
+    CREATE OR REPLACE FUNCTION hangul_chosung(t text) RETURNS text
+    LANGUAGE sql IMMUTABLE STRICT AS $fn$
+      SELECT coalesce(string_agg(
+        CASE WHEN c BETWEEN 44032 AND 55203
+          THEN (ARRAY['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'])[((c - 44032) / 588) + 1]
+          ELSE chr(c) END, '' ORDER BY ord), '')
+      FROM (SELECT ascii(ch) AS c, ord FROM regexp_split_to_table(t, '') WITH ORDINALITY AS x(ch, ord)) s
+    $fn$;
+
     -- 최근 검색 — 소환사당 1행 upsert
     CREATE TABLE IF NOT EXISTS recent_searches (
       platform text NOT NULL,

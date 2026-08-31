@@ -75,6 +75,7 @@ import {
   findRenamedTo,
   logVisit,
   recordNameChange,
+  findRegisteredByCompactName,
 } from "@/lib/store";
 import {
   RiotApiError,
@@ -360,6 +361,12 @@ export default async function SummonerPage({
         redirect(
           `/summoner/${region}/${encodeURIComponent(currentId)}?renamed=${encodeURIComponent(decoded)}`,
         );
+      }
+      // 띄어쓰기를 빼고 검색한 경우("hideonbush#kr1") — 등록된 소환사 중 공백 무시 일치가 있으면 그리로
+      const compactHit = await findRegisteredByCompactName(platform, gameName, tagLine).catch(() => null);
+      if (compactHit) {
+        const hitId = `${compactHit.gameName}#${compactHit.tagLine}`;
+        if (hitId !== decoded) redirect(`/summoner/${region}/${encodeURIComponent(hitId)}`);
       }
       return (
         <ErrorCard
