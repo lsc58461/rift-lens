@@ -115,6 +115,18 @@ const SCHEMA_SQL = `
       FROM (SELECT ascii(ch) AS c, ord FROM regexp_split_to_table(t, '') WITH ORDINALITY AS x(ch, ord)) s
     $fn$;
 
+    -- 한글 음절 → 자모 열 (자동완성이 조합 중인 글자·부분 입력도 잡게, src/lib/hangul.ts 의 jamo 와 동일)
+    CREATE OR REPLACE FUNCTION hangul_jamo(t text) RETURNS text
+    LANGUAGE sql IMMUTABLE STRICT AS $fn$
+      SELECT coalesce(string_agg(
+        CASE WHEN c BETWEEN 44032 AND 55203 THEN
+          (ARRAY['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'])[((c - 44032) / 588) + 1]
+          || (ARRAY['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'])[(((c - 44032) % 588) / 28) + 1]
+          || (ARRAY['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'])[((c - 44032) % 28) + 1]
+        ELSE chr(c) END, '' ORDER BY ord), '')
+      FROM (SELECT ascii(ch) AS c, ord FROM regexp_split_to_table(t, '') WITH ORDINALITY AS x(ch, ord)) s
+    $fn$;
+
     -- 최근 검색 — 소환사당 1행 upsert
     CREATE TABLE IF NOT EXISTS recent_searches (
       platform text NOT NULL,

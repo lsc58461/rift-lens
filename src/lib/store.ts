@@ -6,7 +6,7 @@ import { loadMatchInfo, loadMatchesByPuuid, resolvePlayerIds, syncParticipantsFr
 import { getSql } from "./db";
 import { matchNo } from "./match-id";
 import { canon } from "./identity";
-import { compact, hasChosung } from "./hangul";
+import { compact, hasChosung, hasHangul, jamo } from "./hangul";
 import type { MmrEstimate } from "./mmr/estimate";
 import type { LeagueEntry, MatchInfo, PlatformRegion } from "./riot/types";
 
@@ -745,13 +745,16 @@ export async function searchRecentSummoners(
   if (!qc) return [];
   const like = `%${qc}%`;
   const cho = hasChosung(qc);
+  const ko = hasHangul(qc);
+  const jamoLike = `%${jamo(qc)}%`;
   const rows = await sql`
     SELECT game_name, tag_line, current_label, current_tier
     FROM recent_searches
     WHERE platform = ${platform}
       AND (replace(game_name_lower, ' ', '') LIKE ${like}
            OR replace(game_name_lower || '#' || tag_line_lower, ' ', '') LIKE ${like}
-           OR (${cho} AND hangul_chosung(replace(game_name_lower, ' ', '')) LIKE ${like}))
+           OR (${cho} AND hangul_chosung(replace(game_name_lower, ' ', '')) LIKE ${like})
+           OR (${ko} AND hangul_jamo(replace(game_name_lower, ' ', '')) LIKE ${jamoLike}))
     ORDER BY searched_at DESC LIMIT ${limit}`;
   return rows as unknown as SummonerSuggestion[];
 }

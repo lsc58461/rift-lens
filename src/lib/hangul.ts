@@ -17,6 +17,32 @@ export function compact(s: string): string {
     .replace(/[ᄀ-ᄒ]/g, (ch) => CHOSUNG[ch.charCodeAt(0) - 0x1100]);
 }
 
+const JUNG = [
+  "ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅘ", "ㅙ", "ㅚ", "ㅛ", "ㅜ", "ㅝ", "ㅞ", "ㅟ", "ㅠ", "ㅡ", "ㅢ", "ㅣ",
+] as const;
+const JONG = [
+  "", "ㄱ", "ㄲ", "ㄳ", "ㄴ", "ㄵ", "ㄶ", "ㄷ", "ㄹ", "ㄺ", "ㄻ", "ㄼ", "ㄽ", "ㄾ", "ㄿ", "ㅀ", "ㅁ", "ㅂ", "ㅄ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ",
+] as const;
+
+/** 한글 음절을 자모 열로 분해 (예: "리신" → "ㄹㅣㅅㅣㄴ"). 조합 중인 글자("릿"=ㄹㅣㅅ)도 앞부분이 같아져
+ *  타이핑 도중에도 매칭된다. 나머지 글자는 그대로 */
+export function jamo(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const code = ch.codePointAt(0)!;
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      const i = code - 0xac00;
+      out += CHOSUNG[Math.floor(i / 588)] + JUNG[Math.floor((i % 588) / 28)] + JONG[i % 28];
+    } else out += ch;
+  }
+  return out;
+}
+
+/** 질의에 한글(음절 또는 자모)이 있는가 */
+export function hasHangul(s: string): boolean {
+  return /[ㄱ-ㅣ가-힣]/.test(s);
+}
+
 /** 한글 음절은 초성으로, 나머지 글자는 그대로 (예: "리 신" → "ㄹㅅ", "Kai'Sa" → "kai'sa") */
 export function chosung(s: string): string {
   let out = "";
@@ -39,5 +65,7 @@ export function matchesKo(target: string, query: string): boolean {
   if (!q) return true;
   const t = compact(target);
   if (t.includes(q)) return true;
-  return hasChosung(q) && chosung(t).includes(q);
+  if (!hasHangul(q)) return false;
+  // 초성만 친 경우("ㄹㅅ") → 초성 열 비교, 그 외("릿", "리시") → 자모 열 비교
+  return chosung(t).includes(q) || jamo(t).includes(jamo(q));
 }
