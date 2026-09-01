@@ -42,13 +42,19 @@ export async function getSummonerPage(opts: {
   const filter = opts.filter ?? "all";
   const tier = opts.tier ?? "all";
 
+  // 대시보드가 몇 초마다 부르는데, 목록·상태 집계는 25,000명 전체의 상태(STATE_SQL)를 계산해
+  // 호출당 ~450ms 가 든다 — 같은 인자의 결과를 5초 재사용 (하루 2만 번 → 수천 번)
+  const key = JSON.stringify([page, size, q, filter, tier]);
+  const hit = pageCache.get(key);
+  if (hit && Date.now() - hit.at < PAGE_TTL_MS) return hit.value;
+
   const [{ rows, total }, counts, tierCounts] = await Promise.all([
     adminSummonerPage(ALGO_VERSION, q, filter, tier, size, (page - 1) * size),
     adminSummonerCounts(ALGO_VERSION, q, tier),
     adminTierCounts(q),
   ]);
 
-  return {
+  const value: SummonerPage = {
     items: rows,
     total,
     totalAll: Object.values(tierCounts).reduce((a, b) => a + b, 0),
@@ -57,7 +63,13 @@ export async function getSummonerPage(opts: {
     page,
     size,
   };
+  if (pageCache.size > 50) pageCache.clear(); // 검색어별 키가 쌓이지 않게
+  pageCache.set(key, { at: Date.now(), value });
+  return value;
 }
+
+const PAGE_TTL_MS = 5_000;
+const pageCache = new Map<string, { at: number; value: SummonerPage }>();
 
 // 대시보드 통계는 5초 폴링에 비해 훨씬 느리게 변한다 — 인스턴스 메모리에
 // 잠깐 캐시해 폴링마다 집계 쿼리가 도는 것을 막는다.

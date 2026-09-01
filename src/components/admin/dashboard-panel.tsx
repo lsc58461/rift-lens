@@ -182,7 +182,7 @@ export function DashboardPanel() {
       } catch {
         // 다음 폴링에서 재시도
       }
-      if (!stopped) setTimeout(poll, 2000);
+      if (!stopped) setTimeout(poll, 4000);
     }
     poll();
     return () => {
