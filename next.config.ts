@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 구 사이트맵 주소(서치콘솔에 등록돼 있던 /sitemap.xml)를 인덱스로 — Next가
-  // sitemap.ts + generateSitemaps 조합에선 /sitemap.xml을 만들지 않는다
-  async redirects() {
-    return [{ source: "/sitemap.xml", destination: "/sitemap-index.xml", permanent: true }];
+  // 구 사이트맵 주소(서치콘솔에 등록돼 있던 /sitemap.xml)에서 인덱스를 그대로 낸다 — Next가
+  // sitemap.ts + generateSitemaps 조합에선 /sitemap.xml을 만들지 않는다.
+  // 리다이렉트(308)로 두면 서치콘솔이 "가져올 수 없음"으로 표시해서(2026-08-30) rewrite 로 200 응답.
+  async rewrites() {
+    return [{ source: "/sitemap.xml", destination: "/sitemap-index.xml" }];
   },
   // 자체 서버(Docker) 빌드에서만 standalone 출력 — Vercel 빌드에는 영향 없음
   output: process.env.NEXT_STANDALONE ? "standalone" : undefined,
