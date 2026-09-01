@@ -10,7 +10,7 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import { riotLimiter, type LimiterSnapshot } from "./limiter";
-import { cache } from "@/lib/cache";
+import { cache, getRedisClient } from "@/lib/cache";
 
 const NODE_PREFIX = "ratelimit:node:";
 const COOLDOWN_KEY = "ratelimit:cooldown";
@@ -37,8 +37,24 @@ interface Cooldown {
 let timer: ReturnType<typeof setInterval> | null = null;
 let idleTicks = 0;
 
+// 인스턴스 스냅샷은 해시 키 하나(ratelimit:nodes)에 필드로 모은다 — 예전엔 키를 따로 두고
+// prefix SCAN 으로 모았는데, Redis 에 키가 92만 개(매치별 수확 마커)라 SCAN 한 번에 5초가 걸려
+// 어드민 상태 폴링이 그만큼 느렸다(2026-09-01). 해시는 HGETALL 한 번이면 끝.
+const NODES_HASH = "ratelimit:nodes";
+
 async function publish(snap: LimiterSnapshot): Promise<void> {
   const entry: NodeEntry = { ...snap, node: nodeId, at: Date.now() };
+  const client = getRedisClient();
+  if (client) {
+    try {
+      const c = await client;
+      await c.hSet(NODES_HASH, nodeId, JSON.stringify(entry));
+      await c.expire(NODES_HASH, NODE_TTL_SEC * 8); // 전체가 조용해지면 알아서 사라진다
+      return;
+    } catch {
+      // Redis 불가 — 아래 일반 캐시 경로로
+    }
+  }
   await cache.set(nodeKey, entry, NODE_TTL_SEC).catch(() => {});
 }
 
@@ -113,11 +129,33 @@ const IDLE: RateLimitStatus = {
   cooldown: null,
 };
 
+/** 살아 있는 인스턴스 스냅샷 — Redis 해시 HGETALL (없으면 일반 캐시 prefix 조회). 오래된 필드는 지운다 */
+async function readNodeEntries(): Promise<{ key: string; value: NodeEntry }[]> {
+  const client = getRedisClient();
+  if (!client) return cache.entries<NodeEntry>(NODE_PREFIX);
+  const c = await client;
+  const all = await c.hGetAll(NODES_HASH);
+  const now = Date.now();
+  const out: { key: string; value: NodeEntry }[] = [];
+  const stale: string[] = [];
+  for (const [field, raw] of Object.entries(all)) {
+    try {
+      const v = JSON.parse(raw) as NodeEntry;
+      if (now - v.at < NODE_TTL_SEC * 1000) out.push({ key: field, value: v });
+      else stale.push(field);
+    } catch {
+      stale.push(field);
+    }
+  }
+  if (stale.length > 0) await c.hDel(NODES_HASH, stale).catch(() => {});
+  return out;
+}
+
 /** 어드민 표시용 집계 — 여러 인스턴스 중 가장 압박이 큰 쪽을 대표로 삼는다 */
 export async function getRateLimitStatus(): Promise<RateLimitStatus> {
   const now = Date.now();
   const [entries, cd] = await Promise.all([
-    cache.entries<NodeEntry>(NODE_PREFIX).catch(() => []),
+    readNodeEntries().catch(() => []),
     cache.get<Cooldown>(COOLDOWN_KEY).catch(() => null),
   ]);
   const live = entries
