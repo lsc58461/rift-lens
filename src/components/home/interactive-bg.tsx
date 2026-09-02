@@ -17,9 +17,11 @@ const DOT_COUNT_MOBILE = 55;
 const LINK_DIST = 130; // 점끼리 이어지는 거리
 const CURSOR_DIST = 220; // 커서 영향 반경
 const SPEED = 0.18;
-// 경량 전환 기준 — 그리기 중앙값 7ms(60fps 예산 16.7ms 의 40%) 초과 또는 프레임 간격 중앙값 26ms(≈40fps 미만)
-const LITE_DRAW_MS = 7;
-const LITE_GAP_MS = 26;
+// 경량 전환 기준 — 그리기 중앙값 4ms(60fps 예산 16.7ms 의 1/4; 배경이 메인스레드 1/4 이상 먹으면 과함)
+// 초과 또는 프레임 간격 중앙값 22ms(≈45fps 미만). 데스크톱·최신 폰은 보통 1~3ms 라 원래 품질 유지.
+// 검증(puppeteer CPU 배속, 2026-09-03): 1x·4x 는 full, 8x 는 lite 였던 7ms 기준을 4x 도 lite 가 되게 낮춤.
+const LITE_DRAW_MS = 4;
+const LITE_GAP_MS = 22;
 const PROBE_FRAMES = 12;
 const WARMUP_FRAMES = 3;
 
