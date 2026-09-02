@@ -161,6 +161,13 @@ export async function runRefreshSweep(opts: {
       await reportProgress().catch(() => {});
       continue;
     }
+    // 정밀을 시작하기엔 늦은 시점이면 "빠른만 하고 넘기지" 않는다 — 그러면 그 사람은 정밀 없는
+    // '빠른' 상태로 남아 다음 바퀴에 빠른부터 다시 해야 한다(지난 바퀴에서 4,200명이 그렇게 샜다).
+    // 라운드를 여기서 끝내고, 다음 라운드가 이 사람부터 빠른+정밀을 온전히 이어간다.
+    if (!deepBlocked && elapsed() >= opts.deepDeadlineMs) {
+      brokeEarly = true;
+      break;
+    }
     try {
       // 닉변 승계 — 옛 이름이면 getAccountByRiotId 가 새 이름으로 옮겨 준다(recent_searches·analyses 행 rename).
       // 이후 단계는 새 이름으로 진행해야 분석이 새 이름에 저장되고 옛 이름 404 로 실패하지 않는다.
