@@ -26,7 +26,7 @@ const geistMono = Geist_Mono({
 });
 
 const DESCRIPTION =
-  "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기 기록과 함께, 같은 경기에서 만난 플레이어들의 현재 랭크 분포를 라이엇 공식 API의 공개 데이터로 보여드립니다.";
+  "롤 전적 검색 — 최근 솔로랭크 경기 기록과 같은 경기에서 만난 플레이어들의 현재 랭크 분포를 보여드려요."; // 네이버 서치어드바이저 권장 80자 이내
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
