@@ -28,7 +28,10 @@ const WARMUP_FRAMES = 3;
 function initialLite(): boolean {
   const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
   if (nav.connection?.saveData) return true;
-  if (nav.deviceMemory !== undefined && nav.deviceMemory <= 2) return true;
+  // 저메모리(크롬이 4GB 이하로 보고)·4코어 이하는 보통 보급형 — 실측 없이 바로 경량 (iOS 사파리는
+  // deviceMemory 를 안 주므로 실측 경로로 간다)
+  if (nav.deviceMemory !== undefined && nav.deviceMemory <= 4) return true;
+  if (nav.hardwareConcurrency !== undefined && nav.hardwareConcurrency <= 4) return true;
   return false;
 }
 
@@ -225,6 +228,8 @@ export function InteractiveBackground() {
             probed = true;
             const d = median(drawSamples.slice(WARMUP_FRAMES));
             const g = median(gapSamples.slice(WARMUP_FRAMES));
+            canvas.dataset.draw = d.toFixed(2); // 임계 튜닝·확인용
+            canvas.dataset.gap = g.toFixed(1);
             if (d > LITE_DRAW_MS || g > LITE_GAP_MS) {
               lite = true;
               resize(); // DPR 1 로 다시 잡는다
