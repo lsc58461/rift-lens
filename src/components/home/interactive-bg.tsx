@@ -5,9 +5,11 @@
 // · 커서 근처의 점은 커서 쪽으로 살짝 끌리고 밝아지며 커서와도 선으로 이어진다
 // · 커서를 따라오는 은은한 방사형 글로우 + 아주 옅은 그리드
 // 성능: 점 ~110개, rAF 1루프, DPR 2 상한, 탭이 숨겨지면 정지, reduced-motion이면 정지 프레임.
-// 모바일(<640px)은 더 아낀다 — 라이트하우스 4x CPU 실측에서 이 루프가 측정 15초 중 6.3초를 먹었다(2026-09-03):
-// DPR 1, 30fps, 점 글로우(shadowBlur — 캔버스에서 가장 비싼 연산) 생략. 루프 시작도 첫 화면이 그려진 뒤
-// 유휴 시점으로 미루되, 빈 배경이 보이지 않게 첫 프레임 한 장은 바로 그린다.
+// 저사양 기기는 경량 모드 — 라이트하우스 4x CPU 실측에서 이 루프가 측정 15초 중 6.3초를 먹었다(2026-09-03):
+// DPR 1, 30fps, 점 글로우(shadowBlur — 캔버스에서 가장 비싼 연산) 생략. 화면 폭이 아니라 실측으로 정한다:
+// 처음엔 원래 모드로 그리면서 첫 20프레임의 그리기 시간·프레임 간격을 재고, 느리면 그때 경량으로 전환한다
+// (데이터 절약 모드·저메모리 기기는 바로 경량). 루프 시작은 첫 화면이 그려진 뒤 유휴 시점으로 미루되,
+// 빈 배경이 보이지 않게 첫 프레임 한 장은 바로 그린다.
 import { useEffect, useRef } from "react";
 
 const DOT_COUNT_DESKTOP = 110;
@@ -15,6 +17,23 @@ const DOT_COUNT_MOBILE = 55;
 const LINK_DIST = 130; // 점끼리 이어지는 거리
 const CURSOR_DIST = 220; // 커서 영향 반경
 const SPEED = 0.18;
+// 경량 전환 기준 — 그리기 중앙값 7ms(60fps 예산 16.7ms 의 40%) 초과 또는 프레임 간격 중앙값 26ms(≈40fps 미만)
+const LITE_DRAW_MS = 7;
+const LITE_GAP_MS = 26;
+const PROBE_FRAMES = 20;
+const WARMUP_FRAMES = 4;
+
+function initialLite(): boolean {
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
+  if (nav.connection?.saveData) return true;
+  if (nav.deviceMemory !== undefined && nav.deviceMemory <= 2) return true;
+  return false;
+}
+
+function median(xs: number[]): number {
+  const a = [...xs].sort((x, y) => x - y);
+  return a[Math.floor(a.length / 2)] ?? 0;
+}
 
 interface Dot {
   x: number;
@@ -45,7 +64,10 @@ export function InteractiveBackground() {
     let w = 0;
     let h = 0;
     let dpr = 1;
-    let mobile = false;
+    let lite = initialLite();
+    let probed = lite; // 이미 경량이면 잴 필요 없음
+    const drawSamples: number[] = [];
+    const gapSamples: number[] = [];
     let lastFrame = 0;
     let dots: Dot[] = [];
     const mouse = { x: -9999, y: -9999, tx: -9999, ty: -9999, active: false };
@@ -60,8 +82,7 @@ export function InteractiveBackground() {
     const resize = () => {
       w = window.innerWidth;
       h = window.innerHeight;
-      mobile = w < 640;
-      dpr = mobile ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      dpr = lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
@@ -172,8 +193,8 @@ export function InteractiveBackground() {
         const alpha = Math.min(1, (base * twinkle + near * 0.6) * p.alpha);
         const color = d.hue ? p.amber : p.blue;
         const r = d.r + near * 1.8;
-        // 커서와 무관하게 항상 은은한 글로우, 커서 근처에선 더 크게 (모바일은 비용 때문에 생략)
-        if (!mobile) {
+        // 커서와 무관하게 항상 은은한 글로우, 커서 근처에선 더 크게 (경량 모드는 비용 때문에 생략)
+        if (!lite) {
           ctx.shadowColor = `rgba(${color},${dark ? 0.9 : 0.5})`;
           ctx.shadowBlur = 6 + near * 12;
         }
@@ -187,10 +208,29 @@ export function InteractiveBackground() {
 
     const loop = (t: number) => {
       if (!running) return;
-      // 모바일은 30fps 로 — 점이 천천히 떠다니는 배경이라 차이가 안 보인다
-      if (!mobile || t - lastFrame >= 32) {
+      // 경량 모드는 30fps 로 — 점이 천천히 떠다니는 배경이라 차이가 안 보인다
+      if (!lite || t - lastFrame >= 32) {
+        if (!probed) {
+          const t0 = performance.now();
+          draw(t);
+          if (lastFrame > 0) {
+            drawSamples.push(performance.now() - t0);
+            gapSamples.push(t - lastFrame);
+          }
+          // 워밍업 프레임은 버리고, 표본이 차면 한 번만 판정 (판정 후엔 계측 안 함)
+          if (drawSamples.length >= WARMUP_FRAMES + PROBE_FRAMES) {
+            probed = true;
+            const d = median(drawSamples.slice(WARMUP_FRAMES));
+            const g = median(gapSamples.slice(WARMUP_FRAMES));
+            if (d > LITE_DRAW_MS || g > LITE_GAP_MS) {
+              lite = true;
+              resize(); // DPR 1 로 다시 잡는다
+            }
+          }
+        } else {
+          draw(t);
+        }
         lastFrame = t;
-        draw(t);
       }
       if (!reduced) raf = requestAnimationFrame(loop);
     };
