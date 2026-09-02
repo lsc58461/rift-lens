@@ -54,6 +54,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
   },
   robots: { index: true, follow: true },
+  // 네이버 서치어드바이저 사이트 소유확인 (메타 태그 방식)
+  verification: { other: { "naver-site-verification": "8c073171f9813db5457d01cf15a4097df25f0858" } },
 };
 
 export default function RootLayout({
