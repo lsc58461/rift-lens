@@ -1,100 +1,34 @@
-"use client";
+// GNB 위 공지 배너 — 서버 컴포넌트. 관리자가 설정하면 사이트 전역 상단에 얇은 스트립으로 나타난다.
+//
+// 예전엔 클라이언트가 마운트 뒤 /api/announcement 를 불러 늦게 끼워 넣었는데, 그러면 본문이
+// 0.5초쯤 뒤에 44px 밀려 내려가 레이아웃 시프트(CLS 0.08)와 Speed Index 악화를 만들었다(2026-09-03).
+// 지금은 서버가 첫 HTML 에 바로 그린다. 닫기 상태는 쿠키(announce-dismissed=updatedAt)로 들고 있어
+// 닫은 사람에겐 서버가 애초에 안 그린다 — 깜빡임도 시프트도 없다.
+// 루트 레이아웃은 이미 headers() 로 동적이라 cookies() 를 읽어도 추가 비용이 없다.
+import { cookies } from "next/headers";
+import { getSetting } from "@/lib/store";
+import type { Announcement } from "@/app/api/announcement/route";
+import { AnnouncementStrip } from "./announcement-strip";
 
-// GNB 위 공지 배너 — 관리자가 설정하면 사이트 전역 상단에 얇은 스트립으로
-// 나타난다. X로 닫으면 그 공지(updatedAt 기준)는 그 브라우저에서 다시 뜨지
-// 않고, 내용이 바뀌면 새 공지로 취급해 다시 보인다.
+export const ANNOUNCE_DISMISS_COOKIE = "announce-dismissed";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Megaphone, X } from "lucide-react";
+// 페이지뷰마다 DB 를 두드리지 않게 프로세스 안에서 60초 메모 (관리자 수정은 1분 안에 반영)
+let memo: { at: number; value: Announcement | null } | null = null;
+const MEMO_MS = 60_000;
 
-interface Announcement {
-  enabled: boolean;
-  text?: string;
-  href?: string | null;
-  tone?: "info" | "event" | "warn";
-  updatedAt?: number;
+async function loadAnnouncement(): Promise<Announcement | null> {
+  const now = Date.now();
+  if (memo && now - memo.at < MEMO_MS) return memo.value;
+  const a = await getSetting<Announcement>("announcement").catch(() => null);
+  const value = a?.enabled && a.text?.trim() ? a : null;
+  memo = { at: now, value };
+  return value;
 }
 
-const DISMISS_KEY = "announce-dismissed";
-
-const TONE_STYLES: Record<string, string> = {
-  info: "from-primary/15 via-chart-2/10 to-primary/15 text-foreground [&_.announce-icon]:text-primary",
-  event:
-    "from-violet-500/15 via-fuchsia-500/10 to-violet-500/15 text-foreground [&_.announce-icon]:text-violet-500 dark:[&_.announce-icon]:text-violet-400",
-  warn: "from-amber-500/20 via-amber-400/10 to-amber-500/20 text-foreground [&_.announce-icon]:text-amber-600 dark:[&_.announce-icon]:text-amber-400",
-};
-
-export function AnnouncementBanner() {
-  const [a, setA] = useState<Announcement | null>(null);
-  const [closed, setClosed] = useState(false);
-
-  useEffect(() => {
-    let stop = false;
-    fetch("/api/announcement")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: Announcement | null) => {
-        if (stop || !d?.enabled || !d.text) return;
-        try {
-          if (localStorage.getItem(DISMISS_KEY) === String(d.updatedAt)) return;
-        } catch {
-          // localStorage 접근 불가 환경이면 그냥 보여준다
-        }
-        setA(d);
-      })
-      .catch(() => {});
-    return () => {
-      stop = true;
-    };
-  }, []);
-
-  if (!a || closed) return null;
-
-  const dismiss = () => {
-    setClosed(true);
-    try {
-      localStorage.setItem(DISMISS_KEY, String(a.updatedAt));
-    } catch {
-      // 저장 실패해도 이번 세션에선 닫힘
-    }
-  };
-
-  const inner = (
-    <span className="flex min-w-0 items-center gap-2">
-      <Megaphone className="announce-icon size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 whitespace-normal break-keep leading-snug">{a.text}</span>
-      {a.href && (
-        <ArrowRight className="size-3 shrink-0 opacity-60 transition-transform group-hover/announce:translate-x-0.5" />
-      )}
-    </span>
-  );
-
-  return (
-    <div
-      className={`relative border-b border-border/60 bg-linear-to-r text-[13px] animate-in fade-in slide-in-from-top-2 duration-300 ${
-        TONE_STYLES[a.tone ?? "info"]
-      }`}
-    >
-      <div className="mx-auto flex min-h-11 w-full max-w-7xl items-center justify-center px-10 py-2.5">
-        {a.href ? (
-          <Link
-            href={a.href}
-            className="group/announce flex min-w-0 items-center font-medium underline-offset-4 hover:underline"
-          >
-            {inner}
-          </Link>
-        ) : (
-          <span className="flex min-w-0 items-center font-medium">{inner}</span>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="공지 닫기"
-        className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1.5 opacity-60 transition-opacity hover:opacity-100"
-      >
-        <X className="size-3.5" />
-      </button>
-    </div>
-  );
+export async function AnnouncementBanner() {
+  const a = await loadAnnouncement();
+  if (!a) return null;
+  const dismissed = (await cookies()).get(ANNOUNCE_DISMISS_COOKIE)?.value;
+  if (dismissed === String(a.updatedAt)) return null;
+  return <AnnouncementStrip text={a.text} href={a.href} tone={a.tone} updatedAt={a.updatedAt} />;
 }

@@ -13,6 +13,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/ui/sonner";
 import { CrawlerProbe } from "@/components/crawler-probe";
+import { PumpPing } from "@/components/pump-ping";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -85,6 +86,7 @@ export default function RootLayout({
 
           <AnnouncementBanner />
           <CrawlerProbe />
+          <PumpPing />
           <header className="sticky top-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
             <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4">
               <Link href="/" className="group flex shrink-0 items-center gap-2">
