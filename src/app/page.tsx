@@ -100,7 +100,7 @@ export default async function Home() {
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/70" />
             <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
           </span>
-          한국 서버 · 라이엇 공식 API · 무료
+          한국 서버 · 가입 없이 바로 · 지금 게임까지
         </span>
 
         <h1 className="text-4xl font-bold tracking-tight text-balance sm:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-75 fill-mode-backwards">
