@@ -5,6 +5,9 @@
 // · 커서 근처의 점은 커서 쪽으로 살짝 끌리고 밝아지며 커서와도 선으로 이어진다
 // · 커서를 따라오는 은은한 방사형 글로우 + 아주 옅은 그리드
 // 성능: 점 ~110개, rAF 1루프, DPR 2 상한, 탭이 숨겨지면 정지, reduced-motion이면 정지 프레임.
+// 모바일(<640px)은 더 아낀다 — 라이트하우스 4x CPU 실측에서 이 루프가 측정 15초 중 6.3초를 먹었다(2026-09-03):
+// DPR 1, 30fps, 점 글로우(shadowBlur — 캔버스에서 가장 비싼 연산) 생략. 루프 시작도 첫 화면이 그려진 뒤
+// 유휴 시점으로 미루되, 빈 배경이 보이지 않게 첫 프레임 한 장은 바로 그린다.
 import { useEffect, useRef } from "react";
 
 const DOT_COUNT_DESKTOP = 110;
@@ -42,6 +45,8 @@ export function InteractiveBackground() {
     let w = 0;
     let h = 0;
     let dpr = 1;
+    let mobile = false;
+    let lastFrame = 0;
     let dots: Dot[] = [];
     const mouse = { x: -9999, y: -9999, tx: -9999, ty: -9999, active: false };
     let raf = 0;
@@ -53,9 +58,10 @@ export function InteractiveBackground() {
         : { blue: "37,99,235", amber: "217,119,6", line: "71,85,105", alpha: 0.55 };
 
     const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = window.innerWidth;
       h = window.innerHeight;
+      mobile = w < 640;
+      dpr = mobile ? 1 : Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
@@ -166,9 +172,11 @@ export function InteractiveBackground() {
         const alpha = Math.min(1, (base * twinkle + near * 0.6) * p.alpha);
         const color = d.hue ? p.amber : p.blue;
         const r = d.r + near * 1.8;
-        // 커서와 무관하게 항상 은은한 글로우, 커서 근처에선 더 크게
-        ctx.shadowColor = `rgba(${color},${dark ? 0.9 : 0.5})`;
-        ctx.shadowBlur = 6 + near * 12;
+        // 커서와 무관하게 항상 은은한 글로우, 커서 근처에선 더 크게 (모바일은 비용 때문에 생략)
+        if (!mobile) {
+          ctx.shadowColor = `rgba(${color},${dark ? 0.9 : 0.5})`;
+          ctx.shadowBlur = 6 + near * 12;
+        }
         ctx.fillStyle = `rgba(${color},${alpha})`;
         ctx.beginPath();
         ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
@@ -179,7 +187,11 @@ export function InteractiveBackground() {
 
     const loop = (t: number) => {
       if (!running) return;
-      draw(t);
+      // 모바일은 30fps 로 — 점이 천천히 떠다니는 배경이라 차이가 안 보인다
+      if (!mobile || t - lastFrame >= 32) {
+        lastFrame = t;
+        draw(t);
+      }
       if (!reduced) raf = requestAnimationFrame(loop);
     };
 
@@ -214,7 +226,21 @@ export function InteractiveBackground() {
     };
 
     resize();
-    raf = requestAnimationFrame(loop);
+    draw(performance.now()); // 첫 프레임은 즉시 — 빈 배경이 보이지 않게
+    // 움직임은 첫 화면·하이드레이션이 끝난 뒤에 시작 (첫 페인트·LCP 와 CPU 를 다투지 않게)
+    const startLoop = () => {
+      if (running && !raf) raf = requestAnimationFrame(loop);
+    };
+    let idleId = 0;
+    let startTimer: ReturnType<typeof setTimeout> | null = null;
+    const w2 = window as Window & {
+      requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (!reduced) {
+      if (w2.requestIdleCallback) idleId = w2.requestIdleCallback(startLoop, { timeout: 1500 });
+      else startTimer = setTimeout(startLoop, 600);
+    }
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerleave", onLeave);
@@ -223,6 +249,8 @@ export function InteractiveBackground() {
     return () => {
       running = false;
       cancelAnimationFrame(raf);
+      if (idleId && w2.cancelIdleCallback) w2.cancelIdleCallback(idleId);
+      if (startTimer) clearTimeout(startTimer);
       themeObserver.disconnect();
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onMove);
