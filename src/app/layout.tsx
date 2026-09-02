@@ -53,6 +53,15 @@ export const metadata: Metadata = {
   verification: { other: { "naver-site-verification": NAVER_SITE_VERIFICATION } },
 };
 
+const NAV_LINKS = [
+  { href: "/champions", label: "챔피언", icon: BarChart3 },
+  { href: "/ranking", label: "랭킹", icon: Trophy },
+  { href: "/recent", label: "최근 검색", icon: History },
+  { href: "/patch-notes", label: "패치노트", icon: Newspaper },
+  { href: "/faq", label: "FAQ", icon: CircleHelp },
+  { href: "/tools", label: "도구", icon: Wrench },
+] as const;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -84,51 +93,22 @@ export default function RootLayout({
                   Rift <span className="text-primary">Lens</span>
                 </span>
               </Link>
-              <div className="flex items-center gap-1">
-                <Link
-                  href="/champions"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <BarChart3 className="size-4" />
-                  <span className="hidden sm:inline">챔피언</span>
-                </Link>
-                <Link
-                  href="/ranking"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Trophy className="size-4" />
-                  <span className="hidden sm:inline">랭킹</span>
-                </Link>
-                <Link
-                  href="/recent"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <History className="size-4" />
-                  <span className="hidden sm:inline">최근 검색</span>
-                </Link>
-                <Link
-                  href="/patch-notes"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Newspaper className="size-4" />
-                  <span className="hidden sm:inline">패치노트</span>
-                </Link>
-                <Link
-                  href="/faq"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <CircleHelp className="size-4" />
-                  <span className="hidden sm:inline">FAQ</span>
-                </Link>
-                <Link
-                  href="/tools"
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Wrench className="size-4" />
-                  <span className="hidden sm:inline">도구</span>
-                </Link>
+              {/* 좁은 화면에선 아이콘만 남으므로 aria-label 로 링크 이름을 보장한다
+                  (접근성 트리에 이름 없는 링크가 남으면 스크린리더·AI 에이전트가 못 읽음) */}
+              <nav aria-label="주 메뉴" className="flex items-center gap-1">
+                {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-label={label}
+                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <Icon className="size-4" aria-hidden />
+                    <span className="hidden sm:inline">{label}</span>
+                  </Link>
+                ))}
                 <ThemeToggle />
-              </div>
+              </nav>
             </div>
           </header>
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
