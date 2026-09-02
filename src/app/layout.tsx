@@ -15,14 +15,20 @@ import { Toaster } from "@/components/ui/sonner";
 import { CrawlerProbe } from "@/components/crawler-probe";
 import { PumpPing } from "@/components/pump-ping";
 
+// 폰트는 첫 페인트 전 대역폭 경쟁자다(느린 4G 실측: 두 파일 51KB 가 High 우선순위로 CSS 와 나눠 받음, 2026-09-03).
+// · Geist Sans 는 라틴 글자·숫자만 담당(한글은 시스템 폰트) → optional: 제때 오면 쓰고 늦으면 이번 방문은
+//   시스템 폰트, 다음 방문부터 캐시로 적용. 교체(swap)로 인한 재렌더도 없다.
+// · Geist Mono 는 어드민 표·차트 툴팁 두 곳뿐 → preload 끔(쓰이는 화면에서만 받음).
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "optional",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  preload: false,
 });
 
 const DESCRIPTION =
