@@ -7,7 +7,7 @@
 // 성능: 점 ~110개, rAF 1루프, DPR 2 상한, 탭이 숨겨지면 정지, reduced-motion이면 정지 프레임.
 // 저사양 기기는 경량 모드 — 라이트하우스 4x CPU 실측에서 이 루프가 측정 15초 중 6.3초를 먹었다(2026-09-03):
 // DPR 1, 30fps, 점 글로우(shadowBlur — 캔버스에서 가장 비싼 연산) 생략. 화면 폭이 아니라 실측으로 정한다:
-// 처음엔 원래 모드로 그리면서 첫 20프레임의 그리기 시간·프레임 간격을 재고, 느리면 그때 경량으로 전환한다
+// 처음엔 원래 모드로 그리면서 첫 12프레임의 그리기 시간·프레임 간격을 재고, 느리면 그때 경량으로 전환한다
 // (데이터 절약 모드·저메모리 기기는 바로 경량). 루프 시작은 첫 화면이 그려진 뒤 유휴 시점으로 미루되,
 // 빈 배경이 보이지 않게 첫 프레임 한 장은 바로 그린다.
 import { useEffect, useRef } from "react";
@@ -20,8 +20,8 @@ const SPEED = 0.18;
 // 경량 전환 기준 — 그리기 중앙값 7ms(60fps 예산 16.7ms 의 40%) 초과 또는 프레임 간격 중앙값 26ms(≈40fps 미만)
 const LITE_DRAW_MS = 7;
 const LITE_GAP_MS = 26;
-const PROBE_FRAMES = 20;
-const WARMUP_FRAMES = 4;
+const PROBE_FRAMES = 12;
+const WARMUP_FRAMES = 3;
 
 function initialLite(): boolean {
   const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
@@ -83,6 +83,7 @@ export function InteractiveBackground() {
       w = window.innerWidth;
       h = window.innerHeight;
       dpr = lite ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      canvas.dataset.mode = lite ? "lite" : "full"; // 확인용: document.querySelector("canvas").dataset.mode
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
