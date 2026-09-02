@@ -4,8 +4,11 @@
 import "server-only";
 import { getSql } from "@/lib/db";
 
+// 'bot' 이 안 들어가는 UA 도 있다: 네이버 Yeti, 다음 Daum, 화웨이 PetalBot 은 있지만 ChatGPT-User,
+// anthropic-ai/Claude-Web, meta-externalagent, Bytespider 등. 네이버는 9/2 첫 방문이 이 누락 때문에
+// 기록도 안 되고 봇 경로도 안 탔다 — KNOWN 목록과 반드시 같이 맞춘다.
 const BOT_RE =
-  /bot|crawl|spider|scrap|facebookexternalhit|kakaotalk|slack|twitter|discord|telegram|whatsapp|preview|embed/i;
+  /bot|crawl|spider|scrap|yeti\/|daum|chatgpt-user|anthropic-ai|claude-web|meta-externalagent|facebookexternalhit|kakaotalk|slack|twitter|discord|telegram|whatsapp|preview|embed/i;
 
 /** 소환사 페이지의 봇 판정과 같은 기준 (분석 실행·방문 기록 분기용) */
 export function isCrawlerUa(ua: string): boolean {
