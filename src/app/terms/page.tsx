@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CONTACT_EMAIL, OPERATOR_NAME, SITE_URL } from "@/lib/site";
 import { ScrollText } from "lucide-react";
 import { LegalDoc, LegalSection } from "@/components/legal-doc";
 
@@ -18,7 +19,7 @@ export default function TermsPage() {
     >
       <LegalSection title="제1조 (목적)">
         <p>
-          이 약관은 이정윤(이하 &quot;운영자&quot;)이 제공하는 Rift Lens 웹사이트(https://rift-lens.xyz)
+          이 약관은 {OPERATOR_NAME}(이하 &quot;운영자&quot;)이 제공하는 Rift Lens 웹사이트({SITE_URL})
           및 이에 연동된 카카오톡 채널 챗봇, 디스코드 봇(이하 통칭 &quot;서비스&quot;)의 이용 조건과
           절차, 이용자와 운영자의 권리·의무를 정하는 것을 목적으로 합니다.
         </p>
@@ -122,8 +123,8 @@ export default function TermsPage() {
         <ul>
           <li>이 약관은 {EFFECTIVE}부터 시행합니다.</li>
           <li>
-            운영자: 이정윤 · 문의:{" "}
-            <a href="mailto:riftlens.contact@gmail.com">riftlens.contact@gmail.com</a>
+            운영자: {OPERATOR_NAME} · 문의:{" "}
+            <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           </li>
         </ul>
       </LegalSection>

@@ -2,6 +2,7 @@ import {
   getMaintenanceInfo,
   isMaintenanceActive,
 } from "@/lib/maintenance";
+import { SITE_URL } from "@/lib/site";
 import { createPublicKey, verify as cryptoVerify } from "crypto";
 import { NextResponse, after, type NextRequest } from "next/server";
 import { getStoredResult, runQuickAnalysis } from "@/lib/mmr/deep-jobs";
@@ -13,7 +14,7 @@ import type { PlatformRegion } from "@/lib/riot/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const SITE = "https://rift-lens.xyz";
+const SITE = SITE_URL;
 const PLATFORM: PlatformRegion = "kr";
 const BLUE = 0x3b82f6;
 const RED = 0xef4444;

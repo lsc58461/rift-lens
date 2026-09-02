@@ -1,4 +1,5 @@
 import { NextResponse, after, type NextRequest } from "next/server";
+import { SITE_URL } from "@/lib/site";
 import { ADMIN_COOKIE, isValidAdminSession } from "@/lib/admin";
 import {
   beginRefreshAll,
@@ -19,7 +20,7 @@ export const maxDuration = 300;
 function publicOrigin(req: NextRequest): string {
   return req.nextUrl.hostname === "localhost"
     ? req.nextUrl.origin
-    : "https://rift-lens.xyz";
+    : SITE_URL;
 }
 
 export async function GET(req: NextRequest) {

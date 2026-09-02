@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Trophy,
 } from "lucide-react";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { InteractiveBackground } from "@/components/home/interactive-bg";
 import { SpotlightCard } from "@/components/home/spotlight-card";
@@ -52,14 +53,14 @@ const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "Rift Lens",
-  url: "https://rift-lens.xyz",
+  url: SITE_URL,
   description:
     "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기와 함께 매칭된 플레이어들의 랭크 분포를 보여주는 사이트",
   potentialAction: {
     "@type": "SearchAction",
     target: {
       "@type": "EntryPoint",
-      urlTemplate: "https://rift-lens.xyz/summoner/kr/{search_term_string}",
+      urlTemplate: `${SITE_URL}/summoner/kr/{search_term_string}`,
     },
     "query-input": "required name=search_term_string",
   },

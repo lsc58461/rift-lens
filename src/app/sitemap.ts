@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
 
 // 사이트맵 구조 — 인덱스(/sitemap.xml, 별도 라우트) 아래에
@@ -8,7 +9,7 @@ import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
 // 요청 시 생성(force-dynamic) — 빌드 환경엔 DB가 없어 프리렌더하면 빈 결과가 캐시된다.
 // 크롤러 방문 빈도는 낮고 쿼리도 가벼워(count 1회 / 1만 행) 매 요청 계산으로 충분.
 
-const BASE = "https://rift-lens.xyz";
+const BASE = SITE_URL;
 export const SUMMONERS_PER_SITEMAP = 10_000;
 export const dynamic = "force-dynamic";
 

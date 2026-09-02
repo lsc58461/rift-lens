@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/next";
+import { NAVER_SITE_VERIFICATION, SITE_URL } from "@/lib/site";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -28,7 +29,7 @@ const DESCRIPTION =
   "리그 오브 레전드 전적 검색 — 최근 솔로랭크 경기 기록과 함께, 같은 경기에서 만난 플레이어들의 현재 랭크 분포를 라이엇 공식 API의 공개 데이터로 보여드립니다.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://rift-lens.xyz"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Rift Lens — 롤 전적 검색 · 매칭 랭크 분석",
     template: "%s | Rift Lens",
@@ -55,7 +56,7 @@ export const metadata: Metadata = {
   },
   robots: { index: true, follow: true },
   // 네이버 서치어드바이저 사이트 소유확인 (메타 태그 방식)
-  verification: { other: { "naver-site-verification": "8c073171f9813db5457d01cf15a4097df25f0858" } },
+  verification: { other: { "naver-site-verification": NAVER_SITE_VERIFICATION } },
 };
 
 export default function RootLayout({

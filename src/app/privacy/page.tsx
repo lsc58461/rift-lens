@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CONTACT_EMAIL, OPERATOR_NAME, SITE_URL } from "@/lib/site";
 import { ShieldCheck } from "lucide-react";
 import { LegalDoc, LegalSection } from "@/components/legal-doc";
 
@@ -18,7 +19,7 @@ export default function PrivacyPage() {
     >
       <LegalSection title="1. 개요">
         <p>
-          이정윤(이하 &quot;운영자&quot;)은 Rift Lens 웹사이트(https://rift-lens.xyz)와 카카오톡 채널 챗봇,
+          {OPERATOR_NAME}(이하 &quot;운영자&quot;)은 Rift Lens 웹사이트({SITE_URL})와 카카오톡 채널 챗봇,
           디스코드 봇(이하 &quot;서비스&quot;)을 운영하며, 「개인정보 보호법」 등 관련 법령에 따라 이용자의
           개인정보를 보호합니다. 서비스는 회원가입이나 로그인 없이 이용할 수 있으며, 이름·연락처·계정
           정보 등 이용자를 직접 식별할 수 있는 개인정보를 수집하지 않습니다.
@@ -121,9 +122,9 @@ export default function PrivacyPage() {
 
       <LegalSection title="9. 개인정보 보호책임자 및 문의">
         <ul>
-          <li>개인정보 보호책임자: 이정윤</li>
+          <li>개인정보 보호책임자: {OPERATOR_NAME}</li>
           <li>
-            이메일: <a href="mailto:riftlens.contact@gmail.com">riftlens.contact@gmail.com</a>
+            이메일: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           </li>
         </ul>
         <p>
