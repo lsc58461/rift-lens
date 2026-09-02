@@ -87,9 +87,9 @@ export default function RootLayout({
           <CrawlerProbe />
           <header className="sticky top-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur-md">
             <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4">
-              <Link href="/" className="group flex items-center gap-2">
+              <Link href="/" className="group flex shrink-0 items-center gap-2">
                 <LogoMark className="size-7 shadow-sm transition-transform group-hover:scale-110" />
-                <span className="font-semibold tracking-tight">
+                <span className="font-semibold tracking-tight whitespace-nowrap">
                   Rift <span className="text-primary">Lens</span>
                 </span>
               </Link>
@@ -101,10 +101,10 @@ export default function RootLayout({
                     key={href}
                     href={href}
                     aria-label={label}
-                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                   >
                     <Icon className="size-4" aria-hidden />
-                    <span className="hidden sm:inline">{label}</span>
+                    <span className="hidden md:inline">{label}</span>
                   </Link>
                 ))}
                 <ThemeToggle />

@@ -75,7 +75,7 @@ export function AnnouncementBanner() {
         TONE_STYLES[a.tone ?? "info"]
       }`}
     >
-      <div className="mx-auto flex min-h-9 w-full max-w-7xl items-center justify-center px-10 py-1.5">
+      <div className="mx-auto flex min-h-11 w-full max-w-7xl items-center justify-center px-10 py-2.5">
         {a.href ? (
           <Link
             href={a.href}

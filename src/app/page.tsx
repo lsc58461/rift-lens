@@ -98,6 +98,7 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
+      {/* 히어로 텍스트엔 opacity 페이드를 쓰지 않는다 — LCP 후보에서 빠져 700ms 늦어짐(2026-09-03 실측) */}
       <InteractiveBackground />
 
       {/* ── 히어로 ─────────────────────────────────────────── */}
@@ -110,7 +111,7 @@ export default async function Home() {
           한국 서버 · 솔로랭크 · 광고 X
         </span>
 
-        <h1 className="text-4xl font-bold tracking-tight text-balance sm:text-6xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-75 fill-mode-backwards">
+        <h1 className="text-4xl font-bold tracking-tight text-balance sm:text-6xl animate-in slide-in-from-bottom-3 duration-700">
           내 게임은 지금
           <br />
           <span className="bg-linear-to-r from-primary via-sky-400 to-amber-400 bg-clip-text text-transparent">
@@ -119,12 +120,12 @@ export default async function Home() {
           에서 잡힐까
         </h1>
 
-        <p className="max-w-xl text-pretty text-muted-foreground sm:text-lg animate-in fade-in slide-in-from-bottom-3 duration-700 delay-150 fill-mode-backwards">
+        <p className="max-w-xl text-pretty text-muted-foreground sm:text-lg animate-in slide-in-from-bottom-3 duration-700">
           최근 솔로랭크 전적에 같은 경기를 뛴 플레이어들의 랭크까지 얹어 보여드려요.
           닉네임#태그만 넣으면 끝.
         </p>
 
-        <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-3 duration-700 delay-200 fill-mode-backwards">
+        <div className="w-full max-w-xl animate-in slide-in-from-bottom-3 duration-700">
           <SpotlightCard className="z-20 p-4 shadow-2xl shadow-primary/10 sm:p-5">
             <SearchForm />
           </SpotlightCard>
