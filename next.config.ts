@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     "/api/share-image": ["./src/assets/fonts/**", "./public/ranked-emblems/**"],
     "/opengraph-image": ["./src/assets/fonts/**", "./public/ranked-emblems/**"],
   },
+  // CSS 를 <link> 대신 HTML 에 인라인 — 첫 렌더를 막는 요청(라이트하우스 "렌더링 차단 요청",
+  // 18KB/170ms) 제거. 페이지 이동은 클라이언트 라우팅이라 CSS 캐시 손실은 첫 진입 한 번뿐.
+  experimental: { inlineCss: true },
   images: {
     remotePatterns: [
       {
