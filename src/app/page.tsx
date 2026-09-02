@@ -8,6 +8,8 @@ import {
   TrendingUp,
   Trophy,
 } from "lucide-react";
+import type { Metadata } from "next";
+import { OG_BASE } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { InteractiveBackground } from "@/components/home/interactive-bg";
@@ -48,6 +50,11 @@ const FEATURES = [
     tile: "bg-violet-500/15 text-violet-500 dark:text-violet-400",
   },
 ] as const;
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: { ...OG_BASE, url: "/" },
+};
 
 const JSON_LD = {
   "@context": "https://schema.org",

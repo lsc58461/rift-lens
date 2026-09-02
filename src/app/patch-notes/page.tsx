@@ -1,14 +1,16 @@
 import Image from "next/image";
+import { pageMeta } from "@/lib/seo";
 import { Newspaper, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { getRecentPatchNotes, PATCH_NOTES_HUB } from "@/lib/patch-notes";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "패치노트",
   description: "리그 오브 레전드 최신 패치노트 바로가기",
-};
+  path: "/patch-notes",
+});
 
 function fmtDate(iso?: string): string {
   if (!iso) return "";

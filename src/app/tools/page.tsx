@@ -1,13 +1,14 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { ArrowRight, Wrench } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { TOOLS } from "@/lib/tools";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "도구",
-  description:
-    "내전 팀 밸런서, 듀오 궁합 분석, 시즌 결산 — Rift Lens의 소환사 도구 모음",
-};
+  description: "내전 팀 밸런서, 듀오 궁합 분석, 시즌 결산 — Rift Lens의 소환사 도구 모음",
+  path: "/tools",
+});
 
 export default function ToolsPage() {
   return (

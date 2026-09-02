@@ -1,4 +1,6 @@
 import { headers } from "next/headers";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, OG_BASE } from "@/lib/seo";
 import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -99,16 +101,35 @@ export async function generateMetadata({
   if (!(region in PLATFORM_LABELS)) {
     notFound();
   }
-  const decoded = decodeURIComponent(riotId);
-  const title = `${decoded} 매칭 구간`;
-  const description = `${decoded}의 최근 매칭 구간 — 최근 솔로랭크 경기 로비의 평균 랭크와 전적을 확인해 보세요.`;
+  const decoded = decodeURIComponent(riotId).normalize("NFKC");
+  const hashIndex = decoded.lastIndexOf("#");
+  // 저장된 결과가 있으면 현재 티어·최근 로비 평균을 제목/설명에 넣는다 (검색 결과 클릭률).
+  // DB 읽기만 — 라이엇 호출·분석 유발은 절대 없다 (크롤러가 이 단계만 긁어도 비용 0).
+  const platform = region as PlatformRegion;
+  const gameName = decoded.slice(0, hashIndex);
+  const tagLine = decoded.slice(hashIndex + 1);
+  const stored =
+    hashIndex > 0
+      ? ((await getStoredResult("deep", platform, gameName, tagLine).catch(() => null)) ??
+        (await getStoredResult("quick", platform, gameName, tagLine).catch(() => null)))
+      : null;
+  const cur = stored?.currentRank?.label ?? null;
+  const est = stored?.estimatedRank?.label ?? null;
+  const title = cur ? `${decoded} — ${cur} · 매칭 구간` : `${decoded} 매칭 구간`;
+  const description = cur
+    ? `${decoded} 롤 전적 — 현재 ${cur}${est ? `, 최근 솔로랭크 로비 평균 ${est}` : ""}. 최근 경기 기록과 같은 경기에서 만난 플레이어들의 랭크 분포를 확인해 보세요.`
+    : `${decoded}의 최근 매칭 구간 — 최근 솔로랭크 경기 로비의 평균 랭크와 전적을 확인해 보세요.`;
+  const path = `/summoner/${region}/${encodeURIComponent(decoded)}`;
   const image = `/api/share-image?region=${region}&riotId=${encodeURIComponent(decoded)}`;
   return {
     title,
     description,
+    alternates: { canonical: path },
     openGraph: {
+      ...OG_BASE,
       title,
       description,
+      url: path,
       images: [{ url: image, width: 1200, height: 630 }],
     },
     twitter: { card: "summary_large_image", images: [image] },
@@ -541,6 +562,12 @@ export default async function SummonerPage({
 
   return (
     <div className="space-y-5">
+      <JsonLd
+        data={breadcrumbLd([
+          { name: "홈", path: "/" },
+          { name: decoded, path: `/summoner/${region}/${encodeURIComponent(decoded)}` },
+        ])}
+      />
       {/* 닉변 리다이렉트 안내 */}
       {renamed && renamed !== decoded && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">

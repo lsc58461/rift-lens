@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { Crown, Flame, Sparkles, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +17,27 @@ const PAGE_SIZE = 50;
 
 export const revalidate = 120; // 래더는 30분마다 갱신되므로 2분 ISR이면 충분
 
-export const metadata = {
-  title: "랭킹",
-  description: "한국 서버 챌린저·그랜드마스터 솔로랭크 랭킹과 승급 컷",
-};
+type RankingParams = Promise<{ tier?: string; page?: string }>;
+
+function rankingPath(tier: ApexLadderTier, page: number): string {
+  const q = new URLSearchParams();
+  if (tier !== "CHALLENGER") q.set("tier", tier);
+  if (page > 1) q.set("page", String(page));
+  const qs = q.toString();
+  return `/ranking${qs ? `?${qs}` : ""}`;
+}
+
+export async function generateMetadata({ searchParams }: { searchParams: RankingParams }) {
+  const { tier: rawTier, page: rawPage } = await searchParams;
+  const tier: ApexLadderTier = rawTier === "GRANDMASTER" ? "GRANDMASTER" : "CHALLENGER";
+  const page = Math.max(1, parseInt(rawPage ?? "1", 10) || 1);
+  const tierKo = tier === "GRANDMASTER" ? "그랜드마스터" : "챌린저";
+  return pageMeta({
+    title: `${tierKo} 랭킹${page > 1 ? ` ${page}페이지` : ""}`,
+    description: `한국 서버 ${tierKo} 솔로랭크 랭킹과 승급 컷 — 현재 상위 래더 순위표`,
+    path: rankingPath(tier, page),
+  });
+}
 
 function timeAgo(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60_000);
@@ -32,7 +50,7 @@ function timeAgo(ts: number): string {
 export default async function RankingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tier?: string; page?: string }>;
+  searchParams: RankingParams;
 }) {
   const { tier: rawTier, page: rawPage } = await searchParams;
   const tier: ApexLadderTier = rawTier === "GRANDMASTER" ? "GRANDMASTER" : "CHALLENGER";

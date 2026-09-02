@@ -1,13 +1,14 @@
 import { Sparkles } from "lucide-react";
+import { pageMeta } from "@/lib/seo";
 import { OtherTools, ToolHero } from "@/components/tool-kit";
 import { getChampionNamesKo, getDDragonVersion } from "@/lib/ddragon";
 import { RecapClient } from "./recap-client";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "시즌 결산",
-  description:
-    "시즌 랭크 판수·승률·최다 챔피언을 한 장의 카드로 — 롤 시즌 결산",
-};
+  description: "시즌 랭크 판수·승률·최다 챔피언을 한 장의 카드로 — 롤 시즌 결산",
+  path: "/recap",
+});
 
 export default async function RecapPage() {
   const ddVersion = await getDDragonVersion();

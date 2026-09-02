@@ -1,4 +1,8 @@
 import { CircleHelp } from "lucide-react";
+import { JsonLd } from "@/components/json-ld";
+import { faqLd } from "@/lib/seo";
+import { isValidElement } from "react";
+import { pageMeta } from "@/lib/seo";
 import {
   Accordion,
   AccordionContent,
@@ -6,11 +10,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "자주 묻는 질문",
-  description:
-    "Rift Lens의 매칭 구간 집계 방식, 정밀 분석, 듀오 제외 등 자주 묻는 질문 모음",
-};
+  description: "Rift Lens의 매칭 구간 집계 방식, 정밀 분석, 듀오 제외 등 자주 묻는 질문 모음",
+  path: "/faq",
+});
 
 // 표현 원칙: Rift Lens는 라이엇 공식 랭크 데이터를 "집계"해 보여주는 통계 사이트다.
 // 숨은 점수·MMR·실력 평가를 추정한다는 식의 표현은 쓰지 않는다 (라이엇 API 정책 —
@@ -177,9 +181,21 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
 ];
 
+// JSX 답변에서 텍스트만 뽑는다 (구조화 데이터용) — 태그·강조는 버리고 문자열만 잇는다
+function nodeText(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement<{ children?: React.ReactNode }>(node)) return nodeText(node.props.children);
+  return "";
+}
+
+const FAQ_LD = faqLd(FAQS.map((f) => ({ q: f.q, a: nodeText(f.a).replace(/\s+/g, " ").trim() })));
+
 export default function FaqPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <JsonLd data={FAQ_LD} />
       <div className="flex items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground">
           <CircleHelp className="size-4.5" />

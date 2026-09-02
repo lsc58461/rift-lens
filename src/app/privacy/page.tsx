@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { CONTACT_EMAIL, OPERATOR_NAME, SITE_URL } from "@/lib/site";
 import { ShieldCheck } from "lucide-react";
 import { LegalDoc, LegalSection } from "@/components/legal-doc";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "개인정보처리방침",
   description: "Rift Lens 개인정보처리방침",
-};
+  path: "/privacy",
+});
 
 const EFFECTIVE = "2026년 8월 25일";
 

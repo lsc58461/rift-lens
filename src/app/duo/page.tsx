@@ -1,12 +1,13 @@
 import { Heart } from "lucide-react";
+import { pageMeta } from "@/lib/seo";
 import { OtherTools, ToolHero } from "@/components/tool-kit";
 import { DuoClient } from "./duo-client";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "듀오 궁합 분석",
-  description:
-    "두 소환사가 함께한 경기를 모아 같은 팀 승률과 맞대결 전적으로 궁합을 분석해요",
-};
+  description: "두 소환사가 함께한 경기를 모아 같은 팀 승률과 맞대결 전적으로 궁합을 분석해요",
+  path: "/duo",
+});
 
 export default function DuoPage() {
   return (

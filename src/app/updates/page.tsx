@@ -1,11 +1,13 @@
 import { Megaphone } from "lucide-react";
+import { pageMeta } from "@/lib/seo";
 import { Badge } from "@/components/ui/badge";
 import { getPublishedChangelog, type ChangelogTag } from "@/lib/changelog";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "업데이트 내역",
   description: "Rift Lens의 기능 추가와 개선 사항 기록",
-};
+  path: "/updates",
+});
 
 // 내용은 DB에서 관리(재배포 없이 어드민에서 수정)하므로 요청 시 렌더한다
 // (빌드 프리렌더는 DB가 없어 실패하고, 어드민 수정도 즉시 반영돼야 한다)

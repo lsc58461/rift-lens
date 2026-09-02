@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { CONTACT_EMAIL, OPERATOR_NAME, SITE_URL } from "@/lib/site";
 import { ScrollText } from "lucide-react";
 import { LegalDoc, LegalSection } from "@/components/legal-doc";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "이용약관",
   description: "Rift Lens 서비스 이용약관",
-};
+  path: "/terms",
+});
 
 const EFFECTIVE = "2026년 8월 25일";
 

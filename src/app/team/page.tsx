@@ -1,12 +1,13 @@
 import { Swords } from "lucide-react";
+import { pageMeta } from "@/lib/seo";
 import { OtherTools, ToolHero } from "@/components/tool-kit";
 import { TeamClient } from "./team-client";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "내전 팀 밸런서",
-  description:
-    "참가자들의 매칭 구간으로 가장 공평한 5:5 팀을 자동으로 나눠주는 내전 도우미",
-};
+  description: "참가자들의 매칭 구간으로 가장 공평한 5:5 팀을 자동으로 나눠주는 내전 도우미",
+  path: "/team",
+});
 
 export default function TeamPage() {
   return (

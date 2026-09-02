@@ -1,6 +1,5 @@
-import { Analytics } from "@vercel/analytics/next";
 import { NAVER_SITE_VERIFICATION, SITE_URL } from "@/lib/site";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { OG_BASE } from "@/lib/seo";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BarChart3, CircleHelp, History, Newspaper, Wrench,
@@ -43,14 +42,9 @@ export const metadata: Metadata = {
     "롤 로비 평균 티어",
     "리그오브레전드 전적",
   ],
-  openGraph: {
-    type: "website",
-    locale: "ko_KR",
-    siteName: "Rift Lens",
-    title: "Rift Lens — 롤 전적 검색 · 매칭 랭크 분석",
-    description: DESCRIPTION,
-    url: "/",
-  },
+  // title/description/url 은 여기 적지 않는다 — 적으면 하위 페이지가 통째로 물려받아
+  // 모든 페이지의 og:title/og:url 이 메인 값이 된다. 각 페이지가 pageMeta()로 낸다.
+  openGraph: OG_BASE,
   twitter: {
     card: "summary_large_image",
   },
@@ -168,8 +162,6 @@ export default function RootLayout({
           </footer>
           <Toaster />
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

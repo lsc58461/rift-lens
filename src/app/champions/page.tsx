@@ -1,4 +1,6 @@
 import { BarChart3 } from "lucide-react";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 import { PageHeader } from "@/components/page-kit";
 import { getChampionStats, listPatches } from "@/lib/champion-stats";
 import { RANK_BRACKETS } from "@/lib/rank-pts";
@@ -22,16 +24,23 @@ function computedAgo(ts: number): string {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export const metadata = {
-  title: "챔피언 통계",
-  description:
-    "수집된 솔로랭크 경기 기준 챔피언별 승률과 스펠·아이템·룬 통계",
-};
+type ChampionsParams = Promise<{ patch?: string; rank?: string }>;
+
+// canonical 은 패치를 뺀다 — 옛 패치 보기는 같은 표의 과거 스냅샷이라 별 페이지로 색인할 가치가 없다
+export async function generateMetadata({ searchParams }: { searchParams: ChampionsParams }) {
+  const { rank } = await searchParams;
+  const bracket = RANK_BRACKETS.find((b) => b.key === rank && b.key !== "emerald");
+  return pageMeta({
+    title: bracket ? `챔피언 통계 (${bracket.label})` : "챔피언 통계",
+    description: `수집된 솔로랭크 경기 기준 ${bracket ? bracket.label : "에메랄드 이상"} 챔피언별 승률과 스펠·아이템·룬 통계`,
+    path: bracket ? `/champions?rank=${bracket.key}` : "/champions",
+  });
+}
 
 export default async function ChampionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ patch?: string; rank?: string }>;
+  searchParams: ChampionsParams;
 }) {
   const { patch: rawPatch, rank: rawRank } = await searchParams;
   // 랭크 브라켓 — 기본은 에메랄드 이상
@@ -58,6 +67,7 @@ export default async function ChampionsPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <JsonLd data={breadcrumbLd([{ name: "홈", path: "/" }, { name: "챔피언 통계", path: "/champions" }])} />
       <PageHeader
         icon={BarChart3}
         title="챔피언 통계"

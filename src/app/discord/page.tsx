@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { ArrowRight, BellRing, Bot, Gauge, ShieldAlert, Users } from "lucide-react";
 import { DISCORD_INVITE_URL } from "@/lib/discord";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "디스코드 봇",
-  description:
-    "Rift Lens 디스코드 봇 — 새 패치노트와 서비스 상태를 여러분의 서버 채널로 알려드려요",
-};
+  description: "Rift Lens 디스코드 봇 — 새 패치노트와 서비스 상태를 여러분의 서버 채널로 알려드려요",
+  path: "/discord",
+});
 
 const FEATURES = [
   {

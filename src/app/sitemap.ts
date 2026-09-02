@@ -19,13 +19,14 @@ export async function generateSitemaps(): Promise<{ id: number }[]> {
   return [{ id: 0 }, ...Array.from({ length: chunks }, (_, i) => ({ id: i + 1 }))];
 }
 
+// 정적 페이지엔 lastmod 를 내지 않는다 — 매 요청 "지금"을 내면 늘 바뀌는 값이라 구글이
+// 사이트맵 lastmod 전체(소환사 페이지의 진짜 분석 시각까지)를 불신하게 된다.
 function staticPages(): MetadataRoute.Sitemap {
-  const now = new Date();
   const page = (
     path: string,
     changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"],
     priority: number,
-  ) => ({ url: `${BASE}${path}`, lastModified: now, changeFrequency, priority });
+  ) => ({ url: `${BASE}${path}`, changeFrequency, priority });
   return [
     page("", "daily", 1),
     page("/champions", "daily", 0.9),

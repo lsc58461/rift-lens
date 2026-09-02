@@ -1,11 +1,13 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { MessageSquareText } from "lucide-react";
 import { FeedbackForm } from "@/components/feedback-form";
 
-export const metadata = {
+export const metadata = pageMeta({
   title: "문의 · 버그 신고",
   description: "Rift Lens에 문의하거나 버그를 신고하고, 내 데이터 정정·비노출을 요청하세요",
-};
+  path: "/feedback",
+});
 
 export default async function FeedbackPage({
   searchParams,

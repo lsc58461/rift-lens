@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { pageMeta } from "@/lib/seo";
 import { ArrowRight, ChevronRight, History } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +15,17 @@ import { PLATFORM_LABELS } from "@/lib/riot/types";
 // 30초 ISR — 캐시된 페이지를 즉시 서빙하고 백그라운드에서 재생성
 export const revalidate = 30;
 
-export const metadata = {
-  title: "최근 검색",
-  description: "Rift Lens에서 최근 조회된 소환사들의 티어와 매칭 구간 목록",
-};
+type RecentParams = Promise<{ page?: string }>;
+
+export async function generateMetadata({ searchParams }: { searchParams: RecentParams }) {
+  const { page: rawPage } = await searchParams;
+  const page = Math.max(1, parseInt(rawPage ?? "1", 10) || 1);
+  return pageMeta({
+    title: `최근 검색${page > 1 ? ` ${page}페이지` : ""}`,
+    description: "Rift Lens에서 최근 조회된 소환사들의 티어와 매칭 구간 목록",
+    path: page > 1 ? `/recent?page=${page}` : "/recent",
+  });
+}
 
 function timeAgo(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60_000);
@@ -31,7 +39,7 @@ function timeAgo(ts: number): string {
 export default async function RecentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: RecentParams;
 }) {
   const { page: rawPage } = await searchParams;
   const all = await getRecentSearches(MAX_LIST);
