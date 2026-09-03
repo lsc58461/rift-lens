@@ -17,10 +17,11 @@ const DOT_COUNT_MOBILE = 55;
 const LINK_DIST = 130; // 점끼리 이어지는 거리
 const CURSOR_DIST = 220; // 커서 영향 반경
 const SPEED = 0.18;
-// 경량 전환 기준 — 그리기 중앙값 4ms(60fps 예산 16.7ms 의 1/4; 배경이 메인스레드 1/4 이상 먹으면 과함)
-// 초과 또는 프레임 간격 중앙값 22ms(≈45fps 미만). 데스크톱·최신 폰은 보통 1~3ms 라 원래 품질 유지.
-// 검증(puppeteer CPU 배속, 2026-09-03): 1x·4x 는 full, 8x 는 lite 였던 7ms 기준을 4x 도 lite 가 되게 낮춤.
-const LITE_DRAW_MS = 4;
+// 경량 전환 기준 — 그리기 중앙값(JS 부분만 잡히고 래스터 비용은 안 잡히므로 낮게 본다) 1.6ms 초과,
+// 또는 프레임 간격 중앙값 22ms(≈45fps 미만). 실측(데스크톱 16코어, puppeteer CPU 배속, 2026-09-03):
+// 1x 0.5ms · 2x 1.2ms · 4x 2.0ms · 6x 4.5ms · 8x 5.5ms(간격 27ms). 2x≈최신 폰은 원래 품질, 4x≈보급형(라이트하우스
+// 모바일 기준)은 경량이 되게 그 사이에 둔다.
+const LITE_DRAW_MS = 1.6;
 const LITE_GAP_MS = 22;
 const PROBE_FRAMES = 12;
 const WARMUP_FRAMES = 3;
