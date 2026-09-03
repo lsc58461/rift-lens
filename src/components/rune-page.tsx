@@ -147,15 +147,14 @@ export function RuneTreeView({
 
   return (
     // 두 트리 칸은 같은 폭(minmax(0,1fr)) — 핵심룬이 4개인 트리가 칸을 넓혀 3개짜리 옆에 여백이 남던 문제.
-    // 아주 좁은 폭에선 안쪽만 가로 스크롤 (아이콘을 더 줄이면 룬을 알아볼 수 없음).
-    <div className="overflow-x-auto rounded-lg border bg-background/50">
-      <div className="grid min-w-[360px] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)_1px_auto] items-start gap-x-2 px-2 py-3 sm:gap-x-4 sm:px-3">
+    // 좁은 화면(<sm)에선 op.gg 처럼 능력치 파편을 트리 아래 줄로 내린다 (세 줄을 가로로 나란히).
+    <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-start gap-x-2 rounded-lg border bg-background/50 px-2 py-3 sm:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)_1px_auto] sm:gap-x-4 sm:px-3">
       <TreeColumn tree={primary} selected={chosen} withKeystones />
       <span className="h-full w-px bg-border" />
       <TreeColumn tree={secondary} selected={chosen} withKeystones={false} />
-      <span className="h-full w-px bg-border" />
-      <div className="flex flex-col items-center gap-2.5">
-        <div className="flex h-7 items-center text-xs font-medium text-muted-foreground">능력치 파편</div>
+      <span className="hidden h-full w-px bg-border sm:block" />
+      <div className="col-span-3 mt-3 flex flex-row flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t pt-3 sm:col-span-1 sm:mt-0 sm:flex-col sm:gap-2.5 sm:border-t-0 sm:pt-0">
+        <div className="flex h-7 basis-full items-center justify-center text-xs font-medium text-muted-foreground sm:basis-auto">능력치 파편</div>
         {SHARD_ROWS.map((row, ri) => (
           <div key={ri} className="flex items-center gap-1.5 sm:gap-2">
             {row.map((id, ci) => {
@@ -173,7 +172,6 @@ export function RuneTreeView({
             })}
           </div>
         ))}
-      </div>
       </div>
     </div>
   );
