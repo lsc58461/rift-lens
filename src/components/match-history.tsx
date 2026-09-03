@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/card";
 import { useHistorySummary } from "@/components/history-summary";
 import { MatchDetail, PlayerBadge, RankAtGame, type DetailPlayer } from "@/components/match-detail";
-import type { RuneInfo } from "@/lib/ddragon";
+import type { RuneInfo, RuneTree } from "@/lib/ddragon";
+import { RuneBadge } from "@/components/rune-page";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { MatchSummary, type Summary } from "@/components/match-summary";
 import {
@@ -48,6 +49,9 @@ interface Game {
   spells: number[];
   keystone: number | null;
   subStyle: number | null;
+  perks?: number[] | null;
+  subPerks?: number[] | null;
+  statPerks?: number[] | null;
   items: number[];
   multikills?: { double: number; triple: number; quadra: number; penta: number };
   badge?: "MVP" | "ACE" | null;
@@ -237,6 +241,7 @@ export function MatchHistory({
   ddVersion,
   champNames = {},
   runeMap = {},
+  runeTrees = [],
   lobbyByMatch = {},
   bare = false,
 }: {
@@ -245,6 +250,7 @@ export function MatchHistory({
   ddVersion: string;
   champNames?: Record<string, string>;
   runeMap?: Record<number, RuneInfo>;
+  runeTrees?: RuneTree[];
   /** matchId → 로비 평균 랭크(집계에 쓰인 경기만). 없으면 칩을 그리지 않는다 */
   lobbyByMatch?: Record<string, LobbyInfo>;
   /** 탭 안에 넣을 때처럼 바깥에서 Card를 감쌀 경우 자체 Card·헤더를 생략한다 */
@@ -418,6 +424,7 @@ export function MatchHistory({
                       );
                     })}
                   </div>
+                  <RuneBadge keystone={g.keystone} subStyle={g.subStyle} runeMap={runeMap} size={22} />
                 </div>
 
                 {/* KDA */}
@@ -516,7 +523,11 @@ export function MatchHistory({
                   names={champNames}
                   keystone={g.keystone ?? null}
                   subStyle={g.subStyle ?? null}
+                  perks={g.perks ?? null}
+                  subPerks={g.subPerks ?? null}
+                  statPerks={g.statPerks ?? null}
                   runeMap={runeMap}
+                  runeTrees={runeTrees}
                 />
               )}
             </div>

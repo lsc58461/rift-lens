@@ -9,6 +9,7 @@ import {
   getChampionNamesKo,
   getDDragonVersion,
   getRuneMapKo,
+  getRuneTreesKo,
 } from "@/lib/ddragon";
 import { ChampionsTable } from "./champions-table";
 
@@ -60,9 +61,10 @@ export default async function ChampionsPage({
     getChampionStats(patch, bracket),
     getDDragonVersion(),
   ]);
-  const [names, runes] = await Promise.all([
+  const [names, runes, runeTrees] = await Promise.all([
     getChampionNamesKo(version),
     getRuneMapKo(version),
+    getRuneTreesKo(version),
   ]);
 
   return (
@@ -78,6 +80,7 @@ export default async function ChampionsPage({
         version={version}
         names={names}
         runeMap={runes}
+        runeTrees={runeTrees}
         patches={patches}
         currentPatch={patch}
         currentBracket={bracket}

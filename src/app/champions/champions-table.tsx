@@ -27,7 +27,8 @@ import type {
   ChampionStat,
   ChampionStatsPayload,
 } from "@/lib/champion-stats";
-import type { RuneInfo } from "@/lib/ddragon";
+import type { RuneInfo, RuneTree } from "@/lib/ddragon";
+import { RuneTreeView } from "@/components/rune-page";
 
 const POSITION_LABEL: Record<string, string> = {
   TOP: "탑",
@@ -133,6 +134,7 @@ export function ChampionsTable({
   version,
   names,
   runeMap,
+  runeTrees,
   patches,
   currentPatch,
   currentBracket,
@@ -141,6 +143,7 @@ export function ChampionsTable({
   version: string;
   names: Record<string, string>;
   runeMap: Record<number, RuneInfo>;
+  runeTrees: RuneTree[];
   patches: { patch: string; games: number }[];
   currentPatch: string | null;
   currentBracket: string;
@@ -378,6 +381,7 @@ export function ChampionsTable({
           version={version}
           names={names}
           runeMap={runeMap}
+          runeTrees={runeTrees}
           onClose={() => setSelected(null)}
         />
       )}
@@ -392,12 +396,14 @@ function ChampionModal({
   version,
   names,
   runeMap,
+  runeTrees,
   onClose,
 }: {
   c: ChampionStat;
   version: string;
   names: Record<string, string>;
   runeMap: Record<number, RuneInfo>;
+  runeTrees: RuneTree[];
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -695,11 +701,7 @@ function ChampionModal({
                 룬 데이터는 수집 중이에요 — 새 경기가 쌓이면 표시됩니다
               </p>
             )}
-            <div className="space-y-2">
-              {c.runes.map((r, i) => (
-                <RunePage key={i} r={r} runeMap={runeMap} />
-              ))}
-            </div>
+            <RunePages runes={c.runes} runeMap={runeMap} runeTrees={runeTrees} />
           </section>
         </div>
       </div>
@@ -707,13 +709,48 @@ function ChampionModal({
   );
 }
 
-/** op.gg식 풀 룬 페이지 — 주 트리 4 · 보조 2 · 능력치 파편 3 */
+/** 룬 페이지 목록 — 요약 행을 누르면 아래 풀 트리(op.gg 룬 탭 배치)에 그 페이지가 펼쳐진다 */
+function RunePages({
+  runes,
+  runeMap,
+  runeTrees,
+}: {
+  runes: ChampionStat["runes"];
+  runeMap: Record<number, RuneInfo>;
+  runeTrees: RuneTree[];
+}) {
+  const [idx, setIdx] = useState(0);
+  const sel = runes[Math.min(idx, runes.length - 1)];
+  return (
+    <div className="space-y-2">
+      {runes.map((r, i) => (
+        <RunePage key={i} r={r} runeMap={runeMap} selected={i === idx} onSelect={() => setIdx(i)} />
+      ))}
+      {sel && runeTrees.length > 0 && (
+        <RuneTreeView
+          trees={runeTrees}
+          keystone={sel.keystone}
+          perks={sel.perks}
+          subStyle={sel.subStyle}
+          subPerks={sel.subPerks}
+          statPerks={sel.statPerks}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 룬 페이지 요약 행 — 핵심룬 크게 + 나머지 3 · 보조 2 · 파편 3, 판수·승률 */
 function RunePage({
   r,
   runeMap,
+  selected,
+  onSelect,
 }: {
   r: ChampionStat["runes"][number];
   runeMap: Record<number, RuneInfo>;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const runeImg = (id: number, size: string, dim = false) => {
     const info = runeMap[id];
@@ -733,7 +770,14 @@ function RunePage({
   };
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-background/50 p-2.5">
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors ${
+        selected ? "border-primary/50 bg-primary/5" : "bg-background/50 hover:bg-accent/40"
+      }`}
+    >
       {/* 주 트리: 핵심룬 크게 + 나머지 3개 */}
       <div className="flex items-center gap-1">
         {runeImg(r.keystone, "size-8 shrink-0")}
@@ -778,7 +822,7 @@ function RunePage({
           <WinrateText wins={r.wins} games={r.games} />
         </span>
       </span>
-    </div>
+    </button>
   );
 }
 

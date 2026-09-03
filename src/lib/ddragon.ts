@@ -119,6 +119,36 @@ export async function getRuneMapKo(
   }
 }
 
+/** 룬 트리 전체 구조 — 상세 룬 페이지(풀 트리에서 선택한 것만 밝게) 렌더용 */
+export interface RuneTree {
+  id: number;
+  key: string;
+  name: string;
+  icon: string;
+  /** slots[0] 은 핵심룬 줄 */
+  slots: { runes: { id: number; key: string; name: string; icon: string }[] }[];
+}
+
+export async function getRuneTreesKo(version: string): Promise<RuneTree[]> {
+  try {
+    return await cached(`ddragon:rune-trees:ko:${version}`, 60 * 60 * 24, async () => {
+      const res = await fetch(
+        `https://ddragon.leagueoflegends.com/cdn/${version}/data/ko_KR/runesReforged.json`,
+        { cache: "no-store", signal: AbortSignal.timeout(5_000) },
+      );
+      if (!res.ok) throw new Error(`runesReforged ${res.status}`);
+      const styles: RuneTree[] = await res.json();
+      // 클라이언트로 보내는 양을 줄인다 (longDesc 등 제외)
+      return styles.map((st) => ({
+        id: st.id, key: st.key, name: st.name, icon: st.icon,
+        slots: st.slots.map((sl) => ({ runes: sl.runes.map((r) => ({ id: r.id, key: r.key, name: r.name, icon: r.icon })) })),
+      }));
+    });
+  } catch {
+    return [];
+  }
+}
+
 /** 완성 아이템 id 목록 — 상위 조합(into)이 없고 조합식(from)이 있는 구매
  * 가능한 아이템. 소모품·컴포넌트·장신구를 챔피언 통계에서 거르는 데 쓴다. */
 export async function getCompletedItemIds(version: string): Promise<number[]> {

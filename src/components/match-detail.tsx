@@ -16,7 +16,8 @@ import {
   itemIconUrl,
   spellIconUrl,
 } from "@/lib/ddragon-assets";
-import type { RuneInfo } from "@/lib/ddragon";
+import type { RuneInfo, RuneTree } from "@/lib/ddragon";
+import { RuneBadge, RuneTreeView } from "@/components/rune-page";
 
 export interface DetailPlayer {
   name: string;
@@ -31,6 +32,8 @@ export interface DetailPlayer {
   vision: number | null;
   level: number | null;
   spells: number[];
+  keystone?: number | null;
+  subStyle?: number | null;
   items: number[];
   self?: boolean;
   /** 팀 내 최고 기여 — 승팀 MVP / 패팀 ACE */
@@ -109,7 +112,11 @@ export function MatchDetail({
   names,
   keystone,
   subStyle,
+  perks,
+  subPerks,
+  statPerks,
   runeMap,
+  runeTrees = [],
 }: {
   matchId: string;
   team: DetailPlayer[];
@@ -121,7 +128,11 @@ export function MatchDetail({
   names: Record<string, string>;
   keystone: number | null;
   subStyle: number | null;
+  perks?: number[] | null;
+  subPerks?: number[] | null;
+  statPerks?: number[] | null;
   runeMap: Record<number, RuneInfo>;
+  runeTrees?: RuneTree[];
 }) {
   const [tab, setTab] = useState<Tab>("scoreboard");
 
@@ -159,6 +170,7 @@ export function MatchDetail({
               region={region}
               version={version}
               names={names}
+              runeMap={runeMap}
             />
             <Scoreboard
               players={enemy}
@@ -167,6 +179,7 @@ export function MatchDetail({
               region={region}
               version={version}
               names={names}
+              runeMap={runeMap}
             />
           </div>
         )}
@@ -181,7 +194,11 @@ export function MatchDetail({
             version={version}
             keystone={keystone}
             subStyle={subStyle}
+            perks={perks}
+            subPerks={subPerks}
+            statPerks={statPerks}
             runeMap={runeMap}
+            runeTrees={runeTrees}
           />
         )}
       </div>
@@ -198,6 +215,7 @@ function Scoreboard({
   region,
   version,
   names,
+  runeMap,
 }: {
   players: DetailPlayer[];
   win: boolean;
@@ -205,6 +223,7 @@ function Scoreboard({
   region: string;
   version: string;
   names: Record<string, string>;
+  runeMap: Record<number, RuneInfo>;
 }) {
   const maxDamage = Math.max(1, ...players.map((p) => p.damage ?? 0));
 
@@ -274,6 +293,7 @@ function Scoreboard({
                     );
                   })}
                 </span>
+                <RuneBadge keystone={p.keystone} subStyle={p.subStyle} runeMap={runeMap} size={11} />
                 <Link
                   href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
                   className={`truncate underline-offset-2 hover:underline ${
@@ -448,7 +468,11 @@ function BuildTab({
   version,
   keystone,
   subStyle,
+  perks,
+  subPerks,
+  statPerks,
   runeMap,
+  runeTrees,
 }: {
   matchId: string;
   region: string;
@@ -456,7 +480,11 @@ function BuildTab({
   version: string;
   keystone: number | null;
   subStyle: number | null;
+  perks?: number[] | null;
+  subPerks?: number[] | null;
+  statPerks?: number[] | null;
   runeMap: Record<number, RuneInfo>;
+  runeTrees: RuneTree[];
 }) {
   const [data, setData] = useState<TimelineData | null>(null);
   const [error, setError] = useState(false);
@@ -601,7 +629,16 @@ function BuildTab({
 
       <section>
         <SectionLabel>룬</SectionLabel>
-        {keyRune ? (
+        {keyRune && runeTrees.length > 0 ? (
+          <RuneTreeView
+            trees={runeTrees}
+            keystone={keystone}
+            perks={perks}
+            subStyle={subStyle}
+            subPerks={subPerks}
+            statPerks={statPerks}
+          />
+        ) : keyRune ? (
           <div className="flex items-center gap-2 text-xs">
             <Image
               src={`https://ddragon.leagueoflegends.com/cdn/img/${keyRune.icon}`}

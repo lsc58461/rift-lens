@@ -289,6 +289,8 @@ export async function POST(req: NextRequest) {
           vision: p.visionScore ?? null,
           level: p.champLevel ?? null,
           spells: [p.spell1Id ?? 0, p.spell2Id ?? 0],
+          keystone: p.keystone ?? null,
+          subStyle: p.subStyle ?? null,
           items: p.items ?? [],
           self: isSelf(p),
           badge: badgeOf(p),
@@ -312,6 +314,9 @@ export async function POST(req: NextRequest) {
           spells: [self.spell1Id ?? 0, self.spell2Id ?? 0],
           keystone: self.keystone ?? null,
           subStyle: self.subStyle ?? null,
+          perks: self.perks ?? null,
+          subPerks: self.subPerks ?? null,
+          statPerks: self.statPerks ?? null,
           items: self.items ?? [],
           // 멀티킬 (확장 필드 미수집 매치는 0)
           badge: badgeOf(self) ?? null,

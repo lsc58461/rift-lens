@@ -25,6 +25,7 @@ import {
 } from "@/components/history-summary";
 import { LobbyDistribution } from "@/components/lobby-distribution";
 import { MatchSection, type LobbyInfoMap } from "@/components/match-section";
+import { HashFix } from "@/components/hash-fix";
 import { MmrChart, type MmrChartPoint } from "@/components/mmr-chart";
 import { SearchForm } from "@/components/search-form";
 import { ShareButton } from "@/components/share-button";
@@ -39,6 +40,7 @@ import {
 import {
   getChampionNamesKo,
   getRuneMapKo,
+  getRuneTreesKo,
   getDDragonVersion,
   profileIconUrl,
   tierEmblemUrl,
@@ -264,11 +266,22 @@ export default async function SummonerPage({
   const decoded = decodeURIComponent(riotId).normalize("NFKC");
   const hashIndex = decoded.lastIndexOf("#");
   if (hashIndex <= 0) {
+    // op.gg 식 '이름-태그' 도 받는다 — 라이엇 ID 게임명엔 '-' 가 못 들어가므로 마지막 '-' 가 구분자.
+    // 정식 주소(%23)로 보내 저장 키·색인이 갈라지지 않게 한다.
+    const dash = decoded.lastIndexOf("-");
+    if (dash > 0 && dash < decoded.length - 1) {
+      redirect(`/summoner/${region}/${encodeURIComponent(`${decoded.slice(0, dash)}#${decoded.slice(dash + 1)}`)}`);
+    }
+    // 주소창에 '이름#태그'를 그대로 친 경우 '#태그'는 프래그먼트라 서버에 안 온다 —
+    // 클라이언트가 location.hash 를 읽어 %23 주소로 바꿔 보낸다 (HashFix)
     return (
-      <ErrorCard
-        title="잘못된 검색 형식이에요"
-        description="게임명#태그 형식으로 검색해 주세요. (예: Hide on bush#KR1)"
-      />
+      <>
+        <HashFix />
+        <ErrorCard
+          title="잘못된 검색 형식이에요"
+          description="게임명#태그 형식으로 검색해 주세요. (예: Hide on bush#KR1)"
+        />
+      </>
     );
   }
   const gameName = decoded.slice(0, hashIndex);
@@ -432,7 +445,7 @@ export default async function SummonerPage({
 
   const ddVersion = await getDDragonVersion();
   const champNames = await getChampionNamesKo(ddVersion);
-  const runeMap = await getRuneMapKo(ddVersion);
+  const [runeMap, runeTrees] = await Promise.all([getRuneMapKo(ddVersion), getRuneTreesKo(ddVersion)]);
 
   // 저장된 이전 분석에는 프로필 정보가 없을 수 있어 보충 조회 (둘 다 캐시됨)
   let selfPuuid: string | null = null; // 닉변 승계용 — 아래 조회에서 확보
@@ -880,6 +893,7 @@ export default async function SummonerPage({
           {/* 경기 목록 — 최근 전적 한 개. 집계에 쓰인 경기는 로비 랭크 칩으로 표시 */}
           <MatchSection
             runeMap={runeMap}
+            runeTrees={runeTrees}
             region={region}
             riotId={decoded}
             ddVersion={ddVersion}

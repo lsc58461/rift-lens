@@ -6,7 +6,7 @@
 
 import { Swords } from "lucide-react";
 import { MatchHistory, type LobbyInfo } from "@/components/match-history";
-import type { RuneInfo } from "@/lib/ddragon";
+import type { RuneInfo, RuneTree } from "@/lib/ddragon";
 import {
   Card,
   CardContent,
@@ -23,6 +23,7 @@ export function MatchSection({
   ddVersion,
   champNames,
   runeMap,
+  runeTrees,
   lobbyByMatch,
   analyzedCount,
 }: {
@@ -31,6 +32,7 @@ export function MatchSection({
   ddVersion: string;
   champNames: Record<string, string>;
   runeMap?: Record<number, RuneInfo>;
+  runeTrees?: RuneTree[];
   lobbyByMatch: Record<string, LobbyInfo>;
   analyzedCount: number;
 }) {
@@ -55,6 +57,7 @@ export function MatchSection({
       <CardContent>
         <MatchHistory
           runeMap={runeMap}
+          runeTrees={runeTrees}
           region={region}
           riotId={riotId}
           ddVersion={ddVersion}
