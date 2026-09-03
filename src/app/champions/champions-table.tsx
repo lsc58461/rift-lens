@@ -4,6 +4,7 @@
 // 모달에서 평균 지표·포지션별 성적·추천 스펠/아이템/룬을 자세히 보여준다.
 
 import { useEffect, useMemo, useState } from "react";
+import { AssetTip } from "@/components/asset-tip";
 import { matchesKo } from "@/lib/hangul";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -540,14 +541,16 @@ function ChampionModal({
                       return (
                         <span key={id} className="relative">
                           {url ? (
-                            <Image
-                              src={url}
-                              alt=""
-                              width={24}
-                              height={24}
-                              unoptimized
-                              className="size-6 rounded"
-                            />
+                            <AssetTip kind="item" id={Number(id)}>
+                              <Image
+                                src={url}
+                                alt=""
+                                width={24}
+                                height={24}
+                                unoptimized
+                                className="size-6 rounded"
+                              />
+                            </AssetTip>
                           ) : (
                             <span className="size-6 rounded bg-foreground/8" />
                           )}
@@ -585,15 +588,16 @@ function ChampionModal({
                     {[s.s1, s.s2].map((id, i) => {
                       const url = spellIconUrl(version, id);
                       return url ? (
-                        <Image
-                          key={i}
-                          src={url}
-                          alt=""
-                          width={24}
-                          height={24}
-                          unoptimized
-                          className="size-6 rounded"
-                        />
+                        <AssetTip key={i} kind="spell" id={id}>
+                          <Image
+                            src={url}
+                            alt=""
+                            width={24}
+                            height={24}
+                            unoptimized
+                            className="size-6 rounded"
+                          />
+                        </AssetTip>
                       ) : (
                         <span key={i} className="size-6 rounded bg-foreground/8" />
                       );
@@ -631,14 +635,16 @@ function ChampionModal({
                     return (
                       <span key={j} className="flex items-center gap-1.5">
                         {url ? (
-                          <Image
-                            src={url}
-                            alt=""
-                            width={26}
-                            height={26}
-                            unoptimized
-                            className="size-6.5 rounded"
-                          />
+                          <AssetTip kind="item" id={id}>
+                            <Image
+                              src={url}
+                              alt=""
+                              width={26}
+                              height={26}
+                              unoptimized
+                              className="size-6.5 rounded"
+                            />
+                          </AssetTip>
                         ) : (
                           <span className="size-6.5 rounded bg-foreground/8" />
                         )}
@@ -673,14 +679,16 @@ function ChampionModal({
                     title={`${it.games}판`}
                   >
                     {url ? (
-                      <Image
-                        src={url}
-                        alt=""
-                        width={32}
-                        height={32}
-                        unoptimized
-                        className="size-8 rounded"
-                      />
+                      <AssetTip kind="item" id={it.id}>
+                        <Image
+                          src={url}
+                          alt=""
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="size-8 rounded"
+                        />
+                      </AssetTip>
                     ) : (
                       <span className="size-8 rounded bg-foreground/8" />
                     )}
@@ -755,15 +763,16 @@ function RunePage({
   const runeImg = (id: number, size: string, dim = false) => {
     const info = runeMap[id];
     return info ? (
-      <Image
-        src={`https://ddragon.leagueoflegends.com/cdn/img/${info.icon}`}
-        alt={info.name}
-        title={info.name}
-        width={28}
-        height={28}
-        unoptimized
-        className={`${size} ${dim ? "opacity-90" : ""}`}
-      />
+      <AssetTip kind="rune" id={id}>
+        <Image
+          src={`https://ddragon.leagueoflegends.com/cdn/img/${info.icon}`}
+          alt={info.name}
+          width={28}
+          height={28}
+          unoptimized
+          className={`${size} ${dim ? "opacity-90" : ""}`}
+        />
+      </AssetTip>
     ) : (
       <span className={`${size} rounded-full bg-foreground/8`} />
     );

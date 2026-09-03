@@ -3,6 +3,7 @@
 // · RuneTreeView: 상세용 풀 룬 페이지 — 주 트리(핵심룬 줄 + 3줄) · 보조 트리(3줄) · 능력치 파편(3줄)을
 //                 전부 그리고 선택한 것만 밝게, 나머지는 흐리게 (op.gg 룬 탭과 같은 배치)
 import Image from "next/image";
+import { AssetTip } from "@/components/asset-tip";
 import type { RuneInfo, RuneTree } from "@/lib/ddragon";
 import { STAT_MODS } from "@/lib/ddragon-assets";
 
@@ -33,30 +34,34 @@ export function RuneBadge({
   const sub = Math.round(size * 0.68);
   return (
     <span className="flex shrink-0 flex-col items-center gap-px">
-      <span
-        className="flex items-center justify-center overflow-hidden rounded-full bg-zinc-950/80 ring-1 ring-foreground/10"
-        style={{ width: size, height: size }}
-        title={k?.name}
-      >
-        {k && <Image src={`${CDN}${k.icon}`} alt={k.name} width={size} height={size} unoptimized className="size-full" />}
-      </span>
-      <span
-        className="flex items-center justify-center rounded-full bg-zinc-950/60 ring-1 ring-foreground/10"
-        style={{ width: size, height: size }}
-        title={s?.name}
-      >
-        {s && <Image src={`${CDN}${s.icon}`} alt={s.name} width={sub} height={sub} unoptimized style={{ width: sub, height: sub }} />}
-      </span>
+      <AssetTip kind="rune" id={keystone}>
+        <span
+          className="flex items-center justify-center overflow-hidden rounded-full bg-zinc-950/80 ring-1 ring-foreground/10"
+          style={{ width: size, height: size }}
+        >
+          {k && <Image src={`${CDN}${k.icon}`} alt={k.name} width={size} height={size} unoptimized className="size-full" />}
+        </span>
+      </AssetTip>
+      <AssetTip kind="rune" id={subStyle}>
+        <span
+          className="flex items-center justify-center rounded-full bg-zinc-950/60 ring-1 ring-foreground/10"
+          style={{ width: size, height: size }}
+        >
+          {s && <Image src={`${CDN}${s.icon}`} alt={s.name} width={sub} height={sub} unoptimized style={{ width: sub, height: sub }} />}
+        </span>
+      </AssetTip>
     </span>
   );
 }
 
 function RuneIcon({
+  id,
   info,
   sizeClass,
   selected,
   keystone = false,
 }: {
+  id: number;
   info: { name: string; icon: string } | undefined;
   sizeClass: string;
   selected: boolean;
@@ -64,8 +69,8 @@ function RuneIcon({
 }) {
   if (!info) return <span className={`${sizeClass} rounded-full bg-foreground/8`} />;
   return (
+    <AssetTip kind="rune" id={id}>
     <span
-      title={info.name}
       className={`flex shrink-0 items-center justify-center rounded-full ${sizeClass} ${
         selected
           ? keystone
@@ -76,6 +81,7 @@ function RuneIcon({
     >
       <Image src={`${CDN}${info.icon}`} alt={info.name} width={36} height={36} unoptimized className="size-full" />
     </span>
+    </AssetTip>
   );
 }
 
@@ -114,7 +120,7 @@ function TreeColumn({
           // 핵심룬 줄(3~4개)과 아래 줄(3개)은 각각 가운데 정렬 — 폭이 달라도 칸 안에서 중앙에 놓인다
           <div key={si} className={`flex items-center justify-center gap-1.5 sm:gap-2.5 ${isKey ? "mb-1" : ""}`}>
             {slot.runes.map((r) => (
-              <RuneIcon key={r.id} info={r} sizeClass={isKey ? KEYSTONE : RUNE} selected={selected.has(r.id)} keystone={isKey} />
+              <RuneIcon key={r.id} id={r.id} info={r} sizeClass={isKey ? KEYSTONE : RUNE} selected={selected.has(r.id)} keystone={isKey} />
             ))}
           </div>
         );

@@ -1,6 +1,7 @@
 "use client";
 
 import { TIER_COLORS } from "@/lib/mmr/rank";
+import { AssetTip } from "@/components/asset-tip";
 import { summonerPath } from "@/lib/summoner-url";
 
 // 펼친 경기의 상세 — 종합 스코어보드 / 팀 분석 / 빌드 세 탭.
@@ -277,15 +278,16 @@ function Scoreboard({
                   {p.spells.slice(0, 2).map((s, j) => {
                     const url = spellIconUrl(version, s);
                     return url ? (
-                      <Image
-                        key={j}
-                        src={url}
-                        alt=""
-                        width={11}
-                        height={11}
-                        unoptimized
-                        className="size-[11px] rounded-[2px]"
-                      />
+                      <AssetTip key={j} kind="spell" id={s}>
+                        <Image
+                          src={url}
+                          alt=""
+                          width={11}
+                          height={11}
+                          unoptimized
+                          className="size-[11px] rounded-[2px]"
+                        />
+                      </AssetTip>
                     ) : (
                       <span
                         key={j}
@@ -336,15 +338,16 @@ function Scoreboard({
                 {(p.items ?? []).slice(0, 6).map((id, j) => {
                   const url = id > 0 ? itemIconUrl(version, id) : null;
                   return url ? (
-                    <Image
-                      key={j}
-                      src={url}
-                      alt=""
-                      width={16}
-                      height={16}
-                      unoptimized
-                      className="size-4 rounded-[2px]"
-                    />
+                    <AssetTip key={j} kind="item" id={id}>
+                      <Image
+                        src={url}
+                        alt=""
+                        width={16}
+                        height={16}
+                        unoptimized
+                        className="size-4 rounded-[2px]"
+                      />
+                    </AssetTip>
                   ) : (
                     <span
                       key={j}
@@ -560,18 +563,19 @@ function BuildTab({
                     {g.items.map((ev, i) => {
                       const url = itemIconUrl(version, ev.itemId);
                       return url ? (
-                        <Image
-                          key={i}
-                          src={url}
-                          alt=""
-                          width={22}
-                          height={22}
-                          unoptimized
-                          className={`size-[22px] rounded ${
-                            ev.type === "sell" ? "opacity-35 grayscale" : ""
-                          }`}
-                          title={ev.type === "sell" ? "판매" : undefined}
-                        />
+                        <AssetTip key={i} kind="item" id={ev.itemId}>
+                          <Image
+                            src={url}
+                            alt=""
+                            width={22}
+                            height={22}
+                            unoptimized
+                            className={`size-[22px] rounded ${
+                              ev.type === "sell" ? "opacity-35 grayscale" : ""
+                            }`}
+                            title={ev.type === "sell" ? "판매" : undefined}
+                          />
+                        </AssetTip>
                       ) : null;
                     })}
                   </div>

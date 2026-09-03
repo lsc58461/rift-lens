@@ -5,6 +5,7 @@
 // 펼치면 10인 스코어보드를 보여준다.
 
 import Image from "next/image";
+import { AssetTip } from "@/components/asset-tip";
 import { summonerPath } from "@/lib/summoner-url";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -145,16 +146,17 @@ function ItemGrid({
       {[0, 1, 2, 3, 4, 5, 6].map((i) => {
         const url = itemIconUrl(version, items[i] ?? 0);
         return url ? (
-          <Image
-            key={i}
-            src={url}
-            alt=""
-            width={size}
-            height={size}
-            unoptimized
-            className="rounded"
-            style={{ width: size, height: size }}
-          />
+          <AssetTip key={i} kind="item" id={items[i] ?? 0}>
+            <Image
+              src={url}
+              alt=""
+              width={size}
+              height={size}
+              unoptimized
+              className="rounded"
+              style={{ width: size, height: size }}
+            />
+          </AssetTip>
         ) : (
           <div
             key={i}
@@ -408,15 +410,16 @@ export function MatchHistory({
                     {g.spells.map((s, i) => {
                       const url = spellIconUrl(ddVersion, s);
                       return url ? (
-                        <Image
-                          key={i}
-                          src={url}
-                          alt=""
-                          width={22}
-                          height={22}
-                          unoptimized
-                          className="size-[22px] rounded"
-                        />
+                        <AssetTip key={i} kind="spell" id={s}>
+                          <Image
+                            src={url}
+                            alt=""
+                            width={22}
+                            height={22}
+                            unoptimized
+                            className="size-[22px] rounded"
+                          />
+                        </AssetTip>
                       ) : (
                         <div
                           key={i}
