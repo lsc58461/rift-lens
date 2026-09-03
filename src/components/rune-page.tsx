@@ -53,29 +53,28 @@ export function RuneBadge({
 
 function RuneIcon({
   info,
-  size,
+  sizeClass,
   selected,
   keystone = false,
 }: {
   info: { name: string; icon: string } | undefined;
-  size: number;
+  sizeClass: string;
   selected: boolean;
   keystone?: boolean;
 }) {
-  if (!info) return <span className="rounded-full bg-foreground/8" style={{ width: size, height: size }} />;
+  if (!info) return <span className={`${sizeClass} rounded-full bg-foreground/8`} />;
   return (
     <span
       title={info.name}
-      className={`flex items-center justify-center rounded-full transition-opacity ${
+      className={`flex shrink-0 items-center justify-center rounded-full ${sizeClass} ${
         selected
           ? keystone
             ? "bg-zinc-950/80 ring-2 ring-amber-400/80"
             : "ring-1 ring-amber-300/70"
           : "opacity-25 grayscale"
       }`}
-      style={{ width: size, height: size }}
     >
-      <Image src={`${CDN}${info.icon}`} alt={info.name} width={size} height={size} unoptimized className="size-full" />
+      <Image src={`${CDN}${info.icon}`} alt={info.name} width={36} height={36} unoptimized className="size-full" />
     </span>
   );
 }
@@ -89,6 +88,10 @@ function treeOf(trees: RuneTree[], styleId: number | null | undefined, runeId?: 
   return null;
 }
 
+// 아이콘 크기는 화면 폭에 따라 — 핵심룬 4개 줄이 좁은 칸에도 들어가게 (모바일 30px, 이상 34px)
+const KEYSTONE = "size-[30px] sm:size-[34px]";
+const RUNE = "size-[22px] sm:size-[26px]";
+
 function TreeColumn({
   tree,
   selected,
@@ -100,24 +103,22 @@ function TreeColumn({
 }) {
   const slots = tree ? (withKeystones ? tree.slots : tree.slots.slice(1)) : [];
   return (
-    <div className="flex min-w-0 flex-col items-center gap-2">
+    <div className="flex min-w-0 flex-col items-center gap-2.5">
       <div className="flex h-7 items-center gap-1.5 text-xs font-medium text-muted-foreground">
         {tree && <Image src={`${CDN}${tree.icon}`} alt="" width={16} height={16} unoptimized className="size-4" />}
         {tree?.name ?? "—"}
       </div>
-      {slots.map((slot, si) => (
-        <div key={si} className="flex items-center justify-center gap-2">
-          {slot.runes.map((r) => (
-            <RuneIcon
-              key={r.id}
-              info={r}
-              size={withKeystones && si === 0 ? 34 : 26}
-              selected={selected.has(r.id)}
-              keystone={withKeystones && si === 0}
-            />
-          ))}
-        </div>
-      ))}
+      {slots.map((slot, si) => {
+        const isKey = withKeystones && si === 0;
+        return (
+          // 핵심룬 줄(3~4개)과 아래 줄(3개)은 각각 가운데 정렬 — 폭이 달라도 칸 안에서 중앙에 놓인다
+          <div key={si} className={`flex items-center justify-center gap-1.5 sm:gap-2.5 ${isKey ? "mb-1" : ""}`}>
+            {slot.runes.map((r) => (
+              <RuneIcon key={r.id} info={r} sizeClass={isKey ? KEYSTONE : RUNE} selected={selected.has(r.id)} keystone={isKey} />
+            ))}
+          </div>
+        );
+      })}
       {!tree && <p className="text-[11px] text-muted-foreground">정보 없음</p>}
     </div>
   );
@@ -145,15 +146,18 @@ export function RuneTreeView({
   const shards = statPerks ?? [];
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr_auto_auto] items-start gap-x-3 rounded-lg border bg-background/50 px-3 py-3 sm:gap-x-5">
+    // 두 트리 칸은 같은 폭(minmax(0,1fr)) — 핵심룬이 4개인 트리가 칸을 넓혀 3개짜리 옆에 여백이 남던 문제.
+    // 아주 좁은 폭에선 안쪽만 가로 스크롤 (아이콘을 더 줄이면 룬을 알아볼 수 없음).
+    <div className="overflow-x-auto rounded-lg border bg-background/50">
+      <div className="grid min-w-[360px] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)_1px_auto] items-start gap-x-2 px-2 py-3 sm:gap-x-4 sm:px-3">
       <TreeColumn tree={primary} selected={chosen} withKeystones />
       <span className="h-full w-px bg-border" />
       <TreeColumn tree={secondary} selected={chosen} withKeystones={false} />
       <span className="h-full w-px bg-border" />
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-2.5">
         <div className="flex h-7 items-center text-xs font-medium text-muted-foreground">능력치 파편</div>
         {SHARD_ROWS.map((row, ri) => (
-          <div key={ri} className="flex items-center gap-2">
+          <div key={ri} className="flex items-center gap-1.5 sm:gap-2">
             {row.map((id, ci) => {
               const mod = STAT_MODS[id];
               const on = shards[ri] === id;
@@ -161,14 +165,15 @@ export function RuneTreeView({
                 <span
                   key={ci}
                   title={mod?.name}
-                  className={`flex size-[22px] items-center justify-center rounded-full bg-foreground/10 p-0.5 ${on ? "ring-1 ring-amber-300/70" : "opacity-25 grayscale"}`}
+                  className={`flex size-5 items-center justify-center rounded-full bg-foreground/10 p-0.5 sm:size-[22px] ${on ? "ring-1 ring-amber-300/70" : "opacity-25 grayscale"}`}
                 >
-                  {mod && <Image src={`${CDN}${mod.icon}`} alt={mod.name} width={18} height={18} unoptimized className="size-[18px]" />}
+                  {mod && <Image src={`${CDN}${mod.icon}`} alt={mod.name} width={18} height={18} unoptimized className="size-full" />}
                 </span>
               );
             })}
           </div>
         ))}
+      </div>
       </div>
     </div>
   );
