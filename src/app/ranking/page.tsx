@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { summonerPath } from "@/lib/summoner-url";
 import { pageMeta } from "@/lib/seo";
 import { Crown, Flame, Sparkles, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
@@ -152,7 +153,7 @@ export default async function RankingPage({
                     <span className="flex min-w-0 flex-1 items-center gap-2 sm:flex-1">
                       {label ? (
                         <Link
-                          href={`/summoner/kr/${encodeURIComponent(label)}`}
+                          href={summonerPath("kr", label)}
                           className="min-w-0 truncate font-medium hover:underline"
                         >
                           {label.split("#")[0]}

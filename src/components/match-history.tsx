@@ -5,6 +5,7 @@
 // 펼치면 10인 스코어보드를 보여준다.
 
 import Image from "next/image";
+import { summonerPath } from "@/lib/summoner-url";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChevronDown, Loader2, Plus, Swords } from "lucide-react";
@@ -190,7 +191,7 @@ function TeamColumn({
             className="size-4 shrink-0 rounded-sm"
           />
           <Link
-            href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
+            href={summonerPath(region, p.name)}
             className={`truncate text-[11px] leading-tight underline-offset-2 hover:underline ${
               p.self ? "font-semibold text-foreground" : "text-muted-foreground"
             }`}

@@ -4,6 +4,7 @@
 // 모두 서버에서 처리하고, 브라우저로는 한 페이지 분량만 받는다.
 
 import { useCallback, useEffect, useState } from "react";
+import { summonerPath } from "@/lib/summoner-url";
 import {
   ChevronLeft,
   ChevronRight,
@@ -191,7 +192,7 @@ export function SummonersPanel() {
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 sm:flex-nowrap"
               >
                 <a
-                  href={`/summoner/${r.region}/${encodeURIComponent(r.name)}`}
+                  href={summonerPath(r.region, r.name)}
                   target="_blank"
                   rel="noreferrer"
                   className="group flex min-w-0 flex-1 items-center gap-1.5 font-medium"

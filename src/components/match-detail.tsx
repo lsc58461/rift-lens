@@ -1,6 +1,7 @@
 "use client";
 
 import { TIER_COLORS } from "@/lib/mmr/rank";
+import { summonerPath } from "@/lib/summoner-url";
 
 // 펼친 경기의 상세 — 종합 스코어보드 / 팀 분석 / 빌드 세 탭.
 // 종합·팀 분석은 이미 받은 전적 데이터로 그리고, 빌드(아이템 타임라인·
@@ -295,7 +296,7 @@ function Scoreboard({
                 </span>
                 <RuneBadge keystone={p.keystone} subStyle={p.subStyle} runeMap={runeMap} size={11} />
                 <Link
-                  href={`/summoner/${region}/${encodeURIComponent(p.name)}`}
+                  href={summonerPath(region, p.name)}
                   className={`truncate underline-offset-2 hover:underline ${
                     p.self ? "font-semibold" : "text-muted-foreground"
                   }`}

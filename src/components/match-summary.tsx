@@ -5,6 +5,7 @@
 // 함께 플레이한 소환사를 한 카드에 모은다. 모두 저장된 매치에서 계산된 값.
 
 import Image from "next/image";
+import { summonerPath } from "@/lib/summoner-url";
 import Link from "next/link";
 import { championIconUrl, championNameKo } from "@/lib/ddragon-assets";
 
@@ -238,7 +239,7 @@ export function MatchSummary({
                 return (
                   <div key={m.name} className="flex items-center gap-2">
                     <Link
-                      href={`/summoner/${region}/${encodeURIComponent(m.name)}`}
+                      href={summonerPath(region, m.name)}
                       className="min-w-0 flex-1 truncate text-xs underline-offset-2 hover:underline"
                     >
                       {m.name.split("#")[0]}

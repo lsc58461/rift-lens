@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { summonerPath } from "@/lib/summoner-url";
 import { pageMeta } from "@/lib/seo";
 import { ArrowRight, ChevronRight, History } from "lucide-react";
 import { PageHeader } from "@/components/page-kit";
@@ -66,7 +67,7 @@ export default async function RecentPage({
           {entries.map((e) => (
             <Link
               key={`${e.region}:${e.gameName}#${e.tagLine}`}
-              href={`/summoner/${e.region}/${encodeURIComponent(`${e.gameName}#${e.tagLine}`)}`}
+              href={summonerPath(e.region, `${e.gameName}#${e.tagLine}`)}
               className="group flex flex-col gap-2.5 rounded-xl border bg-card px-4 py-3 transition-all hover:-translate-y-px hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 sm:flex-row sm:items-center sm:gap-3"
             >
               <div className="min-w-0 flex-1">

@@ -8,6 +8,7 @@ import {
   TrendingUp,
   Trophy,
 } from "lucide-react";
+import { summonerPath } from "@/lib/summoner-url";
 import type { Metadata } from "next";
 import { OG_BASE } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
@@ -135,7 +136,7 @@ export default async function Home() {
               {recent.slice(0, 6).map((r) => (
                 <Link
                   key={`${r.gameName}#${r.tagLine}`}
-                  href={`/summoner/kr/${encodeURIComponent(`${r.gameName}#${r.tagLine}`)}`}
+                  href={summonerPath("kr", `${r.gameName}#${r.tagLine}`)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-card/50 px-2.5 py-1 text-xs backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
                 >
                   <span

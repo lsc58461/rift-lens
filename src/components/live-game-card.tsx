@@ -3,6 +3,7 @@
 // 소환사 페이지 상단 "지금 게임 중" 카드 — 페이지 로드 뒤 /api/live-game 을 따로 불러
 // 페이지 렌더를 늦추지 않는다. 게임 중이 아니면 아무것도 그리지 않는다.
 import { useCallback, useEffect, useState } from "react";
+import { summonerPath } from "@/lib/summoner-url";
 import { Radio, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,7 @@ export function LiveGameCard({
               </div>
               {team.players.map((p) => {
                 const href = p.riotId
-                  ? `/summoner/${region}/${encodeURIComponent(p.riotId)}`
+                  ? summonerPath(region, p.riotId)
                   : null;
                 const name = p.riotId ?? "알 수 없음";
                 return (

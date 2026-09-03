@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { summonerPath } from "@/lib/summoner-url";
 import { useState, useTransition } from "react";
 import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +23,7 @@ export function SearchForm({ compact = false }: { compact?: boolean }) {
       return;
     }
     startTransition(() => {
-      router.push(`/summoner/kr/${encodeURIComponent(trimmed)}`);
+      router.push(summonerPath("kr", trimmed));
     });
   }
 

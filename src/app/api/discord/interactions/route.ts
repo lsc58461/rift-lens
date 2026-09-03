@@ -2,6 +2,7 @@ import {
   getMaintenanceInfo,
   isMaintenanceActive,
 } from "@/lib/maintenance";
+import { summonerPath } from "@/lib/summoner-url";
 import { SITE_URL } from "@/lib/site";
 import { createPublicKey, verify as cryptoVerify } from "crypto";
 import { NextResponse, after, type NextRequest } from "next/server";
@@ -111,7 +112,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
         {
           title: `${name} 의 최근 매칭 구간`,
           description: `**${est}** (최근 솔로랭크 로비 평균 랭크)\n현재 티어 ${cur}`,
-          url: `${SITE}/summoner/${PLATFORM}/${encodeURIComponent(name)}`,
+          url: `${SITE}${summonerPath(PLATFORM, name)}`,
           color: BLUE,
           image: { url: cardImage(name) },
           footer: { text: "Rift Lens" },

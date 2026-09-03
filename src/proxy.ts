@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { parseSummonerSlug, summonerPath } from "@/lib/summoner-url";
 
 // 점검 모드 미들웨어 — 어드민이 /admin에서 토글하면 모든 페이지가
 // /maintenance로 rewrite된다. 플래그는 /api/maintenance에서 조회하고
@@ -69,14 +70,18 @@ export async function proxy(req: NextRequest) {
     if (region !== "kr") {
       return new NextResponse("Not Found", { status: 404 });
     }
-    if (!req.nextUrl.searchParams.has("renamed")) {
-      const riotId = decodeURIComponent(m[2]).normalize("NFKC");
+    const parsed = parseSummonerSlug(decodeURIComponent(m[2]).normalize("NFKC"));
+    // 옛 '%23'(이름#태그) 주소 → 새 '이름-태그' 주소 (색인·공유 링크 보존, 쿼리 유지)
+    if (parsed?.legacy) {
+      const url = new URL(summonerPath(region, `${parsed.gameName}#${parsed.tagLine}`), req.url);
+      url.search = req.nextUrl.search;
+      return NextResponse.redirect(url, 308);
+    }
+    if (parsed && !req.nextUrl.searchParams.has("renamed")) {
+      const riotId = `${parsed.gameName}#${parsed.tagLine}`;
       const to = await lookupRenamed(region, riotId);
       if (to && to !== riotId) {
-        const url = new URL(
-          `/summoner/${region}/${encodeURIComponent(to)}`,
-          req.url,
-        );
+        const url = new URL(summonerPath(region, to), req.url);
         url.searchParams.set("renamed", riotId);
         return NextResponse.redirect(url, 308);
       }

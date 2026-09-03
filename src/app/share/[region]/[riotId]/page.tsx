@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { summonerPath } from "@/lib/summoner-url";
 import { ArrowLeft, Hand } from "lucide-react";
 import { PLATFORM_LABELS } from "@/lib/riot/types";
 
@@ -44,7 +45,7 @@ export default async function SharePage({
       />
 
       <Link
-        href={`/summoner/${region}/${encodeURIComponent(decoded)}`}
+        href={summonerPath(region, decoded)}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
       >
         <ArrowLeft className="size-4" />

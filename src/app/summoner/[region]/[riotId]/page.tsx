@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { parseSummonerSlug, summonerPath } from "@/lib/summoner-url";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbLd, OG_BASE } from "@/lib/seo";
 import { notFound, redirect } from "next/navigation";
@@ -103,25 +104,24 @@ export async function generateMetadata({
   if (!(region in PLATFORM_LABELS)) {
     notFound();
   }
-  const decoded = decodeURIComponent(riotId).normalize("NFKC");
-  const hashIndex = decoded.lastIndexOf("#");
+  const parsed = parseSummonerSlug(decodeURIComponent(riotId).normalize("NFKC"));
+  const gameName = parsed?.gameName ?? "";
+  const tagLine = parsed?.tagLine ?? "";
+  const decoded = parsed ? `${gameName}#${tagLine}` : decodeURIComponent(riotId);
   // 저장된 결과가 있으면 현재 티어·최근 로비 평균을 제목/설명에 넣는다 (검색 결과 클릭률).
   // DB 읽기만 — 라이엇 호출·분석 유발은 절대 없다 (크롤러가 이 단계만 긁어도 비용 0).
   const platform = region as PlatformRegion;
-  const gameName = decoded.slice(0, hashIndex);
-  const tagLine = decoded.slice(hashIndex + 1);
-  const stored =
-    hashIndex > 0
-      ? ((await getStoredResult("deep", platform, gameName, tagLine).catch(() => null)) ??
-        (await getStoredResult("quick", platform, gameName, tagLine).catch(() => null)))
-      : null;
+  const stored = parsed
+    ? ((await getStoredResult("deep", platform, gameName, tagLine).catch(() => null)) ??
+      (await getStoredResult("quick", platform, gameName, tagLine).catch(() => null)))
+    : null;
   const cur = stored?.currentRank?.label ?? null;
   const est = stored?.estimatedRank?.label ?? null;
   const title = cur ? `${decoded} — ${cur} · 매칭 구간` : `${decoded} 매칭 구간`;
   const description = cur
     ? `${decoded} 롤 전적 — 현재 ${cur}${est ? `, 최근 솔로랭크 로비 평균 ${est}` : ""}. 최근 경기 기록과 같은 경기에서 만난 플레이어들의 랭크 분포를 확인해 보세요.`
     : `${decoded}의 최근 매칭 구간 — 최근 솔로랭크 경기 로비의 평균 랭크와 전적을 확인해 보세요.`;
-  const path = `/summoner/${region}/${encodeURIComponent(decoded)}`;
+  const path = summonerPath(region, decoded);
   const image = `/api/share-image?region=${region}&riotId=${encodeURIComponent(decoded)}`;
   return {
     title,
@@ -263,17 +263,16 @@ export default async function SummonerPage({
     notFound();
   }
   // NFKC 정규화 — 전각(ＫR1)/반각(KR1) 등이 다른 소환사로 취급되는 것 방지
-  const decoded = decodeURIComponent(riotId).normalize("NFKC");
-  const hashIndex = decoded.lastIndexOf("#");
-  if (hashIndex <= 0) {
-    // op.gg 식 '이름-태그' 도 받는다 — 라이엇 ID 게임명엔 '-' 가 못 들어가므로 마지막 '-' 가 구분자.
-    // 정식 주소(%23)로 보내 저장 키·색인이 갈라지지 않게 한다.
-    const dash = decoded.lastIndexOf("-");
-    if (dash > 0 && dash < decoded.length - 1) {
-      redirect(`/summoner/${region}/${encodeURIComponent(`${decoded.slice(0, dash)}#${decoded.slice(dash + 1)}`)}`);
-    }
+  // 주소 형식은 '이름-태그' (summoner-url.ts). 옛 '이름#태그'(%23) 주소는 proxy 가 308 로 보내지만
+  // 여기서도 한 번 더 받아준다.
+  const rawDecoded = decodeURIComponent(riotId).normalize("NFKC");
+  const parsed = parseSummonerSlug(rawDecoded);
+  if (parsed?.legacy) {
+    redirect(summonerPath(region, `${parsed.gameName}#${parsed.tagLine}`));
+  }
+  if (!parsed) {
     // 주소창에 '이름#태그'를 그대로 친 경우 '#태그'는 프래그먼트라 서버에 안 온다 —
-    // 클라이언트가 location.hash 를 읽어 %23 주소로 바꿔 보낸다 (HashFix)
+    // 클라이언트가 location.hash 를 읽어 정식 주소로 바꿔 보낸다 (HashFix)
     return (
       <>
         <HashFix />
@@ -284,8 +283,9 @@ export default async function SummonerPage({
       </>
     );
   }
-  const gameName = decoded.slice(0, hashIndex);
-  const tagLine = decoded.slice(hashIndex + 1);
+  const { gameName, tagLine } = parsed;
+  // 이하 로직·표시는 "이름#태그" 표기를 쓴다 (저장 키·비교·닉변 안내 문구)
+  const decoded = `${gameName}#${tagLine}`;
 
   // 크롤러(OG 미리보기 봇·검색엔진)는 분석을 유발하거나 기록을 남기지 않는다.
   // 저장된 결과가 있으면 그대로 보여주고(SEO 유지), 없으면 안내만 반환.
@@ -302,9 +302,7 @@ export default async function SummonerPage({
   if (known) {
     const knownId = `${known.gameName}#${known.tagLine}`;
     if (knownId !== decoded) {
-      redirect(
-        `/summoner/${region}/${encodeURIComponent(knownId)}?renamed=${encodeURIComponent(decoded)}`,
-      );
+      redirect(`${summonerPath(region, knownId)}?renamed=${encodeURIComponent(decoded)}`);
     }
   }
 
@@ -315,7 +313,7 @@ export default async function SummonerPage({
     if (acct0) {
       const canonicalId = `${acct0.gameName}#${acct0.tagLine}`.normalize("NFKC");
       if (canonicalId !== decoded && compact(canonicalId) === compact(decoded)) {
-        redirect(`/summoner/${region}/${encodeURIComponent(canonicalId)}`);
+        redirect(summonerPath(region, canonicalId));
       }
     }
   }
@@ -405,15 +403,13 @@ export default async function SummonerPage({
         }
       }
       if (currentId && currentId !== decoded) {
-        redirect(
-          `/summoner/${region}/${encodeURIComponent(currentId)}?renamed=${encodeURIComponent(decoded)}`,
-        );
+        redirect(`${summonerPath(region, currentId)}?renamed=${encodeURIComponent(decoded)}`);
       }
       // 띄어쓰기를 빼고 검색한 경우("hideonbush#kr1") — 등록된 소환사 중 공백 무시 일치가 있으면 그리로
       const compactHit = await findRegisteredByCompactName(platform, gameName, tagLine).catch(() => null);
       if (compactHit) {
         const hitId = `${compactHit.gameName}#${compactHit.tagLine}`;
-        if (hitId !== decoded) redirect(`/summoner/${region}/${encodeURIComponent(hitId)}`);
+        if (hitId !== decoded) redirect(summonerPath(region, hitId));
       }
       return (
         <ErrorCard
@@ -578,7 +574,7 @@ export default async function SummonerPage({
       <JsonLd
         data={breadcrumbLd([
           { name: "홈", path: "/" },
-          { name: decoded, path: `/summoner/${region}/${encodeURIComponent(decoded)}` },
+          { name: decoded, path: summonerPath(region, decoded) },
         ])}
       />
       {/* 닉변 리다이렉트 안내 */}

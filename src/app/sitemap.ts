@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { summonerPath } from "@/lib/summoner-url";
 import { SITE_URL } from "@/lib/site";
 import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
 
@@ -58,7 +59,7 @@ export default async function sitemap({
   try {
     const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
     return pages.map((p) => ({
-      url: `${BASE}/summoner/${p.platform}/${encodeURIComponent(`${p.game_name}#${p.tag_line}`)}`,
+      url: `${BASE}${summonerPath(p.platform, `${p.game_name}#${p.tag_line}`)}`,
       lastModified: p.analyzed_at ? new Date(p.analyzed_at) : undefined,
       changeFrequency: "daily" as const,
       priority: 0.6,
