@@ -1,9 +1,12 @@
 "use client";
 
-// 아이템·룬·스펠 아이콘 툴팁 — op.gg 처럼 이름·스탯·패시브·가격(아이템), 설명(룬), 쿨타임·설명(스펠).
+// 아이템·룬·스펠 아이콘 툴팁 — op.gg 처럼 이름·스탯·패시브·가격(아이템), 설명(룬·파편), 쿨타임·설명(스펠).
 // 내용은 처음 열릴 때 /api/tooltip 에서 받아 모듈 캐시에 둔다 (페이지에 설명 전체를 싣지 않기 위해).
-// 마우스 hover 전용 — 터치 기기에선 op.gg 도 툴팁이 없다.
-import { useState, type ReactNode } from "react";
+//
+// 터치 기기(hover 불가)에선 탭으로 연다 — op.gg 는 모바일에 툴팁이 아예 없지만 우리 방문의 약 8%가
+// 모바일이라 정보를 못 보는 사람이 생긴다(2026-09-03 접근로그). 탭은 부모(전적 행 펼치기·룬 페이지 선택)로
+// 전파하지 않고, 바깥을 누르거나 스크롤하면 닫힌다.
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Tip, TipKind } from "@/lib/tooltips";
 
@@ -52,26 +55,65 @@ export function AssetTip({
   id,
   children,
   className = "inline-flex",
-  tip: staticTip,
 }: {
-  kind: TipKind | "static";
+  kind: TipKind;
   id: number | null | undefined;
   children: ReactNode;
   className?: string;
-  /** 서버 조회 없이 바로 보여줄 내용 (능력치 파편처럼 정적 데이터) */
-  tip?: Tip;
 }) {
-  const [loaded, setLoaded] = useState<Tip | null | undefined>(undefined);
-  const tip = staticTip ?? loaded;
+  const [tip, setTip] = useState<Tip | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  // 터치 판정은 마운트 후에 — 서버 렌더와 첫 렌더가 어긋나지 않게
+  const [touch, setTouch] = useState(false);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    setTouch(window.matchMedia("(hover: none)").matches);
+  }, []);
+
+  // 탭으로 연 툴팁은 바깥을 누르거나 스크롤하면 닫는다 (hover 처럼 저절로 닫히지 않으므로)
+  useEffect(() => {
+    if (!open || !touch) return;
+    const onDown = (e: Event) => {
+      if (!triggerRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open, touch]);
+
   if (!id) return <>{children}</>;
+
+  const show = (next: boolean) => {
+    setOpen(next);
+    if (next && tip === undefined) void load(kind, id).then(setTip);
+  };
+
   return (
     <TooltipProvider delay={120}>
-      <Tooltip
-        onOpenChange={(open) => {
-          if (open && kind !== "static" && tip === undefined) void load(kind, id).then(setLoaded);
-        }}
-      >
-        <TooltipTrigger render={<span className={className} />}>{children}</TooltipTrigger>
+      {/* 열림 상태를 우리가 쥔다 — 데스크톱은 Base UI 의 hover 신호로, 터치는 아래 onClick 으로 */}
+      <Tooltip open={open} onOpenChange={(next) => !touch && show(next)}>
+        <TooltipTrigger
+          render={
+            <span
+              ref={triggerRef}
+              className={className}
+              onClick={(e) => {
+                if (!touch) return;
+                // 부모(전적 행 펼치기·룬 페이지 선택)가 같이 반응하지 않게
+                e.preventDefault();
+                e.stopPropagation();
+                show(!open);
+              }}
+            />
+          }
+        >
+          {children}
+        </TooltipTrigger>
         <TooltipContent side="top" className="block max-w-[300px] px-3 py-2 text-left text-xs leading-relaxed">
           <TipBody tip={tip} />
         </TooltipContent>
