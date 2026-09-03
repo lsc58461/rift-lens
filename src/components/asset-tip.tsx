@@ -52,19 +52,23 @@ export function AssetTip({
   id,
   children,
   className = "inline-flex",
+  tip: staticTip,
 }: {
-  kind: TipKind;
+  kind: TipKind | "static";
   id: number | null | undefined;
   children: ReactNode;
   className?: string;
+  /** 서버 조회 없이 바로 보여줄 내용 (능력치 파편처럼 정적 데이터) */
+  tip?: Tip;
 }) {
-  const [tip, setTip] = useState<Tip | null | undefined>(undefined);
+  const [loaded, setLoaded] = useState<Tip | null | undefined>(undefined);
+  const tip = staticTip ?? loaded;
   if (!id) return <>{children}</>;
   return (
     <TooltipProvider delay={120}>
       <Tooltip
         onOpenChange={(open) => {
-          if (open && tip === undefined) void load(kind, id).then(setTip);
+          if (open && kind !== "static" && tip === undefined) void load(kind, id).then(setLoaded);
         }}
       >
         <TooltipTrigger render={<span className={className} />}>{children}</TooltipTrigger>

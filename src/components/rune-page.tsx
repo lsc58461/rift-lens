@@ -167,13 +167,13 @@ export function RuneTreeView({
               const mod = STAT_MODS[id];
               const on = shards[ri] === id;
               return (
-                <span
-                  key={ci}
-                  title={mod?.name}
-                  className={`flex size-5 items-center justify-center rounded-full bg-foreground/10 p-0.5 sm:size-[22px] ${on ? "ring-1 ring-amber-300/70" : "opacity-25 grayscale"}`}
-                >
-                  {mod && <Image src={`${CDN}${mod.icon}`} alt={mod.name} width={18} height={18} unoptimized className="size-full" />}
-                </span>
+                <AssetTip key={ci} kind="static" id={id} tip={mod ? { name: mod.name, blocks: [{ kind: "text", text: mod.desc }] } : undefined}>
+                  <span
+                    className={`flex size-5 items-center justify-center rounded-full bg-foreground/10 p-0.5 sm:size-[22px] ${on ? "ring-1 ring-amber-300/70" : "opacity-25 grayscale"}`}
+                  >
+                    {mod && <Image src={`${CDN}${mod.icon}`} alt={mod.name} width={18} height={18} unoptimized className="size-full" />}
+                  </span>
+                </AssetTip>
               );
             })}
           </div>

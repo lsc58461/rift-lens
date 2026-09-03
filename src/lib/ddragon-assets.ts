@@ -54,15 +54,15 @@ export function championNameKo(
   return names[NAME_QUIRKS[championName] ?? championName] ?? championName;
 }
 
-/** 능력치 파편(StatMods) — runesReforged.json에 없어 정적 매핑 */
-export const STAT_MODS: Record<number, { name: string; icon: string }> = {
-  5001: { name: "체력 (성장)", icon: "perk-images/StatMods/StatModsHealthScalingIcon.png" },
-  5002: { name: "방어력", icon: "perk-images/StatMods/StatModsArmorIcon.png" },
-  5003: { name: "마법 저항력", icon: "perk-images/StatMods/StatModsMagicResIcon.MagicResist_Fix.png" },
-  5005: { name: "공격 속도", icon: "perk-images/StatMods/StatModsAttackSpeedIcon.png" },
-  5007: { name: "스킬 가속", icon: "perk-images/StatMods/StatModsCDRScalingIcon.png" },
-  5008: { name: "적응형 능력치", icon: "perk-images/StatMods/StatModsAdaptiveForceIcon.png" },
-  5010: { name: "이동 속도", icon: "perk-images/StatMods/StatModsMovementSpeedIcon.png" },
-  5011: { name: "체력", icon: "perk-images/StatMods/StatModsHealthPlusIcon.png" },
-  5013: { name: "강인함과 회복력", icon: "perk-images/StatMods/StatModsTenacityIcon.png" },
+/** 능력치 파편(StatMods) — runesReforged.json에 없어 정적 매핑. desc 는 툴팁용(라이엇 클라이언트 문구 기준, 값이 바뀌면 여기 갱신) */
+export const STAT_MODS: Record<number, { name: string; icon: string; desc: string }> = {
+  5001: { name: "체력 (성장)", icon: "perk-images/StatMods/StatModsHealthScalingIcon.png", desc: "레벨에 따라 체력 +10~180" },
+  5002: { name: "방어력", icon: "perk-images/StatMods/StatModsArmorIcon.png", desc: "방어력 +6 (구 파편)" },
+  5003: { name: "마법 저항력", icon: "perk-images/StatMods/StatModsMagicResIcon.MagicResist_Fix.png", desc: "마법 저항력 +8 (구 파편)" },
+  5005: { name: "공격 속도", icon: "perk-images/StatMods/StatModsAttackSpeedIcon.png", desc: "공격 속도 +10%" },
+  5007: { name: "스킬 가속", icon: "perk-images/StatMods/StatModsCDRScalingIcon.png", desc: "스킬 가속 +8" },
+  5008: { name: "적응형 능력치", icon: "perk-images/StatMods/StatModsAdaptiveForceIcon.png", desc: "공격력 +5.4 또는 주문력 +9 (적응형)" },
+  5010: { name: "이동 속도", icon: "perk-images/StatMods/StatModsMovementSpeedIcon.png", desc: "이동 속도 +2%" },
+  5011: { name: "체력", icon: "perk-images/StatMods/StatModsHealthPlusIcon.png", desc: "체력 +65" },
+  5013: { name: "강인함과 둔화 저항", icon: "perk-images/StatMods/StatModsTenacityIcon.png", desc: "강인함 및 둔화 저항 +10%" },
 };

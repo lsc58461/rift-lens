@@ -808,16 +808,16 @@ function RunePage({
         {r.statPerks.map((id, i) => {
           const mod = STAT_MODS[id];
           return mod ? (
-            <Image
-              key={i}
-              src={`https://ddragon.leagueoflegends.com/cdn/img/${mod.icon}`}
-              alt={mod.name}
-              title={mod.name}
-              width={16}
-              height={16}
-              unoptimized
-              className="size-4 rounded-full bg-foreground/10 p-0.5"
-            />
+            <AssetTip key={i} kind="static" id={id} tip={{ name: mod.name, blocks: [{ kind: "text", text: mod.desc }] }}>
+              <Image
+                src={`https://ddragon.leagueoflegends.com/cdn/img/${mod.icon}`}
+                alt={mod.name}
+                width={16}
+                height={16}
+                unoptimized
+                className="size-4 rounded-full bg-foreground/10 p-0.5"
+              />
+            </AssetTip>
           ) : (
             <span key={i} className="size-4 rounded-full bg-foreground/8" />
           );
