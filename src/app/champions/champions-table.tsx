@@ -808,7 +808,7 @@ function RunePage({
         {r.statPerks.map((id, i) => {
           const mod = STAT_MODS[id];
           return mod ? (
-            <AssetTip key={i} kind="static" id={id} tip={{ name: mod.name, blocks: [{ kind: "text", text: mod.desc }] }}>
+            <AssetTip key={i} kind="rune" id={id}>
               <Image
                 src={`https://ddragon.leagueoflegends.com/cdn/img/${mod.icon}`}
                 alt={mod.name}

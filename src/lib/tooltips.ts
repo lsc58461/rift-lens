@@ -160,6 +160,18 @@ async function runeMap(version: string): Promise<Record<string, RuneRaw>> {
       out[String(st.id)] = { name: st.name };
       for (const sl of st.slots) for (const r of sl.runes) out[String(r.id)] = { name: r.name, longDesc: r.longDesc };
     }
+    // 능력치 파편(5001~)은 DDragon 에 없다 — CommunityDragon perks.json 에서 수치 설명을 받아 합친다
+    // (패치마다 값이 바뀌어도 자동 반영). 실패해도 룬 툴팁은 살린다.
+    try {
+      const perks = await fetchJson<{ id: number; name: string; shortDesc: string }[]>(
+        "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/ko_kr/v1/perks.json",
+      );
+      for (const p of perks) {
+        if (p.id >= 5000 && p.id < 5100) out[String(p.id)] = { name: p.name, longDesc: p.shortDesc };
+      }
+    } catch {
+      // CDragon 불가 — 파편 툴팁만 빠진다
+    }
     return out;
   }).catch(() => ({}));
 }
