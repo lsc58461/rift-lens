@@ -66,6 +66,7 @@ export function AssetTip({
   // 터치 판정은 마운트 후에 — 서버 렌더와 첫 렌더가 어긋나지 않게
   const [touch, setTouch] = useState(false);
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const openedAt = useRef(0);
 
   useEffect(() => {
     setTouch(window.matchMedia("(hover: none)").matches);
@@ -77,7 +78,11 @@ export function AssetTip({
     const onDown = (e: Event) => {
       if (!triggerRef.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onScroll = () => setOpen(false);
+    // 열린 직후의 스크롤 이벤트는 무시한다 — 툴팁이 뜨며 생기는 레이아웃 이동(툴팁을 보이게 하려는
+    // 브라우저 스크롤 포함)에 바로 닫혀 버리는 것 방지. 그 뒤 실제 스크롤엔 닫는다.
+    const onScroll = () => {
+      if (Date.now() - openedAt.current > 250) setOpen(false);
+    };
     document.addEventListener("pointerdown", onDown, true);
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     return () => {
@@ -89,6 +94,7 @@ export function AssetTip({
   if (!id) return <>{children}</>;
 
   const show = (next: boolean) => {
+    if (next) openedAt.current = Date.now();
     setOpen(next);
     if (next && tip === undefined) void load(kind, id).then(setTip);
   };
