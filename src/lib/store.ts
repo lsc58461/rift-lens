@@ -1198,9 +1198,14 @@ export async function buildRefreshQueue(
             platform, game_name, tag_line, prio
      FROM (
        SELECT r.platform, r.game_name, r.tag_line, r.game_name_lower, r.tag_line_lower, r.searched_at,
+              -- 처리 순서(prio 는 정렬 키일 뿐, 화면 라벨과 무관):
+              --  0 캐시 만료(분석 없음) → 1 정밀 스테일 → 2 빠른 → 3 빠른 스테일 → 4 정밀 최신
+              -- '빠른'을 '빠른 스테일'보다 먼저 두는 이유: 둘 다 정밀 분석이 없는데, 아직 신선한
+              -- '빠른'을 뒤로 미루면 한 바퀴(수일) 도는 동안 스테일로 썩어 다음 바퀴에 다시 쌓인다.
+              -- 이미 스테일인 쪽은 더 나빠지지 않으므로 뒤로 돌린다(2026-09-04).
               CASE ${STATE_SQL}
-                WHEN 'none' THEN 0 WHEN 'deep-stale' THEN 1 WHEN 'quick-stale' THEN 2
-                WHEN 'quick' THEN 3 ELSE 4 END AS prio
+                WHEN 'none' THEN 0 WHEN 'deep-stale' THEN 1 WHEN 'quick' THEN 2
+                WHEN 'quick-stale' THEN 3 ELSE 4 END AS prio
        FROM recent_searches r ${AGG_SQL}
      ) q
      RETURNING pos`,
