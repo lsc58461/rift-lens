@@ -5,12 +5,7 @@ import { PageHeader } from "@/components/page-kit";
 import { getChampionStats, listPatches } from "@/lib/champion-stats";
 import { RANK_BRACKETS } from "@/lib/rank-pts";
 import { patchLabel } from "@/lib/patch-notes";
-import {
-  getChampionNamesKo,
-  getDDragonVersion,
-  getRuneMapKo,
-  getRuneTreesKo,
-} from "@/lib/ddragon";
+import { getChampionNamesKo, getDDragonVersion } from "@/lib/ddragon";
 import { ChampionsTable } from "./champions-table";
 
 /** 집계 시각 표시 — "방금", "N분 전", "N시간 전" */
@@ -61,11 +56,8 @@ export default async function ChampionsPage({
     getChampionStats(patch, bracket),
     getDDragonVersion(),
   ]);
-  const [names, runes, runeTrees] = await Promise.all([
-    getChampionNamesKo(version),
-    getRuneMapKo(version),
-    getRuneTreesKo(version),
-  ]);
+  // 룬 데이터는 목록에 필요 없다 (상세는 /champions/[champion] 이 직접 불러온다)
+  const names = await getChampionNamesKo(version);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -79,8 +71,6 @@ export default async function ChampionsPage({
         stats={stats}
         version={version}
         names={names}
-        runeMap={runes}
-        runeTrees={runeTrees}
         patches={patches}
         currentPatch={patch}
         currentBracket={bracket}

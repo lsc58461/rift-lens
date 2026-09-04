@@ -29,7 +29,6 @@ import type {
   ChampionStatsPayload,
 } from "@/lib/champion-stats";
 import { adjustedRate, championHref, POSITION_LABEL, WinrateText } from "./shared";
-import type { RuneInfo, RuneTree } from "@/lib/ddragon";
 import { RuneTreeView } from "@/components/rune-page";
 
 const LANES = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
@@ -101,8 +100,6 @@ export function ChampionsTable({
   stats,
   version,
   names,
-  runeMap,
-  runeTrees,
   patches,
   currentPatch,
   currentBracket,
@@ -110,8 +107,6 @@ export function ChampionsTable({
   stats: ChampionStatsPayload;
   version: string;
   names: Record<string, string>;
-  runeMap: Record<number, RuneInfo>;
-  runeTrees: RuneTree[];
   patches: { patch: string; games: number }[];
   currentPatch: string | null;
   currentBracket: string;
