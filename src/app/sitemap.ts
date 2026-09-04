@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { summonerPath } from "@/lib/summoner-url";
 import { SITE_URL } from "@/lib/site";
 import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
+import { getChampionStats, listPatches } from "@/lib/champion-stats";
 
 // 사이트맵 구조 — 인덱스(/sitemap.xml, 별도 라우트) 아래에
 //   /sitemap/0.xml : 정적 페이지  (인덱스는 /sitemap-index.xml — /sitemap.xml은 Next 예약 경로)
@@ -48,6 +49,21 @@ function staticPages(): MetadataRoute.Sitemap {
   ];
 }
 
+/** 챔피언 상세 페이지 — 표본이 있는 챔피언만(없는 슬러그는 404라 사이트맵에 넣지 않는다) */
+async function championPages(): Promise<MetadataRoute.Sitemap> {
+  try {
+    const patches = await listPatches();
+    const stats = await getChampionStats(patches[0]?.patch ?? null, "emerald");
+    return stats.champions.map((c) => ({
+      url: `${BASE}/champions/${c.champ.toLowerCase()}`,
+      changeFrequency: "daily" as const,
+      priority: 0.7,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export default async function sitemap({
   id,
 }: {
@@ -55,7 +71,7 @@ export default async function sitemap({
 }): Promise<MetadataRoute.Sitemap> {
   // Next 16은 id를 Promise("1")로 넘긴다(빌드 번들 확인) — 반드시 await
   const n = parseInt(String(await id), 10);
-  if (!Number.isFinite(n) || n <= 0) return staticPages();
+  if (!Number.isFinite(n) || n <= 0) return [...staticPages(), ...(await championPages())];
   try {
     const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
     return pages.map((p) => ({
