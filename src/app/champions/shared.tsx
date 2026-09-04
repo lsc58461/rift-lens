@@ -1,7 +1,10 @@
-"use client";
-
 // 챔피언 통계 목록(champions-table)과 상세 페이지(champion-detail)가 함께 쓰는 표시 헬퍼.
 // 한쪽에서만 쓰는 것은 각 파일에 둔다.
+//
+// "use client" 를 붙이지 않는다 — 서버 컴포넌트(상세 페이지의 generateMetadata)가 wr()·POSITION_LABEL 을
+// 직접 쓴다. 지시자를 붙이면 서버에서 부를 때 클라이언트 참조가 돼 "Attempted to call wr() from the
+// server" 로 죽고, 메타데이터가 통째로 빠진다(2026-09-03에 실제로 겪음 — 페이지는 200이라 눈에 안 띈다).
+// 훅·이벤트 핸들러가 없는 순수 함수·컴포넌트만 여기 둘 것.
 
 export const POSITION_LABEL: Record<string, string> = {
   TOP: "탑",
