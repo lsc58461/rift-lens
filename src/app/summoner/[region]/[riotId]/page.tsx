@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { parseSummonerSlug, summonerPath } from "@/lib/summoner-url";
+import { parseSummonerSlug, safeDecode, summonerPath } from "@/lib/summoner-url";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbLd, OG_BASE } from "@/lib/seo";
 import { notFound, redirect } from "next/navigation";
@@ -104,10 +104,10 @@ export async function generateMetadata({
   if (!(region in PLATFORM_LABELS)) {
     notFound();
   }
-  const parsed = parseSummonerSlug(decodeURIComponent(riotId).normalize("NFKC"));
+  const parsed = parseSummonerSlug(safeDecode(riotId).normalize("NFKC"));
   const gameName = parsed?.gameName ?? "";
   const tagLine = parsed?.tagLine ?? "";
-  const decoded = parsed ? `${gameName}#${tagLine}` : decodeURIComponent(riotId);
+  const decoded = parsed ? `${gameName}#${tagLine}` : safeDecode(riotId);
   // 저장된 결과가 있으면 현재 티어·최근 로비 평균을 제목/설명에 넣는다 (검색 결과 클릭률).
   // DB 읽기만 — 라이엇 호출·분석 유발은 절대 없다 (크롤러가 이 단계만 긁어도 비용 0).
   const platform = region as PlatformRegion;
@@ -265,7 +265,7 @@ export default async function SummonerPage({
   // NFKC 정규화 — 전각(ＫR1)/반각(KR1) 등이 다른 소환사로 취급되는 것 방지
   // 주소 형식은 '이름-태그' (summoner-url.ts). 옛 '이름#태그'(%23) 주소는 proxy 가 308 로 보내지만
   // 여기서도 한 번 더 받아준다.
-  const rawDecoded = decodeURIComponent(riotId).normalize("NFKC");
+  const rawDecoded = safeDecode(riotId).normalize("NFKC");
   const parsed = parseSummonerSlug(rawDecoded);
   if (parsed?.legacy) {
     redirect(summonerPath(region, `${parsed.gameName}#${parsed.tagLine}`));

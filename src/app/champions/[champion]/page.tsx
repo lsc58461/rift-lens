@@ -18,6 +18,7 @@ import {
   getRuneMapKo,
   getRuneTreesKo,
 } from "@/lib/ddragon";
+import { safeDecode } from "@/lib/summoner-url";
 import { ChampionDetail } from "../champion-detail";
 import { POSITION_LABEL, WinrateText, wr } from "../shared";
 
@@ -42,7 +43,7 @@ async function resolve(search: Search) {
 async function findChampion(slug: string, search: Search) {
   const { patch, bracket } = await resolve(search);
   const stats = await getChampionStats(patch, bracket);
-  const key = decodeURIComponent(slug).toLowerCase();
+  const key = safeDecode(slug).toLowerCase();
   const c = stats.champions.find((x) => x.champ.toLowerCase() === key) ?? null;
   return { c, patch, bracket, stats };
 }

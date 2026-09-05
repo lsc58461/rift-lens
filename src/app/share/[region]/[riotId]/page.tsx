@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { summonerPath } from "@/lib/summoner-url";
+import { safeDecode, summonerPath } from "@/lib/summoner-url";
 import { ArrowLeft, Hand } from "lucide-react";
 import { PLATFORM_LABELS } from "@/lib/riot/types";
 
@@ -16,7 +16,7 @@ export default async function SharePage({
   params: Promise<{ region: string; riotId: string }>;
 }) {
   const { region, riotId } = await params;
-  const decoded = decodeURIComponent(riotId);
+  const decoded = safeDecode(riotId);
   if (!(region in PLATFORM_LABELS) || !decoded.includes("#")) {
     return (
       <p className="py-16 text-center text-sm text-muted-foreground">

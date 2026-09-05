@@ -6,6 +6,16 @@
 // 옛 '%23' 주소는 proxy 와 페이지에서 새 주소로 308 리다이렉트한다 (색인·공유 링크 유지).
 // 순수 함수 — 서버/클라이언트 공용.
 
+/** 잘못된 퍼센트 인코딩(%zz 등)이 와도 죽지 않는 디코더 — 주소를 손으로 치는 형식이라
+ *  깨진 URL 이 들어오면 decodeURIComponent 가 URIError 를 던져 페이지가 500 이 됐다(2026-09-05). */
+export function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 /** "이름#태그" → "이름-태그" (이미 '-' 형식이면 그대로) */
 export function riotIdToSlug(riotId: string): string {
   const i = riotId.lastIndexOf("#");
