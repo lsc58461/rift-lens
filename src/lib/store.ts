@@ -429,6 +429,102 @@ export async function findRenamedTo(
 }
 
 /** 닉변 이력 기록 (옛 이름 → 새 이름) */
+// ── 없어진 계정 ───────────────────────────────────────────────────────────
+// 스윕이 라이엇 404 를 만나면(닉변 폴백까지 실패) 표시해 두고, 어드민 카드에서
+// puuid 로 다시 확인한 뒤 정말 소멸한 계정만 지운다. 갱신에 성공하면 표시는 사라진다.
+
+export interface GoneAccount {
+  platform: PlatformRegion;
+  gameName: string;
+  tagLine: string;
+  puuid: string | null;
+  goneAt: number;
+}
+
+export async function markAccountGone(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+): Promise<void> {
+  const sql = await getSql();
+  await sql`
+    UPDATE recent_searches SET gone_at = COALESCE(gone_at, now())
+    WHERE platform = ${platform}
+      AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}`;
+}
+
+export async function clearAccountGone(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+): Promise<void> {
+  const sql = await getSql();
+  await sql`
+    UPDATE recent_searches SET gone_at = NULL
+    WHERE platform = ${platform}
+      AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}`;
+}
+
+export async function countGoneAccounts(): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql`SELECT count(*)::int AS n FROM recent_searches WHERE gone_at IS NOT NULL`;
+  return (rows as unknown as { n: number }[])[0]?.n ?? 0;
+}
+
+export async function listGoneAccounts(limit = 200): Promise<GoneAccount[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT platform, game_name, tag_line, puuid, gone_at
+    FROM recent_searches WHERE gone_at IS NOT NULL
+    ORDER BY gone_at LIMIT ${limit}`;
+  return (rows as unknown as {
+    platform: PlatformRegion;
+    game_name: string;
+    tag_line: string;
+    puuid: string | null;
+    gone_at: Date;
+  }[]).map((r) => ({
+    platform: r.platform,
+    gameName: r.game_name,
+    tagLine: r.tag_line,
+    puuid: r.puuid,
+    goneAt: new Date(r.gone_at).getTime(),
+  }));
+}
+
+/** 소멸이 확인된 계정 삭제 — 등록·분석·이름캐시·현재 큐에서 지운다.
+ *  매치 데이터(matches/match_participants/players)는 남긴다: 그 사람이 참여한 경기는
+ *  다른 소환사의 전적에도 쓰이는 공용 기록이다. */
+export async function purgeAccounts(
+  items: { platform: PlatformRegion; gameName: string; tagLine: string }[],
+): Promise<{ analyses: number; registry: number }> {
+  if (items.length === 0) return { analyses: 0, registry: 0 };
+  const sql = await getSql();
+  const plats = items.map((i) => i.platform);
+  const gls = items.map((i) => canon(i.gameName));
+  const tls = items.map((i) => canon(i.tagLine));
+  const a = await sql`
+    DELETE FROM analyses a
+    USING unnest(${plats}::text[], ${gls}::text[], ${tls}::text[]) AS d(platform, gl, tl)
+    WHERE a.platform = d.platform AND a.game_name_lower = d.gl AND a.tag_line_lower = d.tl`;
+  const r = await sql`
+    DELETE FROM recent_searches r
+    USING unnest(${plats}::text[], ${gls}::text[], ${tls}::text[]) AS d(platform, gl, tl)
+    WHERE r.platform = d.platform AND r.game_name_lower = d.gl AND r.tag_line_lower = d.tl`;
+  await sql`
+    DELETE FROM summoners s
+    USING unnest(${plats}::text[], ${gls}::text[], ${tls}::text[]) AS d(platform, gl, tl)
+    WHERE s.platform = d.platform AND lower(s.game_name) = d.gl AND lower(s.tag_line) = d.tl`;
+  await sql`
+    DELETE FROM refresh_queue q
+    USING unnest(${plats}::text[], ${gls}::text[], ${tls}::text[]) AS d(platform, gl, tl)
+    WHERE q.platform = d.platform AND lower(q.game_name) = d.gl AND lower(q.tag_line) = d.tl`;
+  return {
+    analyses: (a as unknown as { count?: number }).count ?? 0,
+    registry: (r as unknown as { count?: number }).count ?? 0,
+  };
+}
+
 export async function recordNameChange(
   platform: PlatformRegion,
   oldGameName: string,
@@ -685,7 +781,8 @@ export async function updateRecentSearchRank(
     SET current_label = ${r.currentLabel}, current_tier = ${r.currentTier},
         estimated_label = ${r.estimatedLabel}, estimated_tier = ${r.estimatedTier},
         estimated_points = ${r.estimatedPoints},
-        puuid = COALESCE(${r.puuid ?? null}, puuid)
+        puuid = COALESCE(${r.puuid ?? null}, puuid),
+        gone_at = NULL
     WHERE platform = ${platform}
       AND game_name_lower = ${canon(gameName)} AND tag_line_lower = ${canon(tagLine)}`;
 }

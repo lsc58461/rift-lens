@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { AnnouncementCard } from "./announcement-card";
 import { CrawlCard } from "./crawl-card";
+import { DeadAccountsCard } from "./dead-accounts-card";
 import { MigrationCard } from "./migration-card";
 import { RefreshAllCard } from "./refresh-all-card";
 import { RuneBackfillCard } from "./rune-backfill-card";
@@ -117,6 +118,8 @@ export function MaintenancePanel() {
       <CrawlCard />
 
       <RuneBackfillCard />
+
+      <DeadAccountsCard />
 
       <MigrationCard />
 

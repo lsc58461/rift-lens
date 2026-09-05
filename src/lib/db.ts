@@ -142,6 +142,11 @@ const SCHEMA_SQL = `
       searched_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (platform, game_name_lower, tag_line_lower)
     );
+    -- 라이엇이 못 찾는 계정 표시 (스윕이 404 를 만나면 기록) — 어드민 '없어진 계정' 정리용.
+    -- 갱신에 성공하면 다시 NULL 로 지운다(updateRecentSearchRank).
+    ALTER TABLE recent_searches ADD COLUMN IF NOT EXISTS gone_at timestamptz;
+    CREATE INDEX IF NOT EXISTS recent_searches_gone_idx
+      ON recent_searches (gone_at) WHERE gone_at IS NOT NULL;
     CREATE INDEX IF NOT EXISTS recent_searches_time_idx
     ON recent_searches (searched_at DESC);
 

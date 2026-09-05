@@ -17,7 +17,7 @@ import {
 import { getRecentSearches } from "@/lib/recent";
 import { recomputeRankPtsBatch } from "@/lib/rank-pts";
 import { cache } from "@/lib/cache";
-import { updateRecentSearchRank } from "@/lib/store";
+import { markAccountGone, updateRecentSearchRank } from "@/lib/store";
 import { getSql } from "@/lib/db";
 import { canon } from "@/lib/identity";
 import { type PlatformRegion, RiotApiError } from "@/lib/riot/types";
@@ -241,6 +241,9 @@ export async function runRefreshSweep(opts: {
         await cache
           .set(goneKey(r.region, r.gameName, r.tagLine), Date.now(), GONE_TTL_SEC)
           .catch(() => {});
+        // DB 에도 남긴다 — 어드민 '없어진 계정' 카드가 여기서 후보를 읽는다
+        // (레디스 마커는 7일 TTL 이라 목록 관리용으로는 못 쓴다)
+        await markAccountGone(r.region, r.gameName, r.tagLine).catch(() => {});
       }
     }
     await reportProgress().catch(() => {});

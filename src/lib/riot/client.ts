@@ -264,6 +264,27 @@ export async function getAccountByPuuid(
   }
 }
 
+/** 계정 생존 확인 — 404(소멸)와 그 외 오류(레이트리밋·장애)를 구분한다.
+ *  getAccountByPuuid 는 모든 오류를 null 로 뭉개서 '죽은 계정 정리'에 쓰면 살아 있는 계정을
+ *  지울 수 있다. 정리 판정에는 반드시 이걸 쓴다. */
+export async function probeAccountByPuuid(
+  platform: PlatformRegion,
+  puuid: string,
+): Promise<
+  { status: "ok"; account: RiotAccount } | { status: "gone" } | { status: "error"; message: string }
+> {
+  const routing = PLATFORM_TO_ROUTING[platform];
+  try {
+    const account = await riotFetch<RiotAccount>(
+      `https://${routing}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${puuid}`,
+    );
+    return { status: "ok", account };
+  } catch (e) {
+    if (e instanceof RiotApiError && e.status === 404) return { status: "gone" };
+    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** 소환사 프로필(아이콘/레벨) 조회. bypassCache=true면 항상 최신(아이콘 인증용) */
 export async function getSummoner(
   platform: PlatformRegion,
