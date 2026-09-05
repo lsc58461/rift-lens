@@ -35,10 +35,9 @@ const goneKey = (region: string, g: string, t: string) =>
 // 유저가 직접 검색할 때 즉시 반영된다. 6h였을 땐 한 바퀴가 하루를 넘기면
 // 앞부분 정밀 스킵이 풀려 다음 바퀴가 다시 느려졌다.
 const RECENT_DEEP_MS = 36 * 60 * 60_000; // 한 바퀴가 하루를 넘겨도 앞부분 스킵이 유지되도록 여유
-// 빠른 추정만 된 사람도 하루 안이면 라이엇 콜 없이 통과 — 예전엔 정밀만 DB로
-// 스킵하고 빠른 추정은 매 바퀴 최신 매치 확인 콜(1~2개)을 냈다. 2.5만 명이면
-// 바퀴마다 2시간이 그 확인에 들어갔다. 그 사이 새 경기는 유저가 검색하면 즉시 반영.
-const RECENT_QUICK_MS = 24 * 60 * 60_000;
+// (옛 RECENT_QUICK_MS 제거, 2026-09-05) "빠른 추정이 하루 안이면 통과"는 라이엇 콜을 아꼈지만,
+// 그 사람은 정밀이 없는 채로 커서를 넘어가 '빠른'으로 남았다. 지금은 건너뛰지 않는다 —
+// 최신 매치 확인 콜 1개가 더 들지만, 어차피 정밀을 돌려야 할 사람들이라 낭비가 아니다.
 
 async function analyzedWithin(
   platform: string,
@@ -151,16 +150,10 @@ export async function runRefreshSweep(opts: {
       await reportProgress().catch(() => {});
       continue;
     }
-    // ③ 빠른 추정이 24시간 이내 — 역시 DB만 보고 건너뜀 (정밀은 다음 바퀴에)
-    if (
-      await analyzedWithin(r.region, r.gameName, r.tagLine, "quick", RECENT_QUICK_MS).catch(
-        () => false,
-      )
-    ) {
-      skipped++;
-      await reportProgress().catch(() => {});
-      continue;
-    }
+    // ③ 예전엔 "빠른 추정이 24시간 이내면 건너뜀(정밀은 다음 바퀴에)" 이었는데 그게 누수의 주범이었다:
+    //    여기까지 온 사람은 ②를 통과했으니 신선한 정밀이 없다. 건너뛰면 정밀이 영영 안 생겨
+    //    '빠른'·'정밀 스테일'로 남는다(pass3에서 134명 실측, 2026-09-05). 그래서 건너뛰지 않는다.
+    //    빠른 분석 자체는 아래에서 getFreshQuickResult 로 재사용하므로 중복 비용은 거의 없다.
     // 정밀을 시작하기엔 늦은 시점이면 "빠른만 하고 넘기지" 않는다 — 그러면 그 사람은 정밀 없는
     // '빠른' 상태로 남아 다음 바퀴에 빠른부터 다시 해야 한다(지난 바퀴에서 4,200명이 그렇게 샜다).
     // 라운드를 여기서 끝내고, 다음 라운드가 이 사람부터 빠른+정밀을 온전히 이어간다.
@@ -222,11 +215,19 @@ export async function runRefreshSweep(opts: {
           await deepRun;
           deepCompleted++;
         } else {
+          // 러너 락을 사용자 검색이 잡고 있다 — 여기서 라운드를 끝낸다. 계속 돌면 남은 사람들을
+          // '빠른만' 하고 커서를 넘겨 정밀 없는 상태로 남는다. 커서를 올리지 않으므로
+          // 다음 라운드가 이 사람부터 이어서 정밀까지 한다.
           deepBlocked = true;
           deepPending = true;
+          brokeEarly = true;
+          break;
         }
       } else {
-        deepPending = true; // 이 소환사의 정밀은 다음 스윕이 처리
+        // 정밀 마감이 지났다 — 마찬가지로 커서를 넘기지 않고 라운드를 끝낸다
+        deepPending = true;
+        brokeEarly = true;
+        break;
       }
     } catch (e) {
       failed++;
