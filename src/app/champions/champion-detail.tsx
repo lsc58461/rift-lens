@@ -10,19 +10,66 @@ import { AssetTip } from "@/components/asset-tip";
 import { RuneTreeView } from "@/components/rune-page";
 import { itemIconUrl, spellIconUrl, STAT_MODS } from "@/lib/ddragon-assets";
 import type { ChampionStat } from "@/lib/champion-stats";
-import type { RuneInfo, RuneTree } from "@/lib/ddragon";
+import type { ChampionSkill, RuneInfo, RuneTree } from "@/lib/ddragon";
 import { adjustedRate, POSITION_LABEL, WinrateText } from "./shared";
+
+const SLOT_STYLE: Record<string, string> = {
+  패시브: "bg-foreground/10 text-muted-foreground",
+  Q: "bg-sky-500/15 text-sky-500",
+  W: "bg-emerald-500/15 text-emerald-500",
+  E: "bg-amber-500/15 text-amber-500",
+  R: "bg-rose-500/15 text-rose-500",
+};
+
+/** 스킬 — 아이콘에 올리면(모바일은 탭) 이름·재사용 대기시간·설명이 뜬다.
+ *  내용은 서버가 만들어 넘긴 것이라 조회가 없다. */
+function Skills({ skills }: { skills: ChampionSkill[] }) {
+  return (
+    <div className="flex flex-wrap items-start gap-2">
+      {skills.map((sk) => (
+        <AssetTip
+          key={sk.slot}
+          tip={{
+            name: sk.name,
+            sub: sk.sub,
+            blocks: [{ kind: "text", text: sk.description }],
+          }}
+        >
+          <span className="flex flex-col items-center gap-1">
+            <Image
+              src={sk.icon}
+              alt={sk.name}
+              width={40}
+              height={40}
+              unoptimized
+              className="size-10 rounded-lg"
+            />
+            <span
+              className={`flex h-4 min-w-4 items-center justify-center rounded px-1 text-[10px] font-bold ${
+                SLOT_STYLE[sk.slot] ?? "bg-foreground/10"
+              }`}
+            >
+              {sk.slot}
+            </span>
+          </span>
+        </AssetTip>
+      ))}
+    </div>
+  );
+}
 
 export function ChampionDetail({
   c,
   version,
   runeMap,
   runeTrees,
+  skills,
 }: {
   c: ChampionStat;
   version: string;
   runeMap: Record<number, RuneInfo>;
   runeTrees: RuneTree[];
+  skills: ChampionSkill[];
 }) {
   const kda =
     c.avgDeaths > 0
@@ -37,6 +84,13 @@ export function ChampionDetail({
 
   return (
     <div className="space-y-5">
+      {skills.length > 0 && (
+        <section>
+          <SectionLabel>스킬</SectionLabel>
+          <Skills skills={skills} />
+        </section>
+      )}
+
       {/* 평균 지표 */}
       <section className="grid grid-cols-3 gap-2">
         <MetricTile

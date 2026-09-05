@@ -149,6 +149,80 @@ export async function getRuneTreesKo(version: string): Promise<RuneTree[]> {
   }
 }
 
+/** 챔피언 스킬 — 패시브 + Q/W/E/R. 툴팁에 바로 쓸 수 있게 서버에서 문장까지 만들어 넘긴다.
+ *  DDragon 의 spells[].tooltip 은 {{ }} 치환자가 남아 있어 쓰지 않고, 치환자 없는 description 을 쓴다. */
+export interface ChampionSkill {
+  slot: string; // "패시브" | "Q" | "W" | "E" | "R"
+  name: string;
+  icon: string; // 완성된 URL
+  /** 재사용 대기시간·소모·사거리 한 줄 (없으면 undefined) */
+  sub?: string;
+  description: string;
+}
+
+export async function getChampionSkills(
+  version: string,
+  championName: string,
+): Promise<ChampionSkill[]> {
+  const key = NAME_QUIRKS[championName] ?? championName;
+  try {
+    return await cached(`ddragon:skills:ko:${version}:${key}`, 60 * 60 * 24, async () => {
+      const res = await fetch(
+        `https://ddragon.leagueoflegends.com/cdn/${version}/data/ko_KR/champion/${key}.json`,
+        { cache: "no-store", signal: AbortSignal.timeout(6_000) },
+      );
+      if (!res.ok) throw new Error(`champion ${key} ${res.status}`);
+      const body = (await res.json()) as {
+        data: Record<
+          string,
+          {
+            passive: { name: string; description: string; image: { full: string } };
+            spells: {
+              name: string;
+              description: string;
+              cooldownBurn: string;
+              costBurn: string;
+              rangeBurn: string;
+              image: { full: string };
+            }[];
+          }
+        >;
+      };
+      const c = body.data[key];
+      if (!c) return [];
+      const img = (kind: "passive" | "spell", file: string) =>
+        `https://ddragon.leagueoflegends.com/cdn/${version}/img/${kind}/${file}`;
+      const clean = (t: string) =>
+        t.replace(/<br\s*\/?>/gi, String.fromCharCode(10)).replace(/<[^>]+>/g, "").trim();
+      const out: ChampionSkill[] = [
+        {
+          slot: "패시브",
+          name: c.passive.name,
+          icon: img("passive", c.passive.image.full),
+          description: clean(c.passive.description),
+        },
+      ];
+      const SLOTS = ["Q", "W", "E", "R"];
+      c.spells.slice(0, 4).forEach((sp, i) => {
+        const bits: string[] = [];
+        if (sp.cooldownBurn && sp.cooldownBurn !== "0") bits.push(`재사용 대기시간 ${sp.cooldownBurn}초`);
+        if (sp.costBurn && sp.costBurn !== "0") bits.push(`소모 ${sp.costBurn}`);
+        if (sp.rangeBurn && sp.rangeBurn !== "0" && sp.rangeBurn !== "25000") bits.push(`사거리 ${sp.rangeBurn}`);
+        out.push({
+          slot: SLOTS[i],
+          name: sp.name,
+          icon: img("spell", sp.image.full),
+          sub: bits.length > 0 ? bits.join(" · ") : undefined,
+          description: clean(sp.description),
+        });
+      });
+      return out;
+    });
+  } catch {
+    return [];
+  }
+}
+
 /** 완성 아이템 id 목록 — 상위 조합(into)이 없고 조합식(from)이 있는 구매
  * 가능한 아이템. 소모품·컴포넌트·장신구를 챔피언 통계에서 거르는 데 쓴다. */
 export async function getCompletedItemIds(version: string): Promise<number[]> {

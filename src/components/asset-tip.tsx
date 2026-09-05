@@ -55,13 +55,17 @@ export function AssetTip({
   id,
   children,
   className = "inline-flex",
+  tip: staticTip,
 }: {
-  kind: TipKind;
-  id: number | null | undefined;
+  kind?: TipKind;
+  id?: number | null;
   children: ReactNode;
   className?: string;
+  /** 서버가 이미 만들어 넘긴 내용 (챔피언 스킬처럼 페이지에 같이 실려 오는 것) — 있으면 조회하지 않는다 */
+  tip?: Tip;
 }) {
-  const [tip, setTip] = useState<Tip | null | undefined>(undefined);
+  const [loaded, setLoaded] = useState<Tip | null | undefined>(undefined);
+  const tip = staticTip ?? loaded;
   const [open, setOpen] = useState(false);
   // 터치 판정은 마운트 후에 — 서버 렌더와 첫 렌더가 어긋나지 않게
   const [touch, setTouch] = useState(false);
@@ -91,12 +95,14 @@ export function AssetTip({
     };
   }, [open, touch]);
 
-  if (!id) return <>{children}</>;
+  if (!staticTip && (!kind || !id)) return <>{children}</>;
 
   const show = (next: boolean) => {
     if (next) openedAt.current = Date.now();
     setOpen(next);
-    if (next && tip === undefined) void load(kind, id).then(setTip);
+    if (next && !staticTip && kind && id && tip === undefined) {
+      void load(kind, id).then(setLoaded);
+    }
   };
 
   return (

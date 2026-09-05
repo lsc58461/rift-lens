@@ -14,6 +14,7 @@ import {
   championIconUrl,
   championNameKo,
   getChampionNamesKo,
+  getChampionSkills,
   getDDragonVersion,
   getRuneMapKo,
   getRuneTreesKo,
@@ -91,10 +92,11 @@ export default async function ChampionPage({ params, searchParams }: { params: P
   if (!c) notFound();
 
   const version = await getDDragonVersion();
-  const [names, runeMap, runeTrees] = await Promise.all([
+  const [names, runeMap, runeTrees, skills] = await Promise.all([
     getChampionNamesKo(version),
     getRuneMapKo(version),
     getRuneTreesKo(version),
+    getChampionSkills(version, c.champ),
   ]);
   const nameKo = championNameKo(names, c.champ);
   const pos = mainPosition(c);
@@ -139,7 +141,13 @@ export default async function ChampionPage({ params, searchParams }: { params: P
         </div>
       </div>
 
-      <ChampionDetail c={c} version={version} runeMap={runeMap} runeTrees={runeTrees} />
+      <ChampionDetail
+        c={c}
+        version={version}
+        runeMap={runeMap}
+        runeTrees={runeTrees}
+        skills={skills}
+      />
 
       <p className="text-xs text-muted-foreground">
         이 사이트에서 분석된 소환사들의 경기에서 집계한 표본이라 전체 서버 통계와 다를 수 있어요.
