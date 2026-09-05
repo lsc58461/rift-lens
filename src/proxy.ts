@@ -70,6 +70,13 @@ export async function proxy(req: NextRequest) {
     if (region !== "kr") {
       return new NextResponse("Not Found", { status: 404 });
     }
+    // 퍼센트 인코딩이 UTF-8 로 안 풀리는 주소(옛 EUC-KR 링크 등)는 여기서 404 로 끝낸다 —
+    // 그냥 두면 Next 내부 경로 디코딩이 URIError 를 던져 500 이 난다(앱 로그도 안 남음, 2026-09-05).
+    try {
+      decodeURIComponent(m[2]);
+    } catch {
+      return new NextResponse("Not Found", { status: 404 });
+    }
     const parsed = parseSummonerSlug(safeDecode(m[2]).normalize("NFKC"));
     // 옛 '%23'(이름#태그) 주소 → 새 '이름-태그' 주소 (색인·공유 링크 보존, 쿼리 유지)
     if (parsed?.legacy) {
