@@ -7,13 +7,22 @@
 // 순수 함수 — 서버/클라이언트 공용.
 
 /** 잘못된 퍼센트 인코딩(%zz 등)이 와도 죽지 않는 디코더 — 주소를 손으로 치는 형식이라
- *  깨진 URL 이 들어오면 decodeURIComponent 가 URIError 를 던져 페이지가 500 이 됐다(2026-09-05). */
+ *  깨진 URL 이 들어오면 decodeURIComponent 가 URIError 를 던져 페이지가 500 이 됐다(2026-09-05).
+ *  이중 인코딩(%25EC… — 옛 HashFix 버그로 공유된 링크)도 풀어준다: 라이엇 ID 엔 '%' 가 못 들어가므로
+ *  풀고 나서도 %XX 가 남아 있으면 한 번 더 푼다(최대 2회). */
 export function safeDecode(s: string): string {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
+  let out = s;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const d = decodeURIComponent(out);
+      if (d === out) break;
+      out = d;
+    } catch {
+      break;
+    }
+    if (!/%[0-9A-Fa-f]{2}/.test(out)) break;
   }
+  return out;
 }
 
 /** "이름#태그" → "이름-태그" (이미 '-' 형식이면 그대로) */

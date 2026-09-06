@@ -5,11 +5,15 @@
 // location.hash 를 읽어 정식 주소(이름-태그)로 바꿔 보낸다 (서버는 프래그먼트를 볼 수 없어 여기서만 가능).
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { safeDecode } from "@/lib/summoner-url";
 
 export function HashFix() {
   const router = useRouter();
   useEffect(() => {
-    const tag = location.hash.slice(1).trim();
+    // location.hash 는 브라우저가 이미 퍼센트 인코딩해서 준다("#육수마스터" → "#%EC%9C%A1…").
+    // 그대로 다시 encodeURIComponent 하면 %25EC… 로 이중 인코딩돼 엉뚱한 태그가 된다(2026-09-06 실제 발생).
+    // 먼저 풀고 한 번만 인코딩한다.
+    const tag = safeDecode(location.hash.slice(1)).trim();
     if (!tag) return;
     router.replace(`${location.pathname}-${encodeURIComponent(tag)}${location.search}`);
   }, [router]);
