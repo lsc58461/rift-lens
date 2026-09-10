@@ -839,7 +839,16 @@ export async function searchRecentSummoners(
   const sql = await getSql();
   // 띄어쓰기 무시("hideonbush" → "Hide on bush") + 초성("ㅍㅇㅋ" → "페이커")
   const qc = compact(query);
-  if (!qc) return [];
+  // 빈 질의 = 최근 검색된 소환사 (스포트라이트 검색이 열리자마자 보여주는 목록).
+  // 예전엔 빈 배열이라 자동완성 인풋도 포커스 시 아무것도 못 보여줬다(2026-09-10).
+  if (!qc) {
+    const recent = await sql`
+      SELECT game_name, tag_line, current_label, current_tier
+      FROM recent_searches
+      WHERE platform = ${platform}
+      ORDER BY searched_at DESC LIMIT ${limit}`;
+    return recent as unknown as SummonerSuggestion[];
+  }
   const like = `%${qc}%`;
   const cho = hasChosung(qc);
   const ko = hasHangul(qc);
