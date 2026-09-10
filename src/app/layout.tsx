@@ -2,9 +2,6 @@ import { NAVER_SITE_VERIFICATION, SITE_URL } from "@/lib/site";
 import { OG_BASE } from "@/lib/seo";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { BarChart3, CircleHelp, History, Newspaper, Wrench,
-  Trophy,
-} from "lucide-react";
 import Link from "next/link";
 import "./globals.css";
 import { AnnouncementBanner } from "@/components/announcement-banner";
