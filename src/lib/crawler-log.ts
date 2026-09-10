@@ -60,7 +60,9 @@ export async function recordCrawlerHit(ua: string, path: string): Promise<void> 
   // 시퀀스가 반토막 나고, 그 값을 디코딩하는 쪽(어드민 크롤러 카드)이 URIError 로 죽는다
   // (2026-09-10 실제 발생). 못 푸는 주소(봇이 보낸 EUC-KR 등)는 원문 그대로 두고, 표시하는 쪽이
   // safeDecode 로 방어한다.
-  const p = safeDecode(path.split("?")[0]).slice(0, 160);
+  // 상한 400자 — 정상 주소(/summoner/kr/이름-태그)는 디코딩하면 50자도 안 되므로 걸릴 일이 없고,
+  // 봇이 보내는 장난 URL(수 KB)만 막는 방어선이다.
+  const p = safeDecode(path.split("?")[0]).slice(0, 400);
   await sql`
     INSERT INTO crawler_hits (bot, hour, hits, last_at, last_path)
     VALUES (${bot}, date_trunc('hour', now()), 1, now(), ${p})

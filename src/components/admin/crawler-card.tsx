@@ -69,7 +69,10 @@ export function CrawlerCard({ crawlers }: { crawlers: CrawlerStat[] }) {
                     <td className="py-1.5 px-2 text-right whitespace-nowrap text-muted-foreground">
                       {ago(c.lastAt)}
                     </td>
-                    <td className="py-1.5 pl-3 max-w-64 truncate font-mono text-xs text-muted-foreground">
+                    <td
+                      className="py-1.5 pl-3 max-w-64 truncate font-mono text-xs text-muted-foreground"
+                      title={c.lastPath ? safeDecode(c.lastPath) : undefined}
+                    >
                       {c.lastPath ? safeDecode(c.lastPath) : "—"}
                     </td>
                   </tr>
