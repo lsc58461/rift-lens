@@ -1,6 +1,7 @@
 "use client";
 
 import { Bug } from "lucide-react";
+import { safeDecode } from "@/lib/summoner-url";
 import {
   Card,
   CardContent,
@@ -69,7 +70,7 @@ export function CrawlerCard({ crawlers }: { crawlers: CrawlerStat[] }) {
                       {ago(c.lastAt)}
                     </td>
                     <td className="py-1.5 pl-3 max-w-64 truncate font-mono text-xs text-muted-foreground">
-                      {c.lastPath ? decodeURIComponent(c.lastPath) : "—"}
+                      {c.lastPath ? safeDecode(c.lastPath) : "—"}
                     </td>
                   </tr>
                 ))}

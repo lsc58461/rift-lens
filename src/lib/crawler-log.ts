@@ -3,6 +3,7 @@
 // 기록은 루트 레이아웃의 <CrawlerProbe/> 가 after() 로 남긴다 (응답 지연 없음).
 import "server-only";
 import { getSql } from "@/lib/db";
+import { safeDecode } from "@/lib/summoner-url";
 
 // 'bot' 이 안 들어가는 UA 도 있다: 네이버 Yeti, 다음 Daum, 화웨이 PetalBot 은 있지만 ChatGPT-User,
 // anthropic-ai/Claude-Web, meta-externalagent, Bytespider 등. 네이버는 9/2 첫 방문이 이 누락 때문에
@@ -55,7 +56,11 @@ export function crawlerName(ua: string): string {
 export async function recordCrawlerHit(ua: string, path: string): Promise<void> {
   const sql = await getSql();
   const bot = crawlerName(ua);
-  const p = path.split("?")[0].slice(0, 160);
+  // 퍼센트 인코딩은 저장 전에 풀어 둔다 — 인코딩된 채로 160자에서 자르면 "%EB%B9%8" 처럼
+  // 시퀀스가 반토막 나고, 그 값을 디코딩하는 쪽(어드민 크롤러 카드)이 URIError 로 죽는다
+  // (2026-09-10 실제 발생). 못 푸는 주소(봇이 보낸 EUC-KR 등)는 원문 그대로 두고, 표시하는 쪽이
+  // safeDecode 로 방어한다.
+  const p = safeDecode(path.split("?")[0]).slice(0, 160);
   await sql`
     INSERT INTO crawler_hits (bot, hour, hits, last_at, last_path)
     VALUES (${bot}, date_trunc('hour', now()), 1, now(), ${p})
