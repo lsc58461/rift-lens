@@ -3,13 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { TIER_COLORS } from "@/lib/mmr/rank";
-
-interface Suggestion {
-  name: string;
-  tag: string;
-  label: string | null;
-  tier: string | null;
-}
+import { useSuggestions, type Suggestion } from "@/lib/use-suggestions";
 
 // 기록된 소환사 기반 자동완성 인풋 — 포커스/입력 시 DB 기록에서 후보를 보여준다.
 // 방향키·엔터로 선택 가능 (엔터는 후보가 하이라이트된 경우에만 가로챈다)
@@ -24,28 +18,15 @@ export function SummonerAutocomplete({
   placeholder?: string;
   className?: string;
 }) {
-  const [items, setItems] = useState<Suggestion[]>([]);
+  const { items, fetchSuggest } = useSuggestions();
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function fetchSuggest(q: string) {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/summoners/suggest?region=kr&q=${encodeURIComponent(q)}`,
-        );
-        if (!res.ok) return;
-        const data: { items: Suggestion[] } = await res.json();
-        setItems(data.items);
-        setHighlight(-1);
-      } catch {
-        // 자동완성 실패는 조용히 무시
-      }
-    }, 200);
-  }
+  // 후보가 새로 오면 하이라이트를 지운다(옛 인덱스가 다른 사람을 가리키지 않게)
+  useEffect(() => {
+    setHighlight(-1);
+  }, [items]);
 
   useEffect(() => {
     function onOutside(e: MouseEvent) {

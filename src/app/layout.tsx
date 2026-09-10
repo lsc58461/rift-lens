@@ -13,6 +13,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/ui/sonner";
 import { CrawlerProbe } from "@/components/crawler-probe";
+import { SearchPalette } from "@/components/search-palette";
 import { PumpPing } from "@/components/pump-ping";
 
 // 폰트는 첫 페인트 전 대역폭 경쟁자다(느린 4G 실측: 두 파일 51KB 가 High 우선순위로 CSS 와 나눠 받음, 2026-09-03).
@@ -115,6 +116,7 @@ export default function RootLayout({
                     <span className="hidden md:inline">{label}</span>
                   </Link>
                 ))}
+                <SearchPalette />
                 <ThemeToggle />
               </nav>
             </div>
