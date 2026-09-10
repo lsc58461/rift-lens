@@ -15,6 +15,8 @@ const DEBOUNCE_MS = 200;
 
 export function useSuggestions() {
   const [items, setItems] = useState<Suggestion[]>([]);
+  // 디바운스 + 네트워크가 도는 동안 "찾는 중"을 보여주기 위한 플래그
+  const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 늦게 도착한 옛 응답이 새 결과를 덮지 않게 — 요청마다 번호를 매겨 마지막 것만 반영한다
   const seqRef = useRef(0);
@@ -22,6 +24,7 @@ export function useSuggestions() {
   const fetchSuggest = useCallback((q: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     const seq = ++seqRef.current;
+    setLoading(true);
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/summoners/suggest?region=kr&q=${encodeURIComponent(q)}`);
@@ -30,6 +33,8 @@ export function useSuggestions() {
         if (seq === seqRef.current) setItems(data.items);
       } catch {
         // 자동완성 실패는 조용히 무시
+      } finally {
+        if (seq === seqRef.current) setLoading(false);
       }
     }, DEBOUNCE_MS);
   }, []);
@@ -40,5 +45,5 @@ export function useSuggestions() {
     };
   }, []);
 
-  return { items, fetchSuggest, setItems };
+  return { items, loading, fetchSuggest, setItems };
 }

@@ -3,6 +3,9 @@
 // 스포트라이트 검색 — GNB 돋보기 버튼이나 ⌘K(Ctrl+K)·`/` 로 어디서든 열린다.
 // 예전엔 소환사를 찾으려면 홈이나 전적 상세로 가야만 검색창이 있었다(2026-09-10).
 // 빈 상태에선 최근 검색된 소환사를 보여주고, 입력하면 초성·띄어쓰기 무시 검색이 걸린다.
+//
+// 접근성: 열면 인풋에 포커스, Tab 은 모달 안에서만 순환(포커스 트랩), Esc 로 닫으면 트리거로 복귀.
+// 후보 항목은 onClick 으로 실행한다 — onMouseDown 만 두면 키보드(Tab→Enter)로는 눌리지 않는다.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
@@ -16,11 +19,13 @@ export function SearchPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(-1);
-  const [busy, setBusy] = useState(false);
+  const [navigating, setNavigating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMac, setIsMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { items, fetchSuggest, setItems } = useSuggestions();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const { items, loading, fetchSuggest, setItems } = useSuggestions();
 
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
@@ -33,7 +38,16 @@ export function SearchPalette() {
     fetchSuggest("");
   }, [fetchSuggest]);
 
-  // ⌘K / Ctrl+K, 그리고 `/` (입력 중이 아닐 때만)
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setItems([]);
+    setNavigating(false);
+    // 키보드로 열었으면 포커스를 트리거로 돌려준다 (안 그러면 문서 맨 위부터 다시 Tab)
+    triggerRef.current?.focus();
+  }, [setItems]);
+
+  // ⌘K / Ctrl+K, `/`(입력 중이 아닐 때), 그리고 열려 있을 때의 Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
@@ -43,17 +57,22 @@ export function SearchPalette() {
         (el instanceof HTMLElement && el.isContentEditable);
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((v) => (v ? v : (show(), true)));
+        if (!open) show();
         return;
       }
-      if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (open && e.key === "Escape") {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (!open && e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         show();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [show]);
+  }, [open, show, close]);
 
   // 열려 있는 동안 배경 스크롤 잠금 + 인풋 포커스
   useEffect(() => {
@@ -67,16 +86,11 @@ export function SearchPalette() {
     };
   }, [open]);
 
-  const close = () => {
+  const go = (riotId: string) => {
+    setNavigating(true);
     setOpen(false);
     setQuery("");
     setItems([]);
-    setBusy(false);
-  };
-
-  const go = (riotId: string) => {
-    setBusy(true);
-    close();
     router.push(summonerPath("kr", riotId));
   };
 
@@ -95,13 +109,36 @@ export function SearchPalette() {
     go(trimmed);
   };
 
+  // Tab 이 모달 밖(뒤에 가려진 테마 토글 등)으로 새지 않게 가둔다
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  const busy = navigating || loading;
+
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={show}
         aria-label="소환사 검색"
-        className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:py-1.5"
       >
         <Search className="size-4" aria-hidden />
         <span className="hidden md:inline">검색</span>
@@ -119,18 +156,28 @@ export function SearchPalette() {
           aria-label="소환사 검색"
         >
           <div
+            ref={dialogRef}
             className="w-full max-w-lg overflow-hidden rounded-xl border bg-popover shadow-2xl"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={trapTab}
           >
-            <div className="flex items-center gap-2 border-b px-3 py-2.5">
-              {busy ? (
-                <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-              ) : (
-                <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              )}
+            <div className="flex items-center gap-1 border-b px-2 py-2 sm:px-3 sm:py-2.5">
+              <button
+                type="button"
+                onClick={submit}
+                aria-label="검색"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                {busy ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Search className="size-4" aria-hidden />
+                )}
+              </button>
               <Input
                 ref={inputRef}
                 value={query}
+                enterKeyHint="search"
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setError(null);
@@ -138,10 +185,7 @@ export function SearchPalette() {
                   fetchSuggest(e.target.value);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    close();
-                  } else if (e.key === "ArrowDown" && items.length > 0) {
+                  if (e.key === "ArrowDown" && items.length > 0) {
                     e.preventDefault();
                     setHighlight((h) => (h + 1) % items.length);
                   } else if (e.key === "ArrowUp" && items.length > 0) {
@@ -154,13 +198,17 @@ export function SearchPalette() {
                 }}
                 placeholder="게임명#태그 (예: Hide on bush#KR1)"
                 autoComplete="off"
-                className="h-9 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0"
               />
             </div>
 
-            {error && <p className="px-3.5 py-2 text-xs text-red-500">{error}</p>}
+            {error && (
+              <p role="alert" className="px-3.5 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
 
-            {items.length > 0 && (
+            {items.length > 0 ? (
               <ul className="max-h-[50vh] overflow-y-auto p-1.5">
                 {query.trim() === "" && (
                   <li className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
@@ -171,10 +219,8 @@ export function SearchPalette() {
                   <li key={`${s.name}#${s.tag}`}>
                     <button
                       type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        go(`${s.name}#${s.tag}`);
-                      }}
+                      onMouseDown={(e) => e.preventDefault()} // 인풋 블러 방지 (실행은 onClick 에서)
+                      onClick={() => go(`${s.name}#${s.tag}`)}
                       onMouseEnter={() => setHighlight(i)}
                       className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm ${
                         i === highlight ? "bg-accent text-accent-foreground" : ""
@@ -196,10 +242,21 @@ export function SearchPalette() {
                   </li>
                 ))}
               </ul>
+            ) : (
+              // 후보가 없을 때 — "불러오는 중"과 "정말 없음"을 구분해 준다
+              !error && (
+                <p className="px-3.5 py-6 text-center text-xs text-muted-foreground">
+                  {loading
+                    ? "찾는 중…"
+                    : query.trim() === ""
+                      ? "최근 검색된 소환사가 없어요. 게임명#태그를 입력해 보세요."
+                      : "기록에 없는 소환사예요. 게임명#태그를 정확히 입력하면 새로 분석해 드려요."}
+                </p>
+              )
             )}
 
             <div className="flex items-center justify-between gap-2 border-t px-3.5 py-2 text-[11px] text-muted-foreground">
-              <span>초성·띄어쓰기 없이도 찾아요 (예: ㅎㅇㅂ, hideonbush)</span>
+              <span>초성·띄어쓰기 없이도 찾아요</span>
               <span className="hidden sm:inline">Enter 이동 · Esc 닫기</span>
             </div>
           </div>

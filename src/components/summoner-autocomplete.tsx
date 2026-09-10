@@ -76,17 +76,15 @@ export function SummonerAutocomplete({
         autoComplete="off"
       />
       {open && items.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1.5 text-popover-foreground shadow-md">
           {items.map((s, i) => (
             <li key={`${s.name}#${s.tag}`}>
               <button
                 type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  select(s);
-                }}
+                onMouseDown={(e) => e.preventDefault()} // 인풋 블러 방지 (실행은 onClick)
+                onClick={() => select(s)} // 키보드(Tab→Enter)로도 눌리게 — onMouseDown 만으론 안 된다
                 onMouseEnter={() => setHighlight(i)}
-                className={`flex w-full items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm ${
+                className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm ${
                   i === highlight ? "bg-accent text-accent-foreground" : ""
                 }`}
               >
