@@ -14,6 +14,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/ui/sonner";
 import { CrawlerProbe } from "@/components/crawler-probe";
 import { SearchPalette } from "@/components/search-palette";
+import { SiteNav } from "@/components/site-nav";
 import { PumpPing } from "@/components/pump-ping";
 
 // 폰트는 첫 페인트 전 대역폭 경쟁자다(느린 4G 실측: 두 파일 51KB 가 High 우선순위로 CSS 와 나눠 받음, 2026-09-03).
@@ -61,17 +62,6 @@ export const metadata: Metadata = {
   verification: { other: { "naver-site-verification": NAVER_SITE_VERIFICATION } },
 };
 
-// minor: 좁은 화면(<640px)에선 감춘다 — 검색 버튼이 들어오면서 아이콘 8개가 한 줄에 몰려
-// 360~390px 폰에서 헤더가 가로로 넘쳤다(문서 폭 404px, 2026-09-10 실측). 감춘 항목은 푸터에 있다.
-const NAV_LINKS = [
-  { href: "/champions", label: "챔피언", icon: BarChart3, minor: false },
-  { href: "/ranking", label: "랭킹", icon: Trophy, minor: false },
-  { href: "/recent", label: "최근 검색", icon: History, minor: true },
-  { href: "/patch-notes", label: "패치노트", icon: Newspaper, minor: true },
-  { href: "/faq", label: "FAQ", icon: CircleHelp, minor: true },
-  { href: "/tools", label: "도구", icon: Wrench, minor: true },
-] as const;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -106,18 +96,8 @@ export default function RootLayout({
               </Link>
               {/* 좁은 화면에선 아이콘만 남으므로 aria-label 로 링크 이름을 보장한다
                   (접근성 트리에 이름 없는 링크가 남으면 스크린리더·AI 에이전트가 못 읽음) */}
-              <nav aria-label="주 메뉴" className="flex items-center gap-1 sm:gap-1">
-                {NAV_LINKS.map(({ href, label, icon: Icon, minor }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    aria-label={label}
-                    className={`${minor ? "hidden sm:flex" : "flex"} shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:py-1.5`}
-                  >
-                    <Icon className="size-4" aria-hidden />
-                    <span className="hidden md:inline">{label}</span>
-                  </Link>
-                ))}
+              <nav aria-label="주 메뉴" className="flex items-center gap-1">
+                <SiteNav />
                 <SearchPalette />
                 <ThemeToggle />
               </nav>

@@ -6,7 +6,12 @@
 //
 // 접근성: 열면 인풋에 포커스, Tab 은 모달 안에서만 순환(포커스 트랩), Esc 로 닫으면 트리거로 복귀.
 // 후보 항목은 onClick 으로 실행한다 — onMouseDown 만 두면 키보드(Tab→Enter)로는 눌리지 않는다.
+//
+// 오버레이는 반드시 body 로 포털한다: 이 컴포넌트는 헤더 안에 있고 헤더에 backdrop-blur 가 걸려 있어
+// 그대로 두면 헤더가 fixed 자식의 기준 박스가 되어 inset-0 이 헤더 높이(124px)까지만 덮었다
+// (2026-09-10 실측). 화면 전체를 덮으려면 헤더 밖으로 빼야 한다.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -129,8 +134,7 @@ export function SearchPalette() {
 
   const busy = navigating || loading;
 
-  return (
-    <>
+  const trigger = (
       <button
         ref={triggerRef}
         type="button"
@@ -146,8 +150,9 @@ export function SearchPalette() {
           {isMac ? "⌘K" : "Ctrl K"}
         </kbd>
       </button>
+  );
 
-      {open && (
+  const overlay = open ? (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 backdrop-blur-sm sm:pt-[12vh]"
           onClick={close}
@@ -261,7 +266,12 @@ export function SearchPalette() {
             </div>
           </div>
         </div>
-      )}
+  ) : null;
+
+  return (
+    <>
+      {trigger}
+      {typeof document === "undefined" ? null : createPortal(overlay, document.body)}
     </>
   );
 }
