@@ -5,7 +5,7 @@
 // 걸리므로, 반드시 이 함수를 직접 호출한다.
 
 import "server-only";
-import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
+import { SWEEP_SKIP_MS } from "@/lib/freshness";
 import { getAccountByRiotId } from "@/lib/riot/client";
 import {
   ensureQueuedAndSchedule,
@@ -35,9 +35,9 @@ const goneKey = (region: string, g: string, t: string) =>
 // 백그라운드 갱신은 하루 1회(새벽 크론 주기)면 충분하다 — 그 사이 새 경기는
 // 유저가 직접 검색할 때 즉시 반영된다. 6h였을 땐 한 바퀴가 하루를 넘기면
 // 앞부분 정밀 스킵이 풀려 다음 바퀴가 다시 느려졌다.
-// 건너뛰기 기준 = 신선도 기간(공용). 아직 신선한 결과를 다시 분석하지 않는다 —
-// 한 바퀴가 이 기간보다 길어(개발 키 한도) 미리 갱신해봐야 따라잡지 못하고 호출만 낭비된다.
-const RECENT_DEEP_MS = FRESH_MAX_AGE_MS;
+// 건너뛰기 기준(공용 상수) — 한 바퀴보다 짧게 잡는다. 신선도 기간과 같게 두면 스윕이 돌아왔을 때
+// 전원이 아직 건너뛰기 구간이라 아무것도 갱신하지 못한다(freshness.ts 주석 참고).
+const RECENT_DEEP_MS = SWEEP_SKIP_MS;
 // (옛 RECENT_QUICK_MS 제거, 2026-09-05) "빠른 추정이 하루 안이면 통과"는 라이엇 콜을 아꼈지만,
 // 그 사람은 정밀이 없는 채로 커서를 넘어가 '빠른'으로 남았다. 지금은 건너뛰지 않는다 —
 // 최신 매치 확인 콜 1개가 더 들지만, 어차피 정밀을 돌려야 할 사람들이라 낭비가 아니다.
