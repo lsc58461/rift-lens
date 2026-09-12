@@ -2,6 +2,7 @@
 // puuid가 들어가는 테이블(summoners/matches/league_snapshots)은 API 키 지문(fp)으로 스코프.
 
 import "server-only";
+import { FRESH_MAX_AGE_HOURS } from "@/lib/freshness";
 import { loadMatchInfo, loadMatchesByPuuid, resolvePlayerIds, syncParticipantsFromMatch, syncTeamsAndBans } from "@/lib/match-participants";
 import { getSql } from "./db";
 import { matchNo } from "./match-id";
@@ -1244,12 +1245,12 @@ export interface AdminSummonerRow {
 const STATE_SQL = `
   CASE
     WHEN a.deep_at IS NOT NULL THEN
-      CASE WHEN a.deep_ver = $1 AND a.deep_at > now() - interval '72 hours'
+      CASE WHEN a.deep_ver = $1 AND a.deep_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
                 AND NOT (a.quick_at IS NOT NULL AND a.quick_at > a.deep_at
                          AND a.quick_mid IS DISTINCT FROM a.deep_mid)
            THEN 'deep' ELSE 'deep-stale' END
     WHEN a.quick_at IS NOT NULL THEN
-      CASE WHEN a.quick_ver = $1 AND a.quick_at > now() - interval '72 hours'
+      CASE WHEN a.quick_ver = $1 AND a.quick_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
            THEN 'quick' ELSE 'quick-stale' END
     ELSE 'none'
   END`;

@@ -9,6 +9,7 @@
 // 백그라운드 실행 자체는 라우트 핸들러에서 next/server의 after()로 시작한다.
 
 import "server-only";
+import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
 import { cache } from "@/lib/cache";
 import { canon } from "@/lib/identity";
 import { getAnalysis, saveAnalysis } from "@/lib/store";
@@ -30,8 +31,7 @@ import {
 
 // 결과는 analyses 테이블에 영구 보관(소환사·종류당 1행 upsert) —
 // "이전 분석"으로 즉시 표시되고 백그라운드 재분석이 갱신한다.
-// 신선도(72h)는 아래 FRESH_MAX_AGE_MS로 판정.
-const FRESH_MAX_AGE_MS = 72 * 60 * 60_000;
+// 신선도는 공용 상수(freshness.ts)로 판정 — 상태 라벨·스윕 건너뛰기와 같은 값을 쓴다.
 const JOB_TTL = 60 * 15;
 const JOB_STALE_MS = 5 * 60_000; // 이 시간 동안 진행이 없으면 죽은 잡으로 간주
 
@@ -93,7 +93,7 @@ async function getFreshResult(
     stored.latestMatchId !== latestMatchId ||
     // 구버전 알고리즘으로 계산된 결과는 재분석
     (stored.algoVersion ?? 0) !== ALGO_VERSION ||
-    // 72시간 넘은 결과는 참가자 랭크 변동을 반영하기 위해 재분석
+    // 신선도 기간을 넘긴 결과는 참가자 랭크 변동을 반영하기 위해 재분석
     // (analyzedAt이 없는 구버전 결과 포함 — stale 표시로는 계속 쓰인다)
     Date.now() - (stored.analyzedAt ?? 0) > FRESH_MAX_AGE_MS
   ) {
