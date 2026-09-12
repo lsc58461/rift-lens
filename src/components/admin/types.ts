@@ -39,6 +39,8 @@ export interface AdminStatus {
     currentLabel: string | null;
     estimatedLabel: string | null;
     searchedAt: number;
+    /** 마지막 분석 시각 (정밀·빠른 중 최신) — 목록의 '갱신' 열 */
+    refreshedAt: number | null;
     analysis: "deep" | "deep-stale" | "quick" | "quick-stale" | "none";
   }[];
   /** 기록된 소환사 전체 수 (목록 자체는 페이지 API로 받는다) */

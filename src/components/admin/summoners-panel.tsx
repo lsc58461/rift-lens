@@ -183,6 +183,7 @@ export function SummonersPanel() {
             <span className="flex-1">소환사</span>
             <span className="w-24 shrink-0">상태</span>
             <span className="w-40 shrink-0 text-right">현재 → 매칭 구간</span>
+            <span className="w-16 shrink-0 text-right">갱신</span>
             <span className="w-16 shrink-0 text-right">검색</span>
           </div>
           <div className="divide-y divide-border/60">
@@ -213,7 +214,16 @@ export function SummonersPanel() {
                 <span className="truncate text-xs text-muted-foreground sm:w-40 sm:shrink-0 sm:text-right">
                   {r.currentLabel ?? "언랭"} → {r.estimatedLabel ?? "?"}
                 </span>
-                <span className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
+                <span
+                  className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right"
+                  title={r.refreshedAt ? new Date(r.refreshedAt).toLocaleString("ko-KR") : undefined}
+                >
+                  {r.refreshedAt ? timeAgo(r.refreshedAt) : "—"}
+                </span>
+                <span
+                  className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right"
+                  title={new Date(r.searchedAt).toLocaleString("ko-KR")}
+                >
                   {timeAgo(r.searchedAt)}
                 </span>
               </div>

@@ -1239,6 +1239,8 @@ export interface AdminSummonerRow {
   currentLabel: string | null;
   estimatedLabel: string | null;
   searchedAt: number;
+  /** 마지막으로 분석된 시각 (정밀·빠른 중 최신). 분석 기록이 없으면 null */
+  refreshedAt: number | null;
   analysis: AdminAnalysisState;
 }
 
@@ -1379,7 +1381,8 @@ export async function adminSummonerPage(
   const [rows, totalRows] = await Promise.all([
     sql.unsafe(
       `SELECT r.platform, r.game_name, r.tag_line, r.current_label,
-              r.estimated_label, r.searched_at, ${STATE_SQL} AS state
+              r.estimated_label, r.searched_at,
+              GREATEST(a.deep_at, a.quick_at) AS refreshed_at, ${STATE_SQL} AS state
        FROM recent_searches r ${AGG_SQL} ${where}
        ORDER BY r.searched_at DESC, r.platform, r.game_name_lower, r.tag_line_lower
        LIMIT $5 OFFSET $6`,
@@ -1398,6 +1401,7 @@ export async function adminSummonerPage(
       currentLabel: (r.current_label as string) ?? null,
       estimatedLabel: (r.estimated_label as string) ?? null,
       searchedAt: new Date(r.searched_at as string).getTime(),
+      refreshedAt: r.refreshed_at ? new Date(r.refreshed_at as string).getTime() : null,
       analysis: r.state as AdminAnalysisState,
     })),
     total: (totalRows as unknown as { n: number }[])[0]?.n ?? 0,
