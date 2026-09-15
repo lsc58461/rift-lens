@@ -6,7 +6,6 @@ import { notFound, redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { apexLadderEntry, ensureApexCutoffs } from "@/lib/apex-ladder";
-import { withLowPriority } from "@/lib/riot/limiter";
 import { isCrawlerUa } from "@/lib/crawler-log";
 import { compact } from "@/lib/hangul";
 import { getSeasonRanks, type SeasonRankRow } from "@/lib/season-archive";
@@ -73,6 +72,7 @@ import {
   getAccountByPuuid,
   getAccountByRiotId,
   getLeagueHistory,
+  getStoredPuuid,
   getSummoner,
   riotKeyFp,
 } from "@/lib/riot/client";
@@ -466,14 +466,18 @@ export default async function SummonerPage({
   let peak: { label: string; tier: string; at: number; pts: number } | null = null;
   let seasonRanks: SeasonRankRow[] = [];
   try {
-    // 크롤러는 캐시 미스 시에도 저우선으로 — 한도 예약(hot)을 켜지 않는다
-    const acct = isBot
-      ? await withLowPriority(() => getAccountByRiotId(platform, gameName, tagLine))
-      : await getAccountByRiotId(platform, gameName, tagLine);
-    selfPuuid = acct.puuid;
-    const history = await getLeagueHistory(platform, acct.puuid);
+    // 크롤러는 저장된 puuid만 쓰고 라이엇을 아예 부르지 않는다. 예전엔 저우선순위로 불렀는데,
+    // 저우선 호출은 한도 버킷이 차 있으면 다음 슬롯까지 최대 한 윈도(10초)를 기다리고 그 대기가
+    // 그대로 페이지 응답 시간이 됐다 — 소환사 페이지의 4~10%가 5~10.5초였던 원인이다
+    // (TTFB 0.05초, 본문만 늦음 / 상한 10.5초 = 윈도 크기). 크롤러에겐 이름 최신화가 필요 없다.
+    const puuid = isBot
+      ? await getStoredPuuid(platform, gameName, tagLine)
+      : (await getAccountByRiotId(platform, gameName, tagLine)).puuid;
+    if (!puuid) throw new Error("puuid 없음"); // 아래 catch 로 — LP·시즌 카드만 생략된다
+    selfPuuid = puuid;
+    const history = await getLeagueHistory(platform, puuid);
     lpInsight = computeLpInsight(history);
-    seasonRanks = await getSeasonRanks(platform, acct.puuid).catch(() => []);
+    seasonRanks = await getSeasonRanks(platform, puuid).catch(() => []);
     const seasonStart = new Date(SEASON_START).getTime();
     for (const h of history) {
       if (!h.solo_tier || h.solo_lp === null) continue;

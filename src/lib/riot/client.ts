@@ -97,6 +97,31 @@ async function riotFetch<T>(url: string): Promise<T> {
 }
 
 /** Riot ID(게임명#태그)로 계정 조회 — summoners 테이블 24h 신선도 */
+/**
+ * 저장된 puuid만 돌려준다 — 라이엇을 절대 부르지 않는다. 행이 오래됐어도 상관없다(puuid는 안 변한다).
+ *
+ * 크롤러가 여는 소환사 페이지용이다. 크롤러 요청은 저우선순위(withLowPriority)로 나가는데,
+ * 한도 버킷이 차 있으면 다음 슬롯까지 최대 한 윈도(10초)를 기다리고 그 대기가 그대로 응답
+ * 시간이 된다 — 실측에서 소환사 페이지의 4~10%가 5~10.5초였고, 상한 10.5초가 정확히 윈도 크기였다
+ * (TTFB는 0.05초, 본문만 늦음). 크롤러에겐 이름 최신화가 필요 없으므로 기다릴 이유가 없다.
+ */
+export async function getStoredPuuid(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+): Promise<string | null> {
+  const row = await findSummonerByName(
+    keyFp(),
+    platform,
+    gameName,
+    tagLine,
+    Number.POSITIVE_INFINITY,
+  ).catch(() => null);
+  if (row) return row.puuid;
+  // 시드 수집으로 등록된 계정은 summoners엔 없고 recent_searches에만 puuid가 있다
+  return recentSearchPuuid(platform, gameName, tagLine).catch(() => null);
+}
+
 export async function getAccountByRiotId(
   platform: PlatformRegion,
   gameName: string,
