@@ -169,3 +169,58 @@ export async function securityOverview(): Promise<SecurityOverview> {
   memo = { at: Date.now(), value };
   return value;
 }
+
+export interface SecurityIpDetail {
+  ip: string;
+  hits: number;
+  firstAt: number;
+  lastAt: number;
+  /** 이 IP가 때린 경로 전부 (많이 때린 순). PATH_LIMIT 을 넘으면 truncated 로 알린다 */
+  paths: { path: string; category: string; hits: number; lastAt: number }[];
+  truncated: number;
+  /** 사칭·로테이션 확인용 — 이 IP가 쓴 User-Agent 목록 */
+  uas: { ua: string; hits: number }[];
+}
+
+const PATH_LIMIT = 500;
+
+/** IP 하나가 시도한 경로를 전부 펼쳐 본다 (관리자 카드에서 IP를 눌렀을 때) */
+export async function securityIpDetail(ip: string): Promise<SecurityIpDetail> {
+  const sql = await getSql();
+  const [paths, uas, tot] = await Promise.all([
+    sql`SELECT path, count(*)::int AS hits,
+               mode() WITHIN GROUP (ORDER BY category) AS category,
+               (extract(epoch from max(at)) * 1000)::bigint AS last_at
+        FROM security_events WHERE ip = ${ip} AND at > now() - interval '30 days'
+        GROUP BY path ORDER BY hits DESC, max(at) DESC
+        LIMIT ${PATH_LIMIT + 1}` as unknown as Promise<
+      { path: string; hits: number; category: string; last_at: string }[]
+    >,
+    sql`SELECT ua, count(*)::int AS hits
+        FROM security_events WHERE ip = ${ip} AND at > now() - interval '30 days'
+        GROUP BY ua ORDER BY hits DESC LIMIT 40` as unknown as Promise<
+      { ua: string; hits: number }[]
+    >,
+    sql`SELECT count(*)::int AS hits,
+               (extract(epoch from min(at)) * 1000)::bigint AS first_at,
+               (extract(epoch from max(at)) * 1000)::bigint AS last_at
+        FROM security_events WHERE ip = ${ip} AND at > now() - interval '30 days'` as unknown as Promise<
+      { hits: number; first_at: string; last_at: string }[]
+    >,
+  ]);
+  const truncated = Math.max(0, paths.length - PATH_LIMIT);
+  return {
+    ip,
+    hits: tot[0]?.hits ?? 0,
+    firstAt: Number(tot[0]?.first_at ?? 0),
+    lastAt: Number(tot[0]?.last_at ?? 0),
+    paths: paths.slice(0, PATH_LIMIT).map((r) => ({
+      path: r.path,
+      category: r.category,
+      hits: r.hits,
+      lastAt: Number(r.last_at),
+    })),
+    truncated,
+    uas,
+  };
+}
