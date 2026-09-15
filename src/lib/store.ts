@@ -591,6 +591,9 @@ export async function migrateIdentity(
   const sql = await getSql();
   const nameLower = canon(gameName);
   const tagLower = canon(tagLine);
+  // 라이엇은 공백을 무시하므로 "마지막 계정"="마지막계정". 공백 제거 닉변 뒤 라이엇이 puuid 를 새로 발급하면
+  // 옛 행의 puuid 가 달라 영영 못 옛긴다 — 그 행이 죽은 puuid 를 안은 채 '정밀 스테일'로 무한히 남았다(2026-09-15).
+  const compactName = nameLower.replace(/ /g, "");
   // 같은 puuid 의 옛 이름 행을 지우지 않고 **새 이름으로 옮긴다** — 등록(recent_searches)과
   // 분석 결과가 닉변 뒤에도 이어진다. (예전엔 지우기만 해서, 유저가 직접 검색하면 페이지가
   // 새 이름으로 다시 기록하니 티가 안 났지만 전체 갱신에선 닉변 소환사가 목록에서 통째로
@@ -598,7 +601,8 @@ export async function migrateIdentity(
   // 새 이름 행이 이미 있거나 옛 행이 여럿이면 가장 최근 것만 남기고 정리한다.
   await sql`
     DELETE FROM analyses a
-    WHERE a.puuid = ${puuid} AND a.platform = ${platform}
+    WHERE (a.puuid = ${puuid} OR (replace(a.game_name_lower, ' ', '') = ${compactName} AND a.tag_line_lower = ${tagLower}))
+      AND a.platform = ${platform}
       AND (a.game_name_lower <> ${nameLower} OR a.tag_line_lower <> ${tagLower})
       AND (
         EXISTS (SELECT 1 FROM analyses b
@@ -616,11 +620,13 @@ export async function migrateIdentity(
         result = jsonb_set(jsonb_set(result, '{account,gameName}', to_jsonb(${gameName}::text)),
                            '{account,tagLine}', to_jsonb(${tagLine}::text)),
         updated_at = now()
-    WHERE puuid = ${puuid} AND platform = ${platform}
+    WHERE (puuid = ${puuid} OR (replace(game_name_lower, ' ', '') = ${compactName} AND tag_line_lower = ${tagLower}))
+      AND platform = ${platform}
       AND (game_name_lower <> ${nameLower} OR tag_line_lower <> ${tagLower})`;
   await sql`
     DELETE FROM recent_searches r
-    WHERE r.puuid = ${puuid} AND r.platform = ${platform}
+    WHERE (r.puuid = ${puuid} OR (replace(r.game_name_lower, ' ', '') = ${compactName} AND r.tag_line_lower = ${tagLower}))
+      AND r.platform = ${platform}
       AND (r.game_name_lower <> ${nameLower} OR r.tag_line_lower <> ${tagLower})
       AND (
         EXISTS (SELECT 1 FROM recent_searches b
@@ -635,7 +641,8 @@ export async function migrateIdentity(
     UPDATE recent_searches
     SET game_name_lower = ${nameLower}, tag_line_lower = ${tagLower},
         game_name = ${gameName}, tag_line = ${tagLine}
-    WHERE puuid = ${puuid} AND platform = ${platform}
+    WHERE (puuid = ${puuid} OR (replace(game_name_lower, ' ', '') = ${compactName} AND tag_line_lower = ${tagLower}))
+      AND platform = ${platform}
       AND (game_name_lower <> ${nameLower} OR tag_line_lower <> ${tagLower})`;
 }
 
