@@ -1,6 +1,6 @@
 // 아펙스 래더(챌린저·그랜드마스터) — 라이엇 league-v4의 리그 전체 목록을 주기적으로
-// 받아 저장한다. 콜 2개로 명단 전체(LP·승패)가 오므로 값싸고, 명단의 최소 LP가
-// 곧 그 티어의 실제 컷이다(포인트→티어 역산, 랭킹 페이지, 컷 표시에 쓴다).
+// 받아 저장한다. 콜 2개로 명단 전체(LP·승패)가 오므로 값싸다. 컷은 두 명단을 합쳐
+// LP 순으로 줄 세운 뒤 정원째 LP로 뽑는다(포인트→티어 역산, 랭킹 페이지, 컷 표시에 쓴다).
 //
 // 이름은 목록에 없다(puuid만). summoners 테이블에 있으면 그걸 쓰고, 없는 사람은
 // 폴링마다 일부씩 저우선순위로 account-v1을 조회해 채운다 — 며칠이면 전원 확보.
@@ -22,8 +22,10 @@ const POLL_LOCK_SEC = 25 * 60; // 폴링 주기(30분)보다 조금 짧게 — �
 const NAMES_PER_POLL = 80; // 폴링마다 이름을 새로 조회할 최대 인원 (콜 = 인원 수)
 
 export interface ApexCutoffs {
-  grandmaster: number; // 그마 명단 최소 LP
-  challenger: number; // 챌 명단 최소 LP
+  /** 그마 진입 컷 — 챌+그마를 LP 순으로 줄 세웠을 때 (챌 정원 + 그마 정원)번째 LP */
+  grandmaster: number;
+  /** 챌 진입 컷 — 같은 줄에서 (챌 정원)번째 LP. 명단 최소 LP 가 아니다(아래 pollApexLadder 주석) */
+  challenger: number;
   counts: { challenger: number; grandmaster: number };
   at: number;
 }
@@ -63,13 +65,13 @@ export async function pollApexLadder(platform: PlatformRegion = "kr"): Promise<b
   const fp = riotKeyFp();
   const now = new Date();
   const counts = { challenger: 0, grandmaster: 0 };
-  const mins: Partial<Record<ApexLadderTier, number>> = {};
+  const allLp: number[] = []; // 챌+그마 전원의 LP — 컷을 등수로 뽑기 위해 모은다
 
   for (const tier of APEX_LADDER_TIERS) {
     const list = await getApexLeague(platform, tier);
     const entries = [...list.entries].sort((a, b) => b.leaguePoints - a.leaguePoints);
     if (entries.length === 0) continue;
-    mins[tier] = entries[entries.length - 1].leaguePoints;
+    for (const e of entries) allLp.push(e.leaguePoints);
     if (tier === "CHALLENGER") counts.challenger = entries.length;
     else counts.grandmaster = entries.length;
 
@@ -96,10 +98,19 @@ export async function pollApexLadder(platform: PlatformRegion = "kr"): Promise<b
     });
   }
 
-  if (mins.CHALLENGER !== undefined && mins.GRANDMASTER !== undefined) {
+  // 컷은 "리그 명단의 최소 LP"가 아니라 **등수**로 뽑는다.
+  // 라이엇은 승강등을 주기적으로 일괄 반영하므로, 리그 소속이 실시간 LP 순서와 어긋난다:
+  // LP 를 잃고도 다음 반영 때까지 챌린저에 남아 있는 사람이 생긴다. 실측(2026-09-15)에서
+  // 챌 명단 최소 LP 는 1659 였지만 그 사람은 전체 442등이었고, 그보다 LP 가 높은 그마가 137명
+  // 있었다 — 진짜 챌린저 컷(300등)은 1843 이라 184LP 나 낮게 나왔다. 이 값은 화면 표시뿐 아니라
+  // pointsToRank 의 티어 라벨 기준이라, 낮으면 그마를 챌린저로 잘못 부른다.
+  // 정원(KR 300/700)을 하드코딩하지 않고 받아온 명단 인원을 그대로 쓴다 — 명단이 한두 명 비는
+  // 순간이 있어도 자동으로 맞는다.
+  if (counts.challenger > 0 && counts.grandmaster > 0) {
+    allLp.sort((a, b) => b - a);
     await setSetting<ApexCutoffs>(CUTOFF_KEY, {
-      grandmaster: mins.GRANDMASTER,
-      challenger: mins.CHALLENGER,
+      challenger: allLp[counts.challenger - 1],
+      grandmaster: allLp[counts.challenger + counts.grandmaster - 1],
       counts,
       at: Date.now(),
     });
