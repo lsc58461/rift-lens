@@ -1,6 +1,7 @@
 // 아펙스 래더(챌린저·그랜드마스터) — 라이엇 league-v4의 리그 전체 목록을 주기적으로
-// 받아 저장한다. 콜 2개로 명단 전체(LP·승패)가 오므로 값싸다. 컷은 두 명단을 합쳐
-// LP 순으로 줄 세운 뒤 정원째 LP로 뽑는다(포인트→티어 역산, 랭킹 페이지, 컷 표시에 쓴다).
+// 받아 저장한다. 콜 2개로 명단 전체(LP·승패)가 오므로 값싸다. 컷은 여기에 마스터 명단(콜 1개 더,
+// 저장 안 함)까지 합쳐 LP 순으로 줄 세운 뒤 정원째 LP로 뽑는다 — 포인트→티어 역산, 랭킹 페이지,
+// 컷 표시에 쓴다.
 //
 // 이름은 목록에 없다(puuid만). summoners 테이블에 있으면 그걸 쓰고, 없는 사람은
 // 폴링마다 일부씩 저우선순위로 account-v1을 조회해 채운다 — 며칠이면 전원 확보.
@@ -22,7 +23,7 @@ const POLL_LOCK_SEC = 25 * 60; // 폴링 주기(30분)보다 조금 짧게 — �
 const NAMES_PER_POLL = 80; // 폴링마다 이름을 새로 조회할 최대 인원 (콜 = 인원 수)
 
 export interface ApexCutoffs {
-  /** 그마 진입 컷 — 챌+그마를 LP 순으로 줄 세웠을 때 (챌 정원 + 그마 정원)번째 LP */
+  /** 그마 진입 컷 — 마스터 이상 전원을 LP 순으로 줄 세웠을 때 (챌 정원 + 그마 정원)번째 LP */
   grandmaster: number;
   /** 챌 진입 컷 — 같은 줄에서 (챌 정원)번째 LP. 명단 최소 LP 가 아니다(아래 pollApexLadder 주석) */
   challenger: number;
@@ -96,6 +97,18 @@ export async function pollApexLadder(platform: PlatformRegion = "kr"): Promise<b
         await tx`INSERT INTO apex_ladder ${tx(rows.slice(i, i + 200))}`;
       }
     });
+  }
+
+  // 마스터까지 합쳐야 컷이 맞는다. 승강등이 일괄 반영이라 "그마 최하위보다 LP 높은 마스터"가
+  // 늘 존재하기 때문이다 — 실측(2026-09-16)에서 380명이었고, 그 탓에 그마 컷이 1173 으로
+  // 163LP 낮게 나왔다(마스터 포함 시 1336). 챌린저 컷은 마스터 최고 LP(1492)가 챌 컷보다 낮아
+  // 영향이 없지만, 같은 공식으로 계산해 두면 시즌 초처럼 분포가 흔들릴 때도 저절로 맞는다.
+  // 마스터 명단은 응답이 2MB대라 저장하지 않고 LP만 뽑아 쓴다. 실패하면 챌+그마만으로 계산한다.
+  try {
+    const master = await getApexLeague(platform, "MASTER");
+    for (const e of master.entries) allLp.push(e.leaguePoints);
+  } catch {
+    // 마스터 조회 실패 — 컷이 조금 낮게 잡히더라도 폴링 전체를 버리지는 않는다
   }
 
   // 컷은 "리그 명단의 최소 LP"가 아니라 **등수**로 뽑는다.

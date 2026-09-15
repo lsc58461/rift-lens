@@ -210,10 +210,10 @@ export default async function RankingPage({
       <Pager page={page} totalPages={totalPages} basePath="/ranking" query={pagerQuery} />
 
       <p className="text-xs text-muted-foreground">
-        라이엇 공식 리그 목록 기준(30분마다 갱신). 컷은 챌린저·그랜드마스터를 LP 순으로 줄 세웠을
-        때 <b>정원째 순위의 LP</b>, 즉 그 티어에 들어가려면 필요한 LP예요. 라이엇이 승강등을 몰아서
-        반영하기 때문에, LP가 떨어졌는데도 아직 챌린저에 남아 있는 사람이 있어 &lsquo;명단의 최소
-        LP&rsquo;와는 다릅니다. 이름은 확인되는 대로 채워집니다.
+        라이엇 공식 리그 목록 기준(30분마다 갱신). 컷은 마스터 이상 전원을 LP 순으로 줄 세웠을 때{" "}
+        <b>정원째 순위의 LP</b>, 즉 그 티어에 들어가려면 필요한 LP예요. 라이엇이 승강등을 몰아서
+        반영하기 때문에 LP가 떨어졌는데도 아직 윗 티어에 남아 있는 사람이 있어서, &lsquo;그 티어
+        명단의 최소 LP&rsquo;와는 다릅니다. 이름은 확인되는 대로 채워집니다.
       </p>
     </div>
   );

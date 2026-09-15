@@ -424,13 +424,21 @@ export interface ApexLeagueEntry {
 }
 
 /** 챌린저/그랜드마스터 리그 전체 명단 (솔로랭크) — 콜 1개에 전원 */
+// MASTER 도 같은 형태로 한 콜에 전체가 온다. 다만 라이엇이 LP 상위 1만 명만 잘라서 준다
+// (실측 2026-09-16: 정확히 10000명, 최소 LP 310, 0LP 없음). 컷 계산엔 1000등까지만 필요하므로
+// 잘린 목록이어도 정확하다. 응답이 2MB대라 저장하지 않고 LP만 뽑아 쓴다.
+const LEAGUE_PATH = {
+  CHALLENGER: "challengerleagues",
+  GRANDMASTER: "grandmasterleagues",
+  MASTER: "masterleagues",
+} as const;
+
 export async function getApexLeague(
   platform: PlatformRegion,
-  tier: "CHALLENGER" | "GRANDMASTER",
+  tier: keyof typeof LEAGUE_PATH,
 ): Promise<{ tier: string; entries: ApexLeagueEntry[] }> {
-  const path = tier === "CHALLENGER" ? "challengerleagues" : "grandmasterleagues";
   return riotFetch<{ tier: string; entries: ApexLeagueEntry[] }>(
-    `https://${platform}.api.riotgames.com/lol/league/v4/${path}/by-queue/RANKED_SOLO_5x5`,
+    `https://${platform}.api.riotgames.com/lol/league/v4/${LEAGUE_PATH[tier]}/by-queue/RANKED_SOLO_5x5`,
   );
 }
 
