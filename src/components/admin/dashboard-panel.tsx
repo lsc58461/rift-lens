@@ -20,6 +20,7 @@ import {
 } from "./types";
 import { HourlyVisitsCard, TierDistributionCard } from "./stats-cards";
 import { CrawlerCard } from "./crawler-card";
+import { SecurityCard } from "./security-card";
 import { EmptyState, LiveDot, PageHeader, StatTile } from "./ui";
 
 /**
@@ -364,6 +365,7 @@ export function DashboardPanel() {
       </div>
 
       <CrawlerCard crawlers={status?.crawlers ?? []} />
+      <SecurityCard />
 
       <p className="text-xs text-muted-foreground">
         실행 중·대기열은 서버 캐시 기준이며 5초 간격으로 갱신됩니다

@@ -214,6 +214,20 @@ const SCHEMA_SQL = `
       PRIMARY KEY (bot, hour)
     );
 
+    -- 스캐너가 때린 "없는 공격성 경로" 기록 (src/lib/security-log.ts).
+    -- 집계가 아니라 원본을 남긴다 — IP·UA·경로 조합을 봐야 사칭/로테이션이 보이기 때문.
+    -- 한 IP당 시간당 상한이 걸려 있고 30일 지나면 지운다.
+    CREATE TABLE IF NOT EXISTS security_events (
+      id bigserial PRIMARY KEY,
+      at timestamptz NOT NULL DEFAULT now(),
+      ip text NOT NULL,
+      ua text NOT NULL DEFAULT '',
+      path text NOT NULL,
+      category text NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS security_events_at_idx ON security_events (at DESC);
+    CREATE INDEX IF NOT EXISTS security_events_ip_idx ON security_events (ip, at DESC);
+
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS patch text;
     -- 확장 필드 캡처 완료 표시 — 도입 전 매치는 false라, 백필이 본문을 재수집해
     -- 밴·팀·participant 확장 필드를 채우고 true로 바꾼다.
