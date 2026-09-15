@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { parseSummonerSlug, safeDecode, summonerPath } from "@/lib/summoner-url";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbLd, OG_BASE } from "@/lib/seo";
@@ -466,14 +467,17 @@ export default async function SummonerPage({
   let peak: { label: string; tier: string; at: number; pts: number } | null = null;
   let seasonRanks: SeasonRankRow[] = [];
   try {
-    // 크롤러는 저장된 puuid만 쓰고 라이엇을 아예 부르지 않는다. 예전엔 저우선순위로 불렀는데,
-    // 저우선 호출은 한도 버킷이 차 있으면 다음 슬롯까지 최대 한 윈도(10초)를 기다리고 그 대기가
-    // 그대로 페이지 응답 시간이 됐다 — 소환사 페이지의 4~10%가 5~10.5초였던 원인이다
-    // (TTFB 0.05초, 본문만 늦음 / 상한 10.5초 = 윈도 크기). 크롤러에겐 이름 최신화가 필요 없다.
-    const puuid = isBot
-      ? await getStoredPuuid(platform, gameName, tagLine)
-      : (await getAccountByRiotId(platform, gameName, tagLine)).puuid;
-    if (!puuid) throw new Error("puuid 없음"); // 아래 catch 로 — LP·시즌 카드만 생략된다
+    // 여기서 라이엇을 부르는 유일한 이유는 puuid 확보인데, puuid 는 안 변하므로 저장된 걸 쓰면 된다.
+    // 예전엔 계정 조회를 기다렸고, 그 대기가 그대로 페이지 응답 시간이 됐다 — 소환사 페이지의
+    // 4~10%가 5~10.5초였던 원인이다(TTFB 0.05초, 본문만 늦음 / 상한 10.5초 = 한도 윈도 크기).
+    // 크롤러는 저우선순위라 한 윈도(10초)를 꼬박 기다렸고, 사람도 버킷이 포화면 5초 넘게 걸렸다.
+    // 이름 최신화는 필요하지만 응답을 막을 일은 아니라서 뒤로 미룬다(크롤러는 그것도 생략).
+    let puuid = await getStoredPuuid(platform, gameName, tagLine);
+    if (!puuid) {
+      puuid = (await getAccountByRiotId(platform, gameName, tagLine)).puuid;
+    } else if (!isBot) {
+      after(() => getAccountByRiotId(platform, gameName, tagLine).catch(() => {}));
+    }
     selfPuuid = puuid;
     const history = await getLeagueHistory(platform, puuid);
     lpInsight = computeLpInsight(history);
