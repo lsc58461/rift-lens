@@ -126,6 +126,19 @@ async function setLastAnnouncedPatch(patch) {
     () => {},
   );
 }
+/** og:description 은 HTML 이라 엔티티가 그대로 들어온다(&#x27; 등) — 디스코드에 날것으로 나가지 않게 푼다 */
+function decodeEntities(s) {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 /** 공식 패치노트 페이지에서 히어로 이미지·요약을 뽑는다 (임베드에 첨부용).
  *  라이엇이 26.4부터 URL 스킴을 바꿔, 신형식 404면 구형식으로 폴백한다. */
 async function fetchPatchMeta(url, fallbackUrl) {
@@ -158,14 +171,36 @@ async function fetchPatchMeta(url, fallbackUrl) {
         image = image.slice(0, first + 1) + image.slice(first + 1).replace(/\?/g, "&");
       }
     }
-    return { image, summary: og("og:description"), url: usedUrl };
+    const summary = og("og:description");
+    return { image, summary: summary ? decodeEntities(summary) : undefined, url: usedUrl };
   } catch {
     return {};
   }
 }
 
+const PATCH_BASE = "https://www.leagueoflegends.com/ko-kr/news/game-updates";
+/** 마케팅 라벨("26.19") → 공식 패치노트 URL 두 벌 (구형식은 26.3 이하 폴백) */
+function urlsForLabel(label) {
+  const [maj, min] = label.split(".").map((n) => parseInt(n, 10));
+  return {
+    url: `${PATCH_BASE}/league-of-legends-patch-${maj}-${min}-notes/`,
+    legacy: `${PATCH_BASE}/patch-${maj}-${min}-notes/`,
+  };
+}
+/** 저장값을 마케팅 라벨로 맞춘다 — 예전엔 DDragon 형식("16.18")으로 저장했다 */
+function toMarketing(label) {
+  const [maj, min] = String(label ?? "").split(".").map((n) => parseInt(n, 10));
+  if (!maj || Number.isNaN(min)) return null;
+  return maj < 20 ? `${maj + 10}.${min}` : `${maj}.${min}`;
+}
+const newerThan = (a, b) => {
+  const [am, an] = a.split(".").map(Number);
+  const [bm, bn] = b.split(".").map(Number);
+  return am !== bm ? am > bm : an > bn;
+};
+
 async function patchLoop() {
-  let latest;
+  let ddragon;
   try {
     const res = await fetch(
       "https://ddragon.leagueoflegends.com/api/versions.json",
@@ -173,37 +208,53 @@ async function patchLoop() {
     );
     if (!res.ok) return;
     const versions = await res.json();
-    latest = String(versions[0] ?? "").split(".").slice(0, 2).join("."); // DDragon "16.16"
+    ddragon = String(versions[0] ?? "").split(".").slice(0, 2).join("."); // DDragon "16.16"
   } catch {
     return;
   }
-  if (!latest) return;
-  const last = await getLastAnnouncedPatch();
-  if (last === latest) return;
+  // 마케팅 패치번호 = DDragon major + 10 (DDragon 16.16 → 패치 26.16)
+  let label = toMarketing(ddragon);
+  if (!label) return;
+
+  // DDragon 버전 목록은 공식 패치노트보다 늦게 올라온다 — 2026-09-23 실측에서 26.19 노트가
+  // 이미 공개됐는데도 DDragon 최신은 여전히 16.18 이었다. DDragon 만 보고 있으면 그동안 새 패치를
+  // 통째로 놓친다. 그래서 다음 번호(와 연도가 바뀌는 27.1)의 페이지를 찔러 보고, 실제로 있으면
+  // 그걸 최신으로 삼는다. 없으면 fetchPatchMeta 가 빈 값을 주므로 DDragon 기준 그대로 간다.
+  const [lMaj, lMin] = label.split(".").map((n) => parseInt(n, 10));
+  let meta = null;
+  for (const cand of [`${lMaj}.${lMin + 1}`, `${lMaj + 1}.1`]) {
+    const u = urlsForLabel(cand);
+    const m = await fetchPatchMeta(u.url, u.legacy);
+    if (m.url) {
+      label = cand;
+      meta = m;
+      break;
+    }
+  }
+
+  const last = toMarketing(await getLastAnnouncedPatch());
+  if (last && !newerThan(label, last)) return;
   // 첫 실행(기록 없음)엔 기준만 저장하고 알리지 않는다 — 봇 재시작 스팸 방지
   if (last) {
-    // 마케팅 패치번호 = DDragon major + 10 (DDragon 16.16 → 패치 26.16)
-    const [dMaj, dMin] = latest.split(".").map((n) => parseInt(n, 10));
-    const mkt = `${(dMaj || 0) + 10}.${dMin || 0}`;
-    const base = "https://www.leagueoflegends.com/ko-kr/news/game-updates";
-    const url = `${base}/league-of-legends-patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
-    const legacy = `${base}/patch-${(dMaj || 0) + 10}-${dMin || 0}-notes/`;
-    const meta = await fetchPatchMeta(url, legacy);
-    const finalUrl = meta.url || url;
+    const u = urlsForLabel(label);
+    if (!meta) meta = await fetchPatchMeta(u.url, u.legacy);
+    const finalUrl = meta.url || u.url;
     const embed = new EmbedBuilder()
       .setColor(0x3b82f6)
-      .setTitle(`새 패치 ${mkt} 노트가 나왔어요`)
+      .setTitle(`새 패치 ${label} 노트가 나왔어요`)
       .setDescription(
         meta.summary
-          ? `${meta.summary}\n${finalUrl}`
-          : `리그 오브 레전드 패치 ${mkt} 노트를 확인해 보세요.\n${finalUrl}`,
+          ? `${meta.summary}
+${finalUrl}`
+          : `리그 오브 레전드 패치 ${label} 노트를 확인해 보세요.
+${finalUrl}`,
       )
       .setURL(finalUrl)
       .setTimestamp();
     if (meta.image) embed.setImage(meta.image);
     await broadcast(embed);
   }
-  await setLastAnnouncedPatch(latest);
+  await setLastAnnouncedPatch(label);
 }
 
 // ── 업데이트 내역 알림 ──────────────────────────────────
