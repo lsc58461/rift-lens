@@ -13,12 +13,19 @@ import "server-only";
 import { getSql } from "@/lib/db";
 import { safeDecode } from "@/lib/summoner-url";
 
-/** 실제 존재하는 페이지의 첫 경로 구간 (동적 구간은 아래에서 통과) */
-const PAGE_ROOTS = new Set([
-  "admin", "champions", "discord", "duo", "faq", "feedback", "maintenance",
-  "patch-notes", "privacy", "ranking", "recap", "recent", "share", "sitemap",
-  "summoner", "team", "terms", "tools", "updates",
+// 실제 페이지는 첫 구간이 아니라 **전체 경로**로 본다. 첫 구간만 보면 /admin/.env 처럼
+// 진짜 라우트 밑에 숨긴 탐색을 통째로 놓친다 (2026-09-26 실제로 새고 있었다).
+const EXACT_PAGES = new Set([
+  "/admin", "/admin/feedback", "/admin/maintenance", "/admin/summoners", "/admin/updates",
+  "/champions", "/discord", "/duo", "/faq", "/feedback", "/maintenance", "/patch-notes",
+  "/privacy", "/ranking", "/recap", "/recent", "/share", "/sitemap", "/summoner",
+  "/team", "/terms", "/tools", "/updates",
 ]);
+
+/** 뒤에 유저가 만든 문자열(소환사명·챔피언명)이 붙는 경로.
+ *  이 아래는 패턴 검사를 건너뛴다 — 'backup'·'dump' 같은 닉네임이 공격으로 오인되기 때문.
+ *  단 경로 탐색(../ 등)은 닉네임에 들어갈 수 없으므로 그것만 계속 본다. */
+const DYNAMIC_ROOTS = ["/summoner/", "/champions/", "/share/", "/sitemap/"];
 
 /** 실제 존재하는 API 경로 — /api 아래는 첫 구간만으로 판단하면 /api/exec 같은 걸 놓친다 */
 const API_PATHS = new Set([
@@ -54,23 +61,27 @@ export type SecurityCategory =
 // (예: /@fs/..%252f..%252froot/.env 는 경로 탐색이자 비밀파일이지만 '비밀파일 탐색'이 더 알아보기 쉽다)
 // 'system'·'run' 같은 흔한 단어는 반드시 경로의 마지막 구간일 때만 본다 —
 // \bsystem\b 으로 느슨하게 잡으면 /media/system/js/core.js(줌라 스캔) 까지 '명령어 주입'이 된다.
+
+/** 경로 탐색 — 유저 문자열이 붙는 경로에서도 이것만은 따로 검사한다 */
+const TRAVERSAL = /\.\.[/\\]|%2e%2e|%252f|%c0%af/i;
+
 const RULES: [RegExp, SecurityCategory][] = [
   [/\$\{|jndi:|%24%7b|[/.]exec\b|[/.]eval\b|\/cgi-bin\/|\/(system|run|shell|console)(?:$|[?#])|[?&]cmd=|[;|`]\s*(cat|curl|wget|bash|sh|id)\b/i, "명령어 주입"],
-  [/\.env|\.git|\.aws|\.ssh|id_rsa|credentials|rootkey|\.npmrc|\.htpasswd|\.ds_store|\/@fs\/|serviceaccount|\/secrets?\/|\.(sql|bak|pem|key|p12)\b|backup|dump/i, "비밀파일 탐색"],
-  [/\.\.[/\\]|%2e%2e|%252f|%c0%af/i, "경로 탐색"],
+  [/\.env|\.git|\.aws|\.ssh|id_rsa|credentials|rootkey|\.npmrc|\.htpasswd|\.ds_store|\/@fs\/|service[_-]?account|firebase|google-services|\/secrets?\/|\.(sql|bak|pem|key|p12)\b|backup|dump/i, "비밀파일 탐색"],
+  [TRAVERSAL, "경로 탐색"],
   [/\bwp-|xmlrpc|phpmyadmin|\.php\b|\/vendor\/|\/laravel\b|joomla|\/media\/system\//i, "워드프레스·PHP"],
   [/\/(proxy|fetch|url|redirect|request|webhook|out|load|ping)(?:$|[?#/])|[?&](url|uri|path|target|dest|next|redirect)=https?:/i, "SSRF·프록시"],
 ];
 
-// 없는 경로여도 공격이 아닌 것들 — 옛 링크·아이콘 탐색·브라우저 자동 요청
-const BENIGN = /\.(png|jpe?g|gif|svg|ico|webp|css|js|map|woff2?|txt|xml|json)$|^\/\.well-known\/|^\/_next\//i;
+// 없는 경로여도 공격이 아닌 것들 — 옛 링크·아이콘 탐색·브라우저 자동 요청.
+// json·js·map 은 일부러 뺐다: firebase-admin.json / service_account.json / *.mjs.map 처럼
+// 자격증명·소스 탐색이 노리는 게 정확히 그 확장자라, 무해로 치면 스캔이 전부 새어 나간다.
+const BENIGN = /\.(png|jpe?g|gif|svg|ico|webp|css|woff2?|txt|xml)$|^\/\.well-known\/|^\/_next\//i;
 
-/** 우리 사이트에 실제로 있는 경로인가 */
+/** 우리 사이트에 실제로 있는 경로인가 (전체 경로 일치) */
 function isKnownRoute(path: string): boolean {
-  if (ROOT_FILES.has(path)) return true;
-  if (path.startsWith("/api/")) return API_PATHS.has(path.replace(/\/$/, ""));
-  const root = path.split("/")[1] ?? "";
-  return PAGE_ROOTS.has(root);
+  if (ROOT_FILES.has(path) || EXACT_PAGES.has(path)) return true;
+  return path.startsWith("/api/") && API_PATHS.has(path);
 }
 
 /**
@@ -78,9 +89,15 @@ function isKnownRoute(path: string): boolean {
  * UA 는 보지 않는다 — 스캐너는 UA 를 마음대로 바꾸지만 노리는 경로는 못 바꾼다.
  */
 export function classifyPath(rawPath: string): SecurityCategory | null {
-  const path = rawPath.split("?")[0] || "/";
-  if (isKnownRoute(path)) return null;
   const full = rawPath.slice(0, 500);
+  const path = (rawPath.split("?")[0] || "/").replace(/\/+$/, "") || "/";
+
+  // 소환사·챔피언 페이지는 뒤가 유저 문자열이라 패턴 검사를 건너뛴다.
+  // 닉네임에 못 들어가는 경로 탐색만은 본다 — /summoner/kr/../../.env 같은 걸 막기 위해.
+  if (DYNAMIC_ROOTS.some((r) => path.startsWith(r))) {
+    return TRAVERSAL.test(full) ? "경로 탐색" : null;
+  }
+  if (isKnownRoute(path)) return null;
   for (const [re, cat] of RULES) if (re.test(full)) return cat;
   if (BENIGN.test(path)) return null;
   return "기타 스캔";
