@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Copy, Loader2, Plus, Shuffle, Swords, Users, X } from "lucide-react";
+import { Copy, Crown, Loader2, Plus, Shuffle, Swords, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyHint } from "@/components/page-kit";
 import { SummonerAutocomplete } from "@/components/summoner-autocomplete";
@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TIER_COLORS, pointsToRank } from "@/lib/mmr/rank";
+import { defaultTeamCount, splitTeams, teamCountOptions } from "@/lib/team-split";
 
 interface Player {
   input: string;
@@ -23,6 +24,8 @@ interface Player {
   tier: string;
   source: "analysis" | "rank" | "unranked";
   error?: string;
+  /** 입력할 때 팀장으로 찍었는지 — 서로 다른 팀에 한 명씩 배치된다 */
+  captain?: boolean;
 }
 
 const SOURCE_LABELS = {
@@ -32,16 +35,21 @@ const SOURCE_LABELS = {
 } as const;
 
 const MAX_PLAYERS = 20;
-
-/** 20명이면 균등 분할이 92,378가지다 — 전부 담아 두면 수십 MB에 정렬까지 붙어 탭이 멈춘다.
- *  전력차가 작은 순으로 이만큼만 남긴다. 그 뒤 조합은 실제로 아무도 보지 않는다. */
 const MAX_COMBOS = 200;
 
-interface Combo {
-  a: number[];
-  b: number[];
-  diff: number;
-}
+const TEAM_STYLES = [
+  { name: "블루팀", bar: "bg-blue-500", head: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  { name: "레드팀", bar: "bg-red-500", head: "bg-red-500/10 text-red-600 dark:text-red-400" },
+  { name: "그린팀", bar: "bg-emerald-500", head: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  { name: "퍼플팀", bar: "bg-violet-500", head: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+] as const;
+
+// Tailwind 는 클래스명을 문자열로 조합하면 못 알아채므로 미리 적어 둔다
+const TEAM_GRID: Record<number, string> = {
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-2 lg:grid-cols-3",
+  4: "sm:grid-cols-2 xl:grid-cols-4",
+};
 
 /** 순서를 한 번 섞은 새 배열 (Fisher-Yates) */
 function shuffled<T>(arr: T[]): T[] {
@@ -53,75 +61,36 @@ function shuffled<T>(arr: T[]): T[] {
   return a;
 }
 
-/**
- * 전력차가 작은 순 상위 MAX_COMBOS개 분할과 전체 가짓수.
- *
- * 0번은 항상 A팀에 둔다 — {A,B}와 {B,A}는 같은 분할이라, 고정하지 않으면 같은 팀 구성이
- * 색만 바뀐 채 두 번 나오고 계산량도 2배가 된다. 대신 0번이 늘 블루팀이 되므로,
- * 조회 결과를 받을 때 참가자 순서를 한 번 섞어(shuffled) 매번 다른 사람이 걸리게 한다.
- *
- * 합계는 재귀를 내려가며 누적하고(sumA) 반대편은 전체합에서 뺀다 — 잎마다 배열을 다시
- * 훑던 옛 방식으로는 20명을 감당하지 못한다.
- */
-function partitions(players: Player[]): { list: Combo[]; total: number } {
-  const n = players.length;
-  if (n < 2 || n % 2 !== 0) return { list: [], total: 0 };
-  const half = n / 2;
-  const pts = players.map((p) => p.points);
-  const sum = pts.reduce((s, v) => s + v, 0);
-
-  const list: Combo[] = [];
-  let worst = Infinity; // 목록이 찼을 때의 최대 diff — 이보다 나쁘면 만들지도 않는다
-  let total = 0;
-  const picked = new Array<number>(half);
-  picked[0] = 0;
-
-  const keep = (diff: number) => {
-    const a = picked.slice();
-    const inA = new Uint8Array(n);
-    for (const i of a) inA[i] = 1;
-    const b: number[] = [];
-    for (let i = 0; i < n; i++) if (!inA[i]) b.push(i);
-    let lo = 0;
-    let hi = list.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (list[mid].diff <= diff) lo = mid + 1;
-      else hi = mid;
-    }
-    list.splice(lo, 0, { a, b, diff });
-    if (list.length > MAX_COMBOS) list.pop();
-    if (list.length === MAX_COMBOS) worst = list[list.length - 1].diff;
-  };
-
-  const walk = (start: number, depth: number, sumA: number) => {
-    if (depth === half) {
-      total++;
-      const diff = Math.abs(2 * sumA - sum);
-      if (list.length < MAX_COMBOS || diff < worst) keep(diff);
-      return;
-    }
-    // 남은 자리를 다 채울 수 없는 시작점은 아예 들어가지 않는다
-    for (let i = start; i <= n - (half - depth); i++) {
-      picked[depth] = i;
-      walk(i + 1, depth + 1, sumA + pts[i]);
-    }
-  };
-  walk(1, 1, pts[0]);
-  return { list, total };
-}
-
 export function TeamClient() {
   const [names, setNames] = useState<string[]>(["", ""]);
+  const [captains, setCaptains] = useState<Set<number>>(new Set());
+  const [pickedCount, setPickedCount] = useState<number | null>(null); // null = 자동
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(false);
   const [comboIndex, setComboIndex] = useState(0);
 
-  // players 로 메모해야 한다 — 파생 배열(valid)을 의존성에 두면 매 렌더마다 새 참조라
-  // 메모가 통째로 무효화돼 20명에서 조합 계산이 렌더마다 다시 돈다.
+  const filled = names.filter((s) => s.trim()).length;
+  const countOptions = teamCountOptions(filled);
+  const teamCount =
+    pickedCount && countOptions.includes(pickedCount) ? pickedCount : defaultTeamCount(filled);
+
+  // players 로 메모해야 한다 — 파생 배열을 의존성에 두면 매 렌더 새 참조라 메모가 무효화된다
   const valid = useMemo(() => players.filter((p) => !p.error), [players]);
-  const { list: combos, total: comboTotal } = useMemo(() => partitions(valid), [valid]);
+  const { k, result } = useMemo(() => {
+    const n = valid.length;
+    const opts = teamCountOptions(n);
+    // 조회 실패로 인원이 바뀌면 고른 팀 수가 안 맞을 수 있다 — 그땐 기본값으로 되돌린다
+    const use = pickedCount && opts.includes(pickedCount) ? pickedCount : defaultTeamCount(n);
+    const caps = valid.map((p, i) => (p.captain ? i : -1)).filter((i) => i >= 0);
+    return {
+      k: use,
+      result: splitTeams(valid.map((p) => p.points), use, caps, MAX_COMBOS),
+    };
+  }, [valid, pickedCount]);
+
+  const combos = result.list;
   const current = combos[comboIndex % Math.max(combos.length, 1)];
+  const sumOf = (idx: number[]) => idx.reduce((s, i) => s + valid[i].points, 0);
 
   function setName(i: number, v: string) {
     setNames((arr) => arr.map((n, idx) => (idx === i ? v : n)));
@@ -131,16 +100,43 @@ export function TeamClient() {
   }
   function removeRow(i: number) {
     setNames((arr) => (arr.length <= 2 ? arr : arr.filter((_, idx) => idx !== i)));
+    // 뒤쪽 행이 한 칸씩 당겨지므로 팀장 표시도 같이 옮긴다
+    setCaptains((set) => {
+      const next = new Set<number>();
+      for (const c of set) {
+        if (c === i) continue;
+        next.add(c > i ? c - 1 : c);
+      }
+      return next;
+    });
+  }
+  function toggleCaptain(i: number) {
+    setCaptains((set) => {
+      const next = new Set(set);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
   }
 
   async function resolve() {
-    const list = names.map((s) => s.trim()).filter(Boolean);
+    const entries = names
+      .map((s, i) => ({ name: s.trim(), captain: captains.has(i) }))
+      .filter((e) => e.name);
+    const list = entries.map((e) => e.name);
     if (list.length < 2) {
       toast.error("2명 이상 입력해 주세요 (게임명#태그)");
       return;
     }
-    if (list.length % 2 !== 0) {
-      toast.error("짝수 인원만 팀을 나눌 수 있어요");
+    const opts = teamCountOptions(list.length);
+    if (opts.length === 0) {
+      toast.error(`${list.length}명은 팀이 딱 나뉘지 않아요 — 인원을 조정해 주세요`);
+      return;
+    }
+    const useK = pickedCount && opts.includes(pickedCount) ? pickedCount : defaultTeamCount(list.length);
+    const capCount = entries.filter((e) => e.captain).length;
+    if (capCount > useK) {
+      toast.error(`팀장은 ${useK}명까지예요 (${useK}팀이라 한 팀에 한 명씩)`);
       return;
     }
     if (new Set(list.map((s) => s.toLowerCase())).size !== list.length) {
@@ -157,9 +153,11 @@ export function TeamClient() {
       });
       if (!res.ok) throw new Error();
       const data: { players: Player[] } = await res.json();
-      // 여기서 한 번만 섞는다 — partitions 가 0번을 A팀에 고정하므로, 안 섞으면 맨 위에 적은
-      // 사람이 늘 블루팀에 뜬다. 렌더 중이 아니라 수신 시점이라 화면이 흔들리지도 않는다.
-      setPlayers(shuffled(data.players));
+      // 팀장 표시를 결과에 붙인 뒤 한 번 섞는다 — 안 섞으면 맨 위에 적은 사람이 늘 첫 팀에 뜬다
+      // (팀장이 있으면 팀 순서는 팀장 입력 순을 따르므로 섞여도 그대로다)
+      setPlayers(
+        shuffled(data.players.map((p, i) => ({ ...p, captain: entries[i]?.captain ?? false }))),
+      );
       const failed = data.players.filter((p) => p.error);
       if (failed.length) {
         toast.warning(`${failed.length}명 조회 실패 — 목록에서 확인해 주세요`);
@@ -173,35 +171,31 @@ export function TeamClient() {
 
   function copyTeams() {
     if (!current) return;
-    const line = (idx: number[]) =>
-      idx.map((i) => `${valid[i].name} (${valid[i].label})`).join("\n");
-    const sumA = current.a.reduce((s, i) => s + valid[i].points, 0);
-    const sumB = current.b.reduce((s, i) => s + valid[i].points, 0);
-    const pctA = sumA + sumB > 0 ? ((sumA / (sumA + sumB)) * 100).toFixed(1) : "50.0";
+    const all = current.teams.reduce((s, t) => s + sumOf(t), 0);
+    const text = current.teams
+      .map((idx, t) => {
+        const pct = all > 0 ? ((sumOf(idx) / all) * 100).toFixed(1) : "0.0";
+        const body = idx
+          .map((i) => `${valid[i].captain ? "👑 " : ""}${valid[i].name} (${valid[i].label})`)
+          .join("\n");
+        return `[${TEAM_STYLES[t].name}] ${pct}%\n${body}`;
+      })
+      .join("\n\n");
     navigator.clipboard
-      .writeText(
-        `[블루팀] ${pctA}%\n${line(current.a)}\n\n[레드팀] ${(100 - Number(pctA)).toFixed(1)}%\n${line(current.b)}\n\n로비 평균 랭크 기준 · Rift Lens 팀 밸런서`,
-      )
+      .writeText(`${text}\n\n로비 평균 랭크 기준 · Rift Lens 팀 밸런서`)
       .then(() => toast.success("팀 구성을 복사했어요"))
       .catch(() => toast.error("복사에 실패했어요"));
   }
 
-  const teamCard = (title: string, idx: number[], tone: "blue" | "red") => {
-    const sum = idx.reduce((s, i) => s + valid[i].points, 0);
+  const teamCard = (idx: number[], t: number) => {
+    const sum = sumOf(idx);
     const avg = idx.length ? Math.round(sum / idx.length) : 0;
+    const style = TEAM_STYLES[t];
     return (
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <div
-          className={`flex items-baseline justify-between px-4 py-2.5 ${
-            tone === "blue"
-              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-              : "bg-red-500/10 text-red-600 dark:text-red-400"
-          }`}
-        >
-          <span className="text-sm font-semibold">{title}</span>
-          <span className="text-xs opacity-80">
-            평균 {pointsToRank(avg).label}
-          </span>
+      <div key={t} className="overflow-hidden rounded-xl border bg-card">
+        <div className={`flex items-baseline justify-between px-4 py-2.5 ${style.head}`}>
+          <span className="text-sm font-semibold">{style.name}</span>
+          <span className="text-xs opacity-80">평균 {pointsToRank(avg).label}</span>
         </div>
         <div className="divide-y divide-border/60">
           {idx.map((i) => (
@@ -210,10 +204,14 @@ export function TeamClient() {
               className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm"
             >
               <span className="flex min-w-0 items-center gap-2">
-                <span
-                  className="size-1.5 shrink-0 rounded-full"
-                  style={{ background: TIER_COLORS[valid[i].tier] }}
-                />
+                {valid[i].captain ? (
+                  <Crown className="size-3.5 shrink-0 text-amber-500" aria-label="팀장" />
+                ) : (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ background: TIER_COLORS[valid[i].tier] }}
+                  />
+                )}
                 <span className="truncate font-medium">{valid[i].name}</span>
                 {valid[i].source !== "analysis" && (
                   <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -244,8 +242,8 @@ export function TeamClient() {
             참가자 입력
           </CardTitle>
           <CardDescription>
-            게임명#태그로 입력 (짝수 2~{MAX_PLAYERS}명) · 기준값은 저장된 매칭 구간(로비 평균
-            랭크) → 현재 랭크 순으로 사용해요
+            게임명#태그로 입력 (최대 {MAX_PLAYERS}명) · 왕관을 누르면 팀장이 되고, 팀장끼리는 서로
+            다른 팀에 배치돼요 · 기준값은 저장된 매칭 구간(로비 평균 랭크) → 현재 랭크 순
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -263,6 +261,17 @@ export function TeamClient() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => toggleCaptain(i)}
+                  aria-label={captains.has(i) ? "팀장 해제" : "팀장으로 지정"}
+                  aria-pressed={captains.has(i)}
+                  title="팀장으로 지정 (선택)"
+                  className={`shrink-0 ${captains.has(i) ? "text-amber-500" : "text-muted-foreground/50"}`}
+                >
+                  <Crown className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => removeRow(i)}
                   disabled={names.length <= 2}
                   aria-label="참가자 제거"
@@ -273,7 +282,24 @@ export function TeamClient() {
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+
+          {countOptions.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">팀 수</span>
+              {countOptions.map((opt) => (
+                <Button
+                  key={opt}
+                  variant={teamCount === opt ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPickedCount(opt)}
+                >
+                  {opt}팀 ({filled / opt}명씩)
+                </Button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -292,6 +318,11 @@ export function TeamClient() {
               )}
               팀 나누기
             </Button>
+            {filled >= 2 && countOptions.length === 0 && (
+              <span className="self-center text-xs text-destructive">
+                {filled}명은 팀이 딱 나뉘지 않아요
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -312,46 +343,50 @@ export function TeamClient() {
 
       {!current && !loading && (
         <EmptyHint icon={Swords} title="참가자를 입력하면 팀이 여기에 나와요">
-          짝수 인원(2~{MAX_PLAYERS}명)으로 입력하고 팀 나누기를 누르면, 전력차가 가장
-          작은 조합부터 순서대로 보여드려요.
+          인원이 딱 나뉘게 입력하고 팀 나누기를 누르면, 전력차가 가장 작은 조합부터 순서대로
+          보여드려요. 15명이면 3팀, 20명이면 2팀·4팀 중에 고를 수 있어요.
         </EmptyHint>
       )}
 
       {current && valid.length >= 2 && (
         <>
-          {/* 전력 밸런스 — 두 팀 합계의 비율을 그대로 폭으로 */}
+          {/* 전력 밸런스 — 팀 합계 비율을 그대로 폭으로 */}
           <div className="rounded-xl border bg-card p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-sm font-semibold">전력 밸런스</span>
+              <span className="text-sm font-semibold">
+                전력 밸런스 <span className="text-xs font-normal text-muted-foreground">{k}팀</span>
+              </span>
               <span className="text-xs text-muted-foreground tabular-nums">
                 조합 {(comboIndex % combos.length) + 1} / {combos.length.toLocaleString()}
-                {comboTotal > combos.length && (
-                  <span className="ml-1 opacity-70">
-                    (전력차 작은 순 · 전체 {comboTotal.toLocaleString()}가지)
-                  </span>
-                )}
+                <span className="ml-1 opacity-70">
+                  {result.exact
+                    ? result.total && result.total > combos.length
+                      ? `(전력차 작은 순 · 전체 ${result.total.toLocaleString()}가지)`
+                      : ""
+                    : "(전력차 작은 순 · 근사 탐색)"}
+                </span>
               </span>
             </div>
             {(() => {
-              const sumA = current.a.reduce((s, i) => s + valid[i].points, 0);
-              const sumB = current.b.reduce((s, i) => s + valid[i].points, 0);
-              const pct = sumA + sumB > 0 ? (sumA / (sumA + sumB)) * 100 : 50;
+              const sums = current.teams.map(sumOf);
+              const all = sums.reduce((s, v) => s + v, 0);
               return (
                 <div className="mt-2.5">
                   <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="bg-blue-500 transition-all duration-300"
-                      style={{ width: `${pct}%` }}
-                    />
-                    <div className="flex-1 bg-red-500 transition-all duration-300" />
+                    {sums.map((s, t) => (
+                      <div
+                        key={t}
+                        className={`${TEAM_STYLES[t].bar} transition-all duration-300`}
+                        style={{ width: `${all > 0 ? (s / all) * 100 : 100 / sums.length}%` }}
+                      />
+                    ))}
                   </div>
-                  <div className="mt-1.5 flex justify-between text-[11px] tabular-nums">
-                    <span className="text-blue-600 dark:text-blue-400">
-                      블루 {pct.toFixed(1)}%
-                    </span>
-                    <span className="text-red-600 dark:text-red-400">
-                      {(100 - pct).toFixed(1)}% 레드
-                    </span>
+                  <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 text-[11px] tabular-nums">
+                    {sums.map((s, t) => (
+                      <span key={t} className={TEAM_STYLES[t].head.split(" ").slice(1).join(" ")}>
+                        {TEAM_STYLES[t].name} {all > 0 ? ((s / all) * 100).toFixed(1) : "0.0"}%
+                      </span>
+                    ))}
                   </div>
                 </div>
               );
@@ -367,26 +402,22 @@ export function TeamClient() {
                 <Shuffle className="size-3.5" />
                 다른 조합
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyTeams}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={copyTeams} className="gap-1.5">
                 <Copy className="size-3.5" />
                 복사
               </Button>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {teamCard("블루팀", current.a, "blue")}
-            {teamCard("레드팀", current.b, "red")}
+          <div className={`grid gap-4 ${TEAM_GRID[k] ?? "sm:grid-cols-2"}`}>
+            {current.teams.map((idx, t) => teamCard(idx, t))}
           </div>
 
           <p className="text-xs text-muted-foreground">
             표시 없는 참가자는 저장된 매칭 구간(로비 평균 랭크) 기준이고, &quot;현재 랭크&quot;
             ·&quot;기본값&quot;은 분석 기록이 없어 대체한 값이에요.
+            {!result.exact &&
+              " 3팀 이상은 경우의 수가 너무 많아(20명 4팀 기준 4.9억 가지) 가장 균형 잡힌 조합을 근사로 찾아요."}
           </p>
         </>
       )}

@@ -6,7 +6,7 @@ import { TeamClient } from "./team-client";
 export const metadata = pageMeta({
   title: "내전 팀 밸런서",
   description:
-    "참가자들의 매칭 구간으로 가장 공평한 팀을 자동으로 나눠주는 내전 도우미 — 최대 20명(10:10)까지",
+    "참가자들의 매칭 구간으로 가장 공평한 팀을 자동으로 나눠주는 내전 도우미 — 최대 20명, 2~4팀, 팀장 지정",
   path: "/team",
 });
 
@@ -19,8 +19,8 @@ export default function TeamPage() {
         title="내전 팀 밸런서"
         description="참가자들의 매칭 구간(로비 평균 랭크)으로 전력 차가 가장 적은 팀 구성을 찾아드려요"
         steps={[
-          "참가자 닉네임 입력 (짝수 2~20명)",
-          "팀 나누기",
+          "참가자 입력 (최대 20명) · 팀장은 왕관으로",
+          "팀 수 고르고 팀 나누기",
           "마음에 안 들면 다른 조합",
         ]}
       />
