@@ -5,7 +5,7 @@ import { PLATFORM_LABELS, type PlatformRegion } from "@/lib/riot/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const MAX_PLAYERS = 10;
+const MAX_PLAYERS = 20;
 
 // 내전 팀 밸런서용 — 각 플레이어의 실력 점수를 해석한다.
 export async function POST(req: NextRequest) {

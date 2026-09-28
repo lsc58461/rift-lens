@@ -7,7 +7,7 @@ import { SITE_URL } from "@/lib/site";
 import { createPublicKey, verify as cryptoVerify } from "crypto";
 import { NextResponse, after, type NextRequest } from "next/server";
 import { getStoredResult, runQuickAnalysis } from "@/lib/mmr/deep-jobs";
-import { bestPartition, resolvePlayers } from "@/lib/mmr/team";
+import { bestPartition, resolvePlayers, shuffled } from "@/lib/mmr/team";
 import { getRecentSearches } from "@/lib/recent";
 import { getAccountByRiotId } from "@/lib/riot/client";
 import type { PlatformRegion } from "@/lib/riot/types";
@@ -131,18 +131,19 @@ async function handleTeam(token: string, raw: string): Promise<void> {
     .split(/[,\n]|\s{2,}/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .slice(0, 10);
+    .slice(0, 20);
   if (names.length < 2 || names.length % 2 !== 0) {
     await followUp(token, {
       content:
-        "짝수 인원(2·4·6·8·10명)을 쉼표로 구분해 입력해 주세요\n예) `A#KR1, B#KR1, C#KR1, D#KR1`",
+        "짝수 인원(2~20명)을 쉼표로 구분해 입력해 주세요\n예) `A#KR1, B#KR1, C#KR1, D#KR1`",
     });
     return;
   }
   const players = await resolvePlayers(PLATFORM, names);
   const valid = players.filter((p) => !p.error);
   const failed = players.filter((p) => p.error);
-  const part = bestPartition(valid);
+  // 섞어서 넣는다 — bestPartition 이 0번을 A팀에 고정하므로, 안 섞으면 맨 앞에 적은 사람이 늘 블루팀이 된다
+  const part = bestPartition(shuffled(valid));
   if (!part) {
     await followUp(token, {
       content: `팀을 나눌 수 없어요 (유효 인원 ${valid.length}명)${

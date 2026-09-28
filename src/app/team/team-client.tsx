@@ -31,31 +31,84 @@ const SOURCE_LABELS = {
   unranked: "기본값",
 } as const;
 
-/** n명의 인덱스를 절반으로 나누는 모든 조합을 팀 점수차 오름차순으로 반환 */
-function partitions(players: Player[]): { a: number[]; b: number[]; diff: number }[] {
-  const n = players.length;
-  const half = Math.floor(n / 2);
-  const result: { a: number[]; b: number[]; diff: number }[] = [];
-  const seen = new Set<string>();
+const MAX_PLAYERS = 20;
 
-  const combo = (start: number, picked: number[]) => {
-    if (picked.length === half) {
-      // 첫 플레이어 고정으로 대칭 중복 제거
-      if (n % 2 === 0 && !picked.includes(0)) return;
-      const a = picked;
-      const b = [...Array(n).keys()].filter((i) => !picked.includes(i));
-      const key = a.join(",");
-      if (seen.has(key)) return;
-      seen.add(key);
-      const sumA = a.reduce((s, i) => s + players[i].points, 0);
-      const sumB = b.reduce((s, i) => s + players[i].points, 0);
-      result.push({ a, b, diff: Math.abs(sumA - sumB) });
+/** 20명이면 균등 분할이 92,378가지다 — 전부 담아 두면 수십 MB에 정렬까지 붙어 탭이 멈춘다.
+ *  전력차가 작은 순으로 이만큼만 남긴다. 그 뒤 조합은 실제로 아무도 보지 않는다. */
+const MAX_COMBOS = 200;
+
+interface Combo {
+  a: number[];
+  b: number[];
+  diff: number;
+}
+
+/** 순서를 한 번 섞은 새 배열 (Fisher-Yates) */
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * 전력차가 작은 순 상위 MAX_COMBOS개 분할과 전체 가짓수.
+ *
+ * 0번은 항상 A팀에 둔다 — {A,B}와 {B,A}는 같은 분할이라, 고정하지 않으면 같은 팀 구성이
+ * 색만 바뀐 채 두 번 나오고 계산량도 2배가 된다. 대신 0번이 늘 블루팀이 되므로,
+ * 조회 결과를 받을 때 참가자 순서를 한 번 섞어(shuffled) 매번 다른 사람이 걸리게 한다.
+ *
+ * 합계는 재귀를 내려가며 누적하고(sumA) 반대편은 전체합에서 뺀다 — 잎마다 배열을 다시
+ * 훑던 옛 방식으로는 20명을 감당하지 못한다.
+ */
+function partitions(players: Player[]): { list: Combo[]; total: number } {
+  const n = players.length;
+  if (n < 2 || n % 2 !== 0) return { list: [], total: 0 };
+  const half = n / 2;
+  const pts = players.map((p) => p.points);
+  const sum = pts.reduce((s, v) => s + v, 0);
+
+  const list: Combo[] = [];
+  let worst = Infinity; // 목록이 찼을 때의 최대 diff — 이보다 나쁘면 만들지도 않는다
+  let total = 0;
+  const picked = new Array<number>(half);
+  picked[0] = 0;
+
+  const keep = (diff: number) => {
+    const a = picked.slice();
+    const inA = new Uint8Array(n);
+    for (const i of a) inA[i] = 1;
+    const b: number[] = [];
+    for (let i = 0; i < n; i++) if (!inA[i]) b.push(i);
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (list[mid].diff <= diff) lo = mid + 1;
+      else hi = mid;
+    }
+    list.splice(lo, 0, { a, b, diff });
+    if (list.length > MAX_COMBOS) list.pop();
+    if (list.length === MAX_COMBOS) worst = list[list.length - 1].diff;
+  };
+
+  const walk = (start: number, depth: number, sumA: number) => {
+    if (depth === half) {
+      total++;
+      const diff = Math.abs(2 * sumA - sum);
+      if (list.length < MAX_COMBOS || diff < worst) keep(diff);
       return;
     }
-    for (let i = start; i < n; i++) combo(i + 1, [...picked, i]);
+    // 남은 자리를 다 채울 수 없는 시작점은 아예 들어가지 않는다
+    for (let i = start; i <= n - (half - depth); i++) {
+      picked[depth] = i;
+      walk(i + 1, depth + 1, sumA + pts[i]);
+    }
   };
-  combo(0, []);
-  return result.sort((x, y) => x.diff - y.diff);
+  walk(1, 1, pts[0]);
+  return { list, total };
 }
 
 export function TeamClient() {
@@ -64,15 +117,17 @@ export function TeamClient() {
   const [loading, setLoading] = useState(false);
   const [comboIndex, setComboIndex] = useState(0);
 
-  const valid = players.filter((p) => !p.error);
-  const combos = useMemo(() => partitions(valid), [valid]);
+  // players 로 메모해야 한다 — 파생 배열(valid)을 의존성에 두면 매 렌더마다 새 참조라
+  // 메모가 통째로 무효화돼 20명에서 조합 계산이 렌더마다 다시 돈다.
+  const valid = useMemo(() => players.filter((p) => !p.error), [players]);
+  const { list: combos, total: comboTotal } = useMemo(() => partitions(valid), [valid]);
   const current = combos[comboIndex % Math.max(combos.length, 1)];
 
   function setName(i: number, v: string) {
     setNames((arr) => arr.map((n, idx) => (idx === i ? v : n)));
   }
   function addRow() {
-    setNames((arr) => (arr.length >= 10 ? arr : [...arr, ""]));
+    setNames((arr) => (arr.length >= MAX_PLAYERS ? arr : [...arr, ""]));
   }
   function removeRow(i: number) {
     setNames((arr) => (arr.length <= 2 ? arr : arr.filter((_, idx) => idx !== i)));
@@ -102,7 +157,9 @@ export function TeamClient() {
       });
       if (!res.ok) throw new Error();
       const data: { players: Player[] } = await res.json();
-      setPlayers(data.players);
+      // 여기서 한 번만 섞는다 — partitions 가 0번을 A팀에 고정하므로, 안 섞으면 맨 위에 적은
+      // 사람이 늘 블루팀에 뜬다. 렌더 중이 아니라 수신 시점이라 화면이 흔들리지도 않는다.
+      setPlayers(shuffled(data.players));
       const failed = data.players.filter((p) => p.error);
       if (failed.length) {
         toast.warning(`${failed.length}명 조회 실패 — 목록에서 확인해 주세요`);
@@ -187,8 +244,8 @@ export function TeamClient() {
             참가자 입력
           </CardTitle>
           <CardDescription>
-            게임명#태그로 입력 (2·4·6·8·10명) · 기준값은 저장된 매칭 구간(로비 평균 랭크) →
-            현재 랭크 순으로 사용해요
+            게임명#태그로 입력 (짝수 2~{MAX_PLAYERS}명) · 기준값은 저장된 매칭 구간(로비 평균
+            랭크) → 현재 랭크 순으로 사용해요
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -221,11 +278,11 @@ export function TeamClient() {
               variant="outline"
               size="sm"
               onClick={addRow}
-              disabled={names.length >= 10}
+              disabled={names.length >= MAX_PLAYERS}
               className="gap-1.5"
             >
               <Plus className="size-3.5" />
-              인원 추가 ({names.length}/10)
+              인원 추가 ({names.length}/{MAX_PLAYERS})
             </Button>
             <Button size="sm" onClick={resolve} disabled={loading} className="gap-1.5">
               {loading ? (
@@ -255,7 +312,7 @@ export function TeamClient() {
 
       {!current && !loading && (
         <EmptyHint icon={Swords} title="참가자를 입력하면 팀이 여기에 나와요">
-          짝수 인원(2·4·6·8·10명)으로 입력하고 팀 나누기를 누르면, 전력차가 가장
+          짝수 인원(2~{MAX_PLAYERS}명)으로 입력하고 팀 나누기를 누르면, 전력차가 가장
           작은 조합부터 순서대로 보여드려요.
         </EmptyHint>
       )}
@@ -267,7 +324,12 @@ export function TeamClient() {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-semibold">전력 밸런스</span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                조합 {(comboIndex % combos.length) + 1} / {combos.length}
+                조합 {(comboIndex % combos.length) + 1} / {combos.length.toLocaleString()}
+                {comboTotal > combos.length && (
+                  <span className="ml-1 opacity-70">
+                    (전력차 작은 순 · 전체 {comboTotal.toLocaleString()}가지)
+                  </span>
+                )}
               </span>
             </div>
             {(() => {
