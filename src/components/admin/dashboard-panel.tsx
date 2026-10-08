@@ -20,6 +20,7 @@ import {
 } from "./types";
 import { HourlyVisitsCard, TierDistributionCard } from "./stats-cards";
 import { CrawlerCard } from "./crawler-card";
+import { DbSizeCard } from "./db-size-card";
 import { SecurityCard } from "./security-card";
 import { EmptyState, LiveDot, PageHeader, StatTile } from "./ui";
 
@@ -364,6 +365,7 @@ export function DashboardPanel() {
         <HourlyVisitsCard hourly={status?.hourly ?? []} />
       </div>
 
+      <DbSizeCard />
       <CrawlerCard crawlers={status?.crawlers ?? []} />
       <SecurityCard />
 

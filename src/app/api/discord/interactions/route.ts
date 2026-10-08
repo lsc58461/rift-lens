@@ -6,7 +6,13 @@ import { summonerPath } from "@/lib/summoner-url";
 import { SITE_URL } from "@/lib/site";
 import { createPublicKey, verify as cryptoVerify } from "crypto";
 import { NextResponse, after, type NextRequest } from "next/server";
-import { getStoredResult, runQuickAnalysis } from "@/lib/mmr/deep-jobs";
+import {
+  getLatestMatchId,
+  getStoredResult,
+  runQuickAnalysis,
+} from "@/lib/mmr/deep-jobs";
+import type { MmrEstimate } from "@/lib/mmr/estimate";
+import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
 import { bestPartition, resolvePlayers, shuffled } from "@/lib/mmr/team";
 import { getRecentSearches } from "@/lib/recent";
 import { getAccountByRiotId } from "@/lib/riot/client";
@@ -86,6 +92,27 @@ function cardImage(name: string): string {
 
 // ── 커맨드 처리 ─────────────────────────────────────────
 
+/** 조회 결과 카드. note 는 푸터에 덧붙일 상태 문구 */
+function riftCard(stored: MmrEstimate, note: string): Embed {
+  const name = `${stored.account.gameName}#${stored.account.tagLine}`;
+  const est = stored.estimatedRank?.label ?? "표본 부족";
+  const cur = stored.currentRank?.label ?? "언랭크";
+  return {
+    title: `${name} 의 최근 매칭 구간`,
+    description: `**${est}** (최근 솔로랭크 로비 평균 랭크)\n현재 티어 ${cur}`,
+    url: `${SITE}${summonerPath(PLATFORM, name)}`,
+    color: BLUE,
+    image: { url: cardImage(name) },
+    footer: { text: note ? `Rift Lens · ${note}` : "Rift Lens" },
+  };
+}
+
+/** 저장된 분석이 지금도 쓸 만한가 — 새 경기를 했으면 매치 ID 가 달라지고, 안 했어도 너무 오래되면 다시 본다 */
+function isStale(stored: MmrEstimate, latestMatchId: string | null): boolean {
+  if (latestMatchId !== null && stored.latestMatchId !== latestMatchId) return true;
+  return Date.now() - (stored.analyzedAt ?? 0) > FRESH_MAX_AGE_MS;
+}
+
 async function handleRift(token: string, summoner: string): Promise<void> {
   const id = parseRiotId(summoner);
   if (!id) {
@@ -93,30 +120,46 @@ async function handleRift(token: string, summoner: string): Promise<void> {
     return;
   }
   try {
-    let stored =
+    const stored =
       (await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)) ??
       (await getStoredResult("quick", PLATFORM, id.gameName, id.tagLine));
+
+    // 저장된 분석이 없으면 안내를 먼저 띄우고 분석 후 결과로 수정
     if (!stored) {
-      // 저장된 분석이 없으면 안내 메시지를 먼저 띄우고 분석 후 결과로 수정
       await followUp(token, {
         content: `🔍 **${id.gameName}#${id.tagLine}** 분석 중이에요… 최대 1~2분 걸릴 수 있어요`,
       });
-      stored = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine);
+      const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine);
+      await followUp(token, { content: "", embeds: [riftCard(fresh, "방금 분석했어요")] });
+      return;
     }
-    const name = `${stored.account.gameName}#${stored.account.tagLine}`;
-    const est = stored.estimatedRank?.label ?? "표본 부족";
-    const cur = stored.currentRank?.label ?? "언랭크";
+
+    const latestMatchId = await getLatestMatchId(
+      PLATFORM,
+      id.gameName,
+      id.tagLine,
+    ).catch(() => null);
+    if (!isStale(stored, latestMatchId)) {
+      await followUp(token, { content: "", embeds: [riftCard(stored, "")] });
+      return;
+    }
+
+    // 오래된 값이라도 일단 보여 주고(빈 화면보다 낫다), 갱신이 끝나면 같은 메시지를 고친다.
+    // 정밀 분석은 전역 큐에 하나씩 도는 저우선순위 작업이라 디스코드 응답 제한(15분) 안에
+    // 끝난다는 보장이 없다 — 그래서 여기서는 수 초면 끝나는 빠른 분석만 돌린다.
     await followUp(token, {
-      content: "", // 분석 중 안내 문구 제거
+      content: "",
+      embeds: [riftCard(stored, "예전 기록이에요 · 최신 정보로 갱신 중…")],
+    });
+    const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch(
+      () => null,
+    );
+    await followUp(token, {
+      content: "",
       embeds: [
-        {
-          title: `${name} 의 최근 매칭 구간`,
-          description: `**${est}** (최근 솔로랭크 로비 평균 랭크)\n현재 티어 ${cur}`,
-          url: `${SITE}${summonerPath(PLATFORM, name)}`,
-          color: BLUE,
-          image: { url: cardImage(name) },
-          footer: { text: "Rift Lens" },
-        },
+        fresh
+          ? riftCard(fresh, "방금 갱신했어요")
+          : riftCard(stored, "갱신에 실패해 예전 기록을 보여드려요"),
       ],
     });
   } catch {
