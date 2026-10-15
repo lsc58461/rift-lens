@@ -308,11 +308,11 @@ async function handleRift(token: string, summoner: string): Promise<void> {
         await warmCard(shown);
         shownInterim = await followUp(token, {
           content: "",
-          embeds: [riftCard(shown, "예전 기록이에요 · 정밀 분석 중… 보통 15~30초")],
+          embeds: [riftCard(shown, "예전 기록이에요 · 정밀 분석 중… 보통 30초~1분")],
         });
       } else {
         shownInterim = await followUp(token, {
-          content: `🔍 **${id.gameName}#${id.tagLine}** 정밀 분석 중이에요… 보통 15~30초, 길면 몇 분 걸려요`,
+          content: `🔍 **${id.gameName}#${id.tagLine}** 정밀 분석 중이에요… 보통 30초~1분, 길면 몇 분 걸려요`,
         });
       }
       status = await deep;
