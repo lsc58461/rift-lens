@@ -2,7 +2,7 @@
 // 집계는 무겁기 때문에(참가자 수만 행 × 4개 쿼리) 결과를 KV에 6시간 캐시.
 
 import "server-only";
-import { cache, cached } from "@/lib/cache";
+import { cache, cached, getRedisClient } from "@/lib/cache";
 import {
   getChampionKeyToId,
   getCompletedItemIds,
@@ -100,6 +100,31 @@ const statsKey = (patch: string | null, bracket: RankBracketKey) =>
   `champstats:v8:${patch ?? "recent2"}:${bracket}`;
 const refreshing = new Map<string, Promise<void>>();
 
+/**
+ * 인스턴스 사이 공유 잠금을 원자적으로 잡는다 — 잡았으면 true.
+ * 예전엔 get 으로 확인하고 set 으로 거는 두 단계라, 두 앱이 같은 순간에 둘 다 통과했다
+ * (2026-10-15 배포 직후 패치 16.19 집계가 app-a·app-b 양쪽에 찍힘). Redis 면 SET NX 로 한 번에.
+ */
+async function tryLock(key: string, ttlSec: number): Promise<boolean> {
+  const redis = getRedisClient();
+  if (redis) {
+    const c = await redis;
+    return (await c.set(key, String(Date.now()), { NX: true, EX: ttlSec })) === "OK";
+  }
+  if (await cache.get<number>(key).catch(() => null)) return false;
+  await cache.set(key, Date.now(), ttlSec).catch(() => {});
+  return true;
+}
+
+// 뒤에서 하는 재집계는 한 번에 하나씩 — 랭크 구간마다 키가 달라서, 막지 않으면 오래된 키
+// 여러 개가 동시에 17GB 참가자 테이블을 훑는다.
+let buildChain: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const run = buildChain.then(fn, fn);
+  buildChain = run.catch(() => {});
+  return run;
+}
+
 function refreshInBackground(
   key: string,
   patch: string | null,
@@ -107,12 +132,10 @@ function refreshInBackground(
 ): void {
   if (refreshing.has(key)) return;
   const job = (async () => {
-    // 인스턴스 2개가 같은 키를 동시에 재집계하지 않게 짧은 공유 마커
     const lockKey = `${key}:refreshing`;
-    if (await cache.get<number>(lockKey).catch(() => null)) return;
-    await cache.set(lockKey, Date.now(), 180).catch(() => {});
+    if (!(await tryLock(lockKey, 180).catch(() => false))) return;
     try {
-      const fresh = await buildStats(patch, bracket);
+      const fresh = await oneAtATime(() => buildStats(patch, bracket));
       await cache.set(key, fresh, TTL_SECONDS);
     } catch (e) {
       console.error(`[champstats] 백그라운드 재집계 실패 ${key}:`, (e as Error)?.message);
@@ -140,8 +163,18 @@ export async function getChampionStats(
   return fresh;
 }
 
-/** 자주 보는 조합을 미리 집계해 둔다 — 부팅 직후·캐시 비움 직후 호출.
- *  최신 패치 × 모든 랭크 구간 + 직전 패치 × 기본 구간(에메랄드). */
+/**
+ * 자주 보는 조합을 미리 집계해 둔다 — 부팅 직후·캐시 비움 직후 호출.
+ * 최신 패치 × 모든 랭크 구간 + 직전 패치 × 기본 구간(에메랄드).
+ *
+ * **캐시가 없을 때만** 채운다. 있으면 오래됐어도 손대지 않는다 — 갱신은 방문할 때 평소처럼
+ * 뒤에서(SWR) 일어난다. 캐시는 Redis 라 배포해도 남아 있으니 보통은 여기서 할 일이 없다.
+ *
+ * 예전엔 getChampionStats 를 그대로 불러서, 1시간 넘은 캐시를 기동 직후 전부 다시 집계했다.
+ * 두 앱이 동시에 17GB 참가자 테이블을 훑느라 평소 3.7초짜리가 19~38초가 됐고, 그동안 DB 가
+ * 막혀 배포 직후 페이지가 30초씩 응답 없이 멈췄다(2026-10-15, 상태 0 요청 2건으로 확인).
+ * 비어 있는 키를 채울 때도 원자 잠금을 잡아 두 앱 중 하나만 집계한다.
+ */
 export async function warmChampionStats(): Promise<void> {
   const patches = (await listPatches().catch(() => [])).slice(0, 2);
   const latest = patches[0]?.patch ?? null;
@@ -149,9 +182,21 @@ export async function warmChampionStats(): Promise<void> {
     ...RANK_BRACKETS.map((b): [string | null, RankBracketKey] => [latest, b.key]),
   ];
   if (patches[1]) targets.push([patches[1].patch, "emerald"]);
+  let built = 0;
   for (const [patch, bracket] of targets) {
-    await getChampionStats(patch, bracket).catch(() => {});
+    const key = statsKey(patch, bracket);
+    if (await cache.get(key).catch(() => null)) continue;
+    if (!(await tryLock(`${key}:refreshing`, 180).catch(() => false))) continue;
+    try {
+      await cache.set(key, await oneAtATime(() => buildStats(patch, bracket)), TTL_SECONDS);
+      built++;
+    } catch (e) {
+      console.error(`[champstats] 워밍 실패 ${key}:`, (e as Error)?.message);
+    } finally {
+      await cache.delete(`${key}:refreshing`).catch(() => {});
+    }
   }
+  console.log(`[champstats] 워밍 — 대상 ${targets.length}개 중 ${built}개 새로 집계`);
 }
 
 /** 표본이 충분한 패치 목록 (최신순) */
