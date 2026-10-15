@@ -130,8 +130,27 @@ function parseRiotId(s: string): { gameName: string; tagLine: string } | null {
   return { gameName: v.slice(0, hash), tagLine: v.slice(hash + 1) };
 }
 
-function cardImage(name: string): string {
-  return `${SITE}/api/share-image?region=${PLATFORM}&riotId=${encodeURIComponent(name)}&v=${Date.now()}`;
+// v 는 분석 시각이다(예전엔 Date.now()). 같은 분석이면 같은 주소라 디스코드·우리 서버 양쪽 캐시가
+// 산다 — 매번 새 주소였을 땐 늘 처음부터 그려 1.5초 안에 못 받은 디스코드가 이미지를 지웠다.
+function cardImage(name: string, analyzedAt: number | undefined): string {
+  return `${SITE}/api/share-image?region=${PLATFORM}&riotId=${encodeURIComponent(name)}&v=${analyzedAt ?? 0}`;
+}
+
+const INTERNAL_ORIGIN = "http://127.0.0.1:3000";
+
+/**
+ * 카드 이미지를 결과를 보내기 **전에** 미리 그려 둔다. 그러면 디스코드가 받으러 올 땐 이미
+ * 저장돼 있어 즉시 나간다. 디스코드는 일부 서버가 1.5초 안에 못 받으면 이미지를 지운다.
+ * 실패해도 메시지는 보낸다(이미지만 늦거나 빠질 뿐).
+ */
+async function warmCard(est: MmrEstimate): Promise<void> {
+  const name = `${est.account.gameName}#${est.account.tagLine}`;
+  await fetch(
+    `${INTERNAL_ORIGIN}/api/share-image?region=${PLATFORM}&riotId=${encodeURIComponent(name)}`,
+    { signal: AbortSignal.timeout(10_000) },
+  )
+    .then((r) => r.arrayBuffer())
+    .catch(() => {});
 }
 
 // ── 커맨드 처리 ─────────────────────────────────────────
@@ -146,7 +165,7 @@ function riftCard(stored: MmrEstimate, note: string): Embed {
     description: `**${est}** (최근 솔로랭크 로비 평균 랭크)\n현재 티어 ${cur}`,
     url: `${SITE}${summonerPath(PLATFORM, name)}`,
     color: BLUE,
-    image: { url: cardImage(name) },
+    image: { url: cardImage(name, stored.analyzedAt) },
     footer: { text: note ? `Rift Lens · ${note}` : "Rift Lens" },
   };
 }
@@ -231,6 +250,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
         content: `🔍 **${id.gameName}#${id.tagLine}** 분석 중이에요… 최대 1~2분 걸릴 수 있어요`,
       });
       const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine);
+      await warmCard(fresh);
       await deliver(token, { content: "", embeds: [riftCard(fresh, "방금 분석했어요")] });
       return;
     }
@@ -241,6 +261,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
       id.tagLine,
     ).catch(() => null);
     if (!isStale(stored, latestMatchId)) {
+      await warmCard(stored);
       await deliver(token, { content: "", embeds: [riftCard(stored, "")] });
       return;
     }
@@ -265,6 +286,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
     if (early.done) {
       fresh = early.r;
     } else {
+      await warmCard(stored);
       shownStale = await followUp(token, {
         content: "",
         embeds: [riftCard(stored, "예전 기록이에요 · 최신 정보로 갱신 중…")],
@@ -273,6 +295,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
       fresh = await Promise.race([refreshing, sleep(90_000).then(() => null)]);
     }
 
+    await warmCard(fresh ?? stored);
     const how = await deliver(token, {
       content: "",
       embeds: [

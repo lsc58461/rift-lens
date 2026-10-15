@@ -3,6 +3,8 @@ import path from "path";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 import sharp from "sharp";
+import { cache } from "@/lib/cache";
+import { canon } from "@/lib/identity";
 import { getStoredResult } from "@/lib/mmr/deep-jobs";
 import type { MmrEstimate } from "@/lib/mmr/estimate";
 import { TIER_COLORS, isApexPoints } from "@/lib/mmr/rank";
@@ -25,35 +27,23 @@ function gapText(gap: number | null, apex = false): string {
 }
 
 /**
- * 디스코드 임베드에서 이 카드가 잠깐 떴다가 사라졌다(2026-10-15).
+ * 그린 카드는 Redis 에 담아 두고 바로 내준다. 키에 분석 시각이 들어가 분석이 바뀌면 새로 그린다.
  *
- * 1차 시도: ImageResponse 가 Content-Length 없이 chunked 로 나가서라고 보고 크기를 붙였다 —
- * 디스코드가 온전히(179KB) 여러 번 받아가는 건 확인됐지만 여전히 사라졌다. 전송 문제가 아니었다.
- * 2차: 디코에 정상으로 뜨는 라이엇 이미지는 83KB, 우리 카드는 매번 137~180KB 였고 디스코드는
- * 정확히 131,072B(128KB)에서 읽기를 끊었다. 그래서 크기를 128KB 아래로 줄인다 — 256색 팔레트
- * PNG 로 175KB → 43KB. 형식이 그대로 PNG 라 카톡 등 다른 미리보기엔 영향이 없다.
- * (128KB 상한은 접속 기록으로 얻은 추론이다 — 이걸로도 안 되면 다른 원인이다)
+ * 디스코드 임베드에서 카드가 떴다가 사라졌다(2026-10-15). 같은 주소를 채팅에 직접 붙이면 뜨는데
+ * 봇 응답에서만 사라졌다. 접속 기록을 보면 디스코드는 여러 서버에서 동시에 받아가고, 그중 일부는
+ * 1.4~1.7초에 응답을 못 받고 끊었다(상태 0). 카드는 요청마다 새로 그려 0.8~3초가 걸렸고,
+ * 봇 주소에 v=현재시각이 붙어 매번 처음 보는 주소라 어디서도 캐시가 안 됐다.
+ * 그래서 ① 그린 결과를 저장해 즉시 내주고 ② 동시에 몰린 요청은 한 번만 그리며
+ * ③ 봇은 결과를 보내기 전에 미리 그려 둔다(interactions route 의 warmCard).
+ *
+ * (헛짚은 것: 처음엔 Content-Length 부재를, 다음엔 128KB 상한을 의심했다 — 둘 다 고쳐도
+ *  그대로였다. 크기를 줄이려 넣은 팔레트 압축은 남겨 둔다: 그리는 시간은 늘지만 이제 한 번만
+ *  그리고, 175KB → 45KB 라 매번 전송은 빨라진다.)
  */
-export async function GET(req: NextRequest) {
-  const res = await render(req);
-  if (!res.ok) return res;
-  const raw = Buffer.from(await res.arrayBuffer());
-  const body = await sharp(raw)
-    .png({ palette: true, quality: 90, compressionLevel: 9 })
-    .toBuffer()
-    .catch(() => raw); // 압축이 실패해도 카드는 나가야 한다
-  return new Response(new Uint8Array(body), {
-    status: res.status,
-    headers: {
-      "Content-Type": res.headers.get("Content-Type") ?? "image/png",
-      "Content-Length": String(body.byteLength),
-      "Cache-Control": res.headers.get("Cache-Control") ?? "public, max-age=300",
-    },
-  });
-}
+const CARD_TTL = 60 * 60 * 24;
+const inflight = new Map<string, Promise<Buffer>>();
 
-async function render(req: NextRequest): Promise<Response> {
-  await ensureApexCutoffs();
+export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const region = sp.get("region") ?? "";
   const riotId = sp.get("riotId") ?? "";
@@ -70,6 +60,56 @@ async function render(req: NextRequest): Promise<Response> {
   const result: MmrEstimate | null =
     (await getStoredResult("deep", platform, gameName, tagLine)) ??
     (await getStoredResult("quick", platform, gameName, tagLine));
+
+  const key = `sharecard:v1:${platform}:${canon(gameName)}#${canon(tagLine)}:${result?.analyzedAt ?? 0}`;
+  const hit = await cache.get<string>(key).catch(() => null);
+  let png: Buffer;
+  if (hit) {
+    png = Buffer.from(hit, "base64");
+  } else {
+    let job = inflight.get(key);
+    if (!job) {
+      job = draw(platform, gameName, tagLine, result)
+        .then(async (buf) => {
+          await cache.set(key, buf.toString("base64"), CARD_TTL).catch(() => {});
+          return buf;
+        })
+        .finally(() => inflight.delete(key));
+      inflight.set(key, job);
+    }
+    png = await job;
+  }
+  return new Response(new Uint8Array(png), {
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": String(png.byteLength),
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+/** 카드를 그리고 256색 팔레트 PNG 로 줄인다 (압축이 실패하면 원본) */
+async function draw(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+  result: MmrEstimate | null,
+): Promise<Buffer> {
+  const res = await render(platform, gameName, tagLine, result);
+  const raw = Buffer.from(await res.arrayBuffer());
+  return sharp(raw)
+    .png({ palette: true, quality: 90, compressionLevel: 9 })
+    .toBuffer()
+    .catch(() => raw);
+}
+
+async function render(
+  platform: PlatformRegion,
+  gameName: string,
+  tagLine: string,
+  result: MmrEstimate | null,
+): Promise<Response> {
+  await ensureApexCutoffs();
 
   const [bold, regular] = await Promise.all([
     readFile(path.join(process.cwd(), "src/assets/fonts/Pretendard-Bold.ttf")),
