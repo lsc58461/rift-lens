@@ -236,81 +236,117 @@ async function resolveNameOnly(
   return null;
 }
 
+/**
+ * 정밀 분석을 웹 화면과 같은 경로(/api/deep)로 걸고 끝날 때까지 기다린다.
+ * 대기열 순서·사용자 우선(전체 갱신은 background 라 항상 뒤)·생존 신호를 그 라우트가 그대로
+ * 처리하므로 여기서 새로 짜지 않는다 — 웹 화면처럼 몇 초마다 다시 부르기만 하면 된다.
+ */
+async function runDeepAndWait(
+  id: { gameName: string; tagLine: string },
+  deadlineMs: number,
+): Promise<"done" | "error" | "timeout"> {
+  const qs =
+    `region=${PLATFORM}&gameName=${encodeURIComponent(id.gameName)}` +
+    `&tagLine=${encodeURIComponent(id.tagLine)}`;
+  const until = Date.now() + deadlineMs;
+  while (Date.now() < until) {
+    const r = (await fetch(`${INTERNAL_ORIGIN}/api/deep?${qs}`, {
+      signal: AbortSignal.timeout(15_000),
+    })
+      .then((x) => x.json())
+      .catch(() => null)) as { state?: string } | null;
+    if (r?.state === "done") return "done";
+    if (r?.state === "error") return "error";
+    await sleep(3_000);
+  }
+  return "timeout";
+}
+
+// 정밀 분석 대기 상한. 디스코드 응답 수정은 15분까지라 그 안쪽으로 잡는다.
+// 실측(2026-10-15, 프로덕션 키, 24시간 1,079건): 한 건 p50 14초 · p90 31초 · 최대 193초.
+// 사용자 요청이 전체 갱신보다 앞서므로 최악은 '돌던 정밀 하나 + 내 것'이라 몇 분이면 끝난다.
+const DEEP_WAIT_MS = 12 * 60_000;
+
 async function handleRift(token: string, summoner: string): Promise<void> {
   const id = parseRiotId(summoner) ?? (await resolveNameOnly(token, summoner));
   if (!id) return;
   try {
-    const stored =
-      (await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)) ??
-      (await getStoredResult("quick", PLATFORM, id.gameName, id.tagLine));
+    const deepStored = await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine);
+    const quickStored = deepStored
+      ? null
+      : await getStoredResult("quick", PLATFORM, id.gameName, id.tagLine);
+    const shown = deepStored ?? quickStored; // 기다리는 동안 보여줄 예전 기록
 
-    // 저장된 분석이 없으면 안내를 먼저 띄우고 분석 후 결과로 수정
-    if (!stored) {
-      await followUp(token, {
-        content: `🔍 **${id.gameName}#${id.tagLine}** 분석 중이에요… 최대 1~2분 걸릴 수 있어요`,
-      });
-      const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine);
-      await warmCard(fresh);
-      await deliver(token, { content: "", embeds: [riftCard(fresh, "방금 분석했어요")] });
+    // 기록이 하나도 없으면 여기서 계정 확인을 겸한다 — 없는 계정이면 실패해 안내로 빠진다
+    const latestMatchId = shown
+      ? await getLatestMatchId(PLATFORM, id.gameName, id.tagLine).catch(() => null)
+      : await getLatestMatchId(PLATFORM, id.gameName, id.tagLine);
+
+    // 정밀 결과가 최신이면(새 경기 없음 + 7일 이내) 그대로 보낸다
+    if (deepStored && !isStale(deepStored, latestMatchId)) {
+      await warmCard(deepStored);
+      await deliver(token, { content: "", embeds: [riftCard(deepStored, "")] });
       return;
     }
 
-    const latestMatchId = await getLatestMatchId(
-      PLATFORM,
-      id.gameName,
-      id.tagLine,
-    ).catch(() => null);
-    if (!isStale(stored, latestMatchId)) {
-      await warmCard(stored);
-      await deliver(token, { content: "", embeds: [riftCard(stored, "")] });
-      return;
-    }
-
-    // 정밀 분석은 전역 큐에 하나씩 도는 저우선순위 작업이라 디스코드 응답 제한(15분) 안에
-    // 끝난다는 보장이 없다 — 그래서 여기서는 수 초면 끝나는 빠른 분석만 돌린다.
+    // 최신이 아니면 정밀 분석을 돌려 그 결과로 답한다
     const t0 = Date.now();
-    const refreshing = runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch((e) => {
-      console.error(`[discord/rift] 갱신 실패 ${id.gameName}#${id.tagLine}: ${(e as Error).message}`);
-      return null;
-    });
+    const deep = runDeepAndWait(id, DEEP_WAIT_MS);
 
-    // 빠른 분석은 보통 3~10초다(2026-10-15 실측). 그 안에 끝나면 메시지를 한 번만 고친다 —
-    // '예전 기록 → 갱신 결과'로 두 번 고치면 그 사이 전송이 하나라도 어긋날 때 '갱신 중…'에서
-    // 멈춘 채 남는다(실제로 그랬다). 늦을 때만 예전 기록을 먼저 띄운다.
+    // 금방 끝나면(이미 돌던 중이었거나 표본이 적은 경우) 메시지를 한 번만 고친다.
+    // 늦을 때만 예전 기록이나 '분석 중'을 먼저 띄운다.
     const early = await Promise.race([
-      refreshing.then((r) => ({ done: true as const, r })),
+      deep.then((s) => ({ done: true as const, s })),
       sleep(8_000).then(() => ({ done: false as const })),
     ]);
-    let shownStale = false;
-    let fresh: MmrEstimate | null;
+    let status: "done" | "error" | "timeout";
+    let shownInterim = false;
     if (early.done) {
-      fresh = early.r;
+      status = early.s;
     } else {
-      await warmCard(stored);
-      shownStale = await followUp(token, {
-        content: "",
-        embeds: [riftCard(stored, "예전 기록이에요 · 최신 정보로 갱신 중…")],
-      });
-      // 끝까지 안 끝나도 '갱신 중…'으로 남겨 두지 않는다 — 상한을 두고 마지막 상태로 바꾼다
-      fresh = await Promise.race([refreshing, sleep(90_000).then(() => null)]);
+      if (shown) {
+        await warmCard(shown);
+        shownInterim = await followUp(token, {
+          content: "",
+          embeds: [riftCard(shown, "예전 기록이에요 · 정밀 분석 중… 보통 15~30초")],
+        });
+      } else {
+        shownInterim = await followUp(token, {
+          content: `🔍 **${id.gameName}#${id.tagLine}** 정밀 분석 중이에요… 보통 15~30초, 길면 몇 분 걸려요`,
+        });
+      }
+      status = await deep;
     }
 
-    await warmCard(fresh ?? stored);
-    const how = await deliver(token, {
-      content: "",
-      embeds: [
-        fresh
-          ? riftCard(fresh, "방금 갱신했어요")
-          : riftCard(stored, "갱신에 실패해 예전 기록을 보여드려요"),
-      ],
-    });
+    let final =
+      status === "done"
+        ? await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)
+        : null;
+    let note = "방금 정밀 분석했어요";
+    if (!final) {
+      // 정밀이 실패했거나 대기 상한을 넘겼다 — 빠른 분석으로라도 최신값을 낸다
+      final = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch(() => null);
+      note =
+        status === "timeout"
+          ? "정밀 분석이 밀려 빠른 분석 결과예요"
+          : "정밀 분석에 실패해 빠른 분석 결과예요";
+      if (!final && shown) {
+        final = shown;
+        note = "분석에 실패해 예전 기록을 보여드려요";
+      }
+    }
+    if (!final) throw new Error("분석 결과 없음");
+
+    await warmCard(final);
+    const how = await deliver(token, { content: "", embeds: [riftCard(final, note)] });
     console.log(
-      `[discord/rift] ${id.gameName}#${id.tagLine} 오래된 기록 갱신 ` +
-        `${fresh ? "성공" : "실패"} ${Date.now() - t0}ms · 중간표시 ${shownStale ? "O" : "X"} · 전달 ${how}`,
+      `[discord/rift] ${id.gameName}#${id.tagLine} 정밀 ${status} ${Date.now() - t0}ms · ` +
+        `중간표시 ${shownInterim ? "O" : "X"} · 전달 ${how}`,
     );
   } catch {
-    await followUp(token, {
+    await deliver(token, {
       content: "조회에 실패했어요. 계정명을 확인해 주세요.",
+      embeds: [],
     });
   }
 }
