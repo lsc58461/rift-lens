@@ -70,19 +70,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 type Payload = { content?: string; embeds?: Embed[]; components?: unknown[] };
 
 /**
- * 웹훅으로 보낸다. 성공 여부를 돌려주고 실패는 로그로 남긴다 — 예전엔 전부 삼켜서,
- * '갱신 중…'에서 멈춘 메시지(2026-10-15)의 원인을 확인할 방법이 없었다.
+ * 웹훅으로 보낸다. 성공하면 메시지 id(못 읽으면 "?"), 실패하면 null — 실패는 로그로 남긴다.
+ * 예전엔 전부 삼켜서 '갱신 중…'에서 멈춘 메시지(2026-10-15)의 원인을 확인할 방법이 없었다.
  * 429 는 retry_after 만큼 기다렸다 다시 보낸다. 같은 내용을 다시 보내는 건 안전하다.
  */
 async function sendWebhook(
   token: string,
   payload: Payload,
   mode: "edit" | "new",
-): Promise<boolean> {
+): Promise<string | null> {
   const appId = process.env.DISCORD_CLIENT_ID;
-  if (!appId) return false;
+  if (!appId) return null;
   const base = `https://discord.com/api/v10/webhooks/${appId}/${token}`;
-  const url = mode === "edit" ? `${base}/messages/@original` : base;
+  const url = mode === "edit" ? `${base}/messages/@original` : `${base}?wait=true`;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(url, {
@@ -91,7 +91,10 @@ async function sendWebhook(
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(15_000),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        const j = (await res.json().catch(() => null)) as { id?: string } | null;
+        return j?.id ?? "?";
+      }
       const text = await res.text().catch(() => "");
       if (res.status === 429) {
         let wait = 1000;
@@ -103,24 +106,60 @@ async function sendWebhook(
         continue;
       }
       console.error(`[discord] ${mode} 실패 ${res.status}: ${text.slice(0, 300)}`);
-      return false;
+      return null;
     } catch (e) {
       console.error(`[discord] ${mode} 오류 (${attempt}/3): ${(e as Error).message}`);
     }
   }
-  return false;
+  return null;
 }
 
 /** defer 이후 결과 전송 (원본 메시지 수정) */
-function followUp(token: string, payload: Payload): Promise<boolean> {
-  return sendWebhook(token, payload, "edit");
+async function followUp(token: string, payload: Payload): Promise<boolean> {
+  return (await sendWebhook(token, payload, "edit")) !== null;
 }
 
 /** 최종 결과는 반드시 닿아야 한다 — 수정이 끝내 안 되면 새 메시지로라도 보낸다 */
-async function deliver(token: string, payload: Payload): Promise<"edit" | "new" | "fail"> {
-  if (await followUp(token, payload)) return "edit";
-  if (await sendWebhook(token, payload, "new")) return "new";
-  return "fail";
+async function deliver(
+  token: string,
+  payload: Payload,
+): Promise<{ how: "edit" | "new" | "fail"; id: string | null }> {
+  const e = await sendWebhook(token, payload, "edit");
+  if (e) return { how: "edit", id: e };
+  const n = await sendWebhook(token, payload, "new");
+  if (n) return { how: "new", id: n };
+  return { how: "fail", id: null };
+}
+
+/**
+ * 디스코드가 카드 이미지를 실제로 해석했는지 10초 뒤 확인해 로그로 남긴다.
+ * 이미지가 '0×0'으로 남으면 클라이언트가 그리지 않는다(떴다가 사라지는 증상의 실체).
+ * 봇이 속하지 않은 서버에서 쓴 명령도 인터랙션 토큰으로 조회할 수 있어, 다음엔 추측 대신 이걸 본다.
+ */
+async function logCardState(token: string, messageId: string, who: string): Promise<void> {
+  const appId = process.env.DISCORD_CLIENT_ID;
+  if (!appId || messageId === "?") return;
+  await sleep(10_000);
+  const j = (await fetch(
+    `https://discord.com/api/v10/webhooks/${appId}/${token}/messages/${messageId}`,
+    { signal: AbortSignal.timeout(10_000) },
+  )
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as {
+    edited_timestamp?: string | null;
+    embeds?: { image?: { width?: number; height?: number; placeholder?: string } }[];
+  } | null;
+  const img = j?.embeds?.[0]?.image;
+  const state = !j
+    ? "조회 실패"
+    : !img
+      ? "이미지 없음"
+      : img.width
+        ? `${img.width}x${img.height} 정상`
+        : "0x0 해석 안 됨";
+  console.log(
+    `[discord/rift] 카드 상태 ${who}: ${state} · 수정 ${j?.edited_timestamp ? "있음" : "없음"}`,
+  );
 }
 
 function parseRiotId(s: string): { gameName: string; tagLine: string } | null {
@@ -237,6 +276,44 @@ async function resolveNameOnly(
 }
 
 /**
+ * 카드(이미지 임베드)를 보낸다. **반드시 '첫 수정' 아니면 '새 메시지'로만** 보낸다.
+ *
+ * 같은 메시지를 몇 초 안에 두 번 이상 고치면, 디스코드가 이미지를 해석(크기 계산)하는 비동기
+ * 작업이 꼬여 이미지가 0×0 으로 굳고, 클라이언트는 크기 없는 이미지를 그리지 않는다 —
+ * '떴다가 사라지는' 증상의 실체다(2026-10-15 확인: 디스코드가 저장한 상태를 봇 토큰으로 조회해 보니
+ * 0×0 으로 멈춘 3건이 전부 두 번 이상 수정된 메시지였고, 한 번에 보낸 메시지는 전부 정상.
+ * 한 건은 두 번째 수정까지 반영됐는데 저장된 이미지가 '첫 번째 수정'의 주소였다 — 늦게 끝난 첫
+ * 해석이 덮어쓴 것). 서버가 이미지를 200·0.01초로 줘도 생긴다 — 서버 쪽 문제가 아니었다.
+ *
+ * mode "edit": defer 된 원래 메시지의 첫 수정으로 카드를 넣는다(그 전에 아무 수정도 하지 않을 것).
+ * mode "new":  이미 한 번 이상 쓰인 메시지(버튼 목록)라면 카드는 새 메시지로 보내고, 원래 메시지는
+ *              글자만 고친다(글자만 바꾸는 수정은 이미지와 무관).
+ */
+async function sendCard(
+  token: string,
+  est: MmrEstimate,
+  note: string,
+  mode: "edit" | "new",
+): Promise<string> {
+  const who = `${est.account.gameName}#${est.account.tagLine}`;
+  await warmCard(est);
+  const payload = { content: "", embeds: [riftCard(est, note)] };
+  if (mode === "new") {
+    const id = await sendWebhook(token, payload, "new");
+    await followUp(token, {
+      content: id ? `✅ **${who}** 조회 결과는 아래에 있어요` : `**${who}** 결과를 보내지 못했어요`,
+      components: [],
+      embeds: [],
+    });
+    if (id) void logCardState(token, id, who);
+    return id ? "새 메시지" : "실패";
+  }
+  const r = await deliver(token, payload);
+  if (r.id) void logCardState(token, r.id, who);
+  return r.how;
+}
+
+/**
  * 정밀 분석을 웹 화면과 같은 경로(/api/deep)로 걸고 끝날 때까지 기다린다.
  * 대기열 순서·사용자 우선(전체 갱신은 background 라 항상 뒤)·생존 신호를 그 라우트가 그대로
  * 처리하므로 여기서 새로 짜지 않는다 — 웹 화면처럼 몇 초마다 다시 부르기만 하면 된다.
@@ -267,7 +344,18 @@ async function runDeepAndWait(
 // 사용자 요청이 전체 갱신보다 앞서므로 최악은 '돌던 정밀 하나 + 내 것'이라 몇 분이면 끝난다.
 const DEEP_WAIT_MS = 12 * 60_000;
 
-async function handleRift(token: string, summoner: string): Promise<void> {
+/**
+ * /rift 한 건. 최신 정밀 결과가 있으면 그대로, 아니면 정밀 분석을 돌려 그 결과로 답한다.
+ * 기다리는 동안 중간 메시지는 보내지 않는다 — 디스코드의 '생각 중…'이 그대로 보인다.
+ * (예전엔 예전 기록 카드를 먼저 띄웠다가 결과로 다시 고쳤는데, 그게 바로 '두 번 수정'이라
+ *  이미지가 0×0 으로 굳는 원인이었다. sendCard 주석 참고)
+ * mode: 슬래시 명령은 "edit"(defer 된 메시지를 처음 고침), 버튼 선택은 "new"(목록 메시지는 이미 쓰임).
+ */
+async function handleRift(
+  token: string,
+  summoner: string,
+  mode: "edit" | "new" = "edit",
+): Promise<void> {
   const id = parseRiotId(summoner) ?? (await resolveNameOnly(token, summoner));
   if (!id) return;
   try {
@@ -275,78 +363,52 @@ async function handleRift(token: string, summoner: string): Promise<void> {
     const quickStored = deepStored
       ? null
       : await getStoredResult("quick", PLATFORM, id.gameName, id.tagLine);
-    const shown = deepStored ?? quickStored; // 기다리는 동안 보여줄 예전 기록
+    const shown = deepStored ?? quickStored; // 분석이 다 실패했을 때의 마지막 보루
 
     // 기록이 하나도 없으면 여기서 계정 확인을 겸한다 — 없는 계정이면 실패해 안내로 빠진다
     const latestMatchId = shown
       ? await getLatestMatchId(PLATFORM, id.gameName, id.tagLine).catch(() => null)
       : await getLatestMatchId(PLATFORM, id.gameName, id.tagLine);
 
-    // 정밀 결과가 최신이면(새 경기 없음 + 7일 이내) 그대로 보낸다
-    if (deepStored && !isStale(deepStored, latestMatchId)) {
-      await warmCard(deepStored);
-      await deliver(token, { content: "", embeds: [riftCard(deepStored, "")] });
-      return;
-    }
-
-    // 최신이 아니면 정밀 분석을 돌려 그 결과로 답한다
     const t0 = Date.now();
-    const deep = runDeepAndWait(id, DEEP_WAIT_MS);
-
-    // 금방 끝나면(이미 돌던 중이었거나 표본이 적은 경우) 메시지를 한 번만 고친다.
-    // 늦을 때만 예전 기록이나 '분석 중'을 먼저 띄운다.
-    const early = await Promise.race([
-      deep.then((s) => ({ done: true as const, s })),
-      sleep(8_000).then(() => ({ done: false as const })),
-    ]);
-    let status: "done" | "error" | "timeout";
-    let shownInterim = false;
-    if (early.done) {
-      status = early.s;
+    let final: MmrEstimate | null;
+    let note = "";
+    let status: string;
+    if (deepStored && !isStale(deepStored, latestMatchId)) {
+      // 정밀 결과가 최신(새 경기 없음 + 7일 이내)이면 그대로
+      final = deepStored;
+      status = "최신";
     } else {
-      if (shown) {
-        await warmCard(shown);
-        shownInterim = await followUp(token, {
-          content: "",
-          embeds: [riftCard(shown, "예전 기록이에요 · 정밀 분석 중… 보통 30초~1분")],
-        });
-      } else {
-        shownInterim = await followUp(token, {
-          content: `🔍 **${id.gameName}#${id.tagLine}** 정밀 분석 중이에요… 보통 30초~1분, 길면 몇 분 걸려요`,
-        });
-      }
-      status = await deep;
-    }
-
-    let final =
-      status === "done"
-        ? await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)
-        : null;
-    let note = "방금 정밀 분석했어요";
-    if (!final) {
-      // 정밀이 실패했거나 대기 상한을 넘겼다 — 빠른 분석으로라도 최신값을 낸다
-      final = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch(() => null);
-      note =
-        status === "timeout"
-          ? "정밀 분석이 밀려 빠른 분석 결과예요"
-          : "정밀 분석에 실패해 빠른 분석 결과예요";
-      if (!final && shown) {
-        final = shown;
-        note = "분석에 실패해 예전 기록을 보여드려요";
+      status = await runDeepAndWait(id, DEEP_WAIT_MS);
+      final =
+        status === "done"
+          ? await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)
+          : null;
+      note = "방금 정밀 분석했어요";
+      if (!final) {
+        // 정밀이 실패했거나 대기 상한을 넘겼다 — 빠른 분석으로라도 최신값을 낸다
+        final = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch(() => null);
+        note =
+          status === "timeout"
+            ? "정밀 분석이 밀려 빠른 분석 결과예요"
+            : "정밀 분석에 실패해 빠른 분석 결과예요";
+        if (!final && shown) {
+          final = shown;
+          note = "분석에 실패해 예전 기록을 보여드려요";
+        }
       }
     }
     if (!final) throw new Error("분석 결과 없음");
 
-    await warmCard(final);
-    const how = await deliver(token, { content: "", embeds: [riftCard(final, note)] });
+    const how = await sendCard(token, final, note, mode);
     console.log(
-      `[discord/rift] ${id.gameName}#${id.tagLine} 정밀 ${status} ${Date.now() - t0}ms · ` +
-        `중간표시 ${shownInterim ? "O" : "X"} · 전달 ${how}`,
+      `[discord/rift] ${id.gameName}#${id.tagLine} 정밀 ${status} ${Date.now() - t0}ms · 전달 ${how}`,
     );
   } catch {
     await deliver(token, {
       content: "조회에 실패했어요. 계정명을 확인해 주세요.",
       embeds: [],
+      components: [],
     });
   }
 }
@@ -531,12 +593,17 @@ export async function POST(req: NextRequest) {
       });
     }
     const token: string = body.token;
-    after(() => handleRift(token, riotId));
-    // 버튼을 바로 걷고 같은 메시지를 '조회 중'으로 바꾼다 — 결과도 이 메시지에 채워진다.
-    // 버튼이 사라지니 여러 번 눌러 중복 조회되는 것도 막힌다.
+    // 카드는 새 메시지로 보낸다 — 이 목록 메시지는 이미 한 번 쓰였고 지금 또 고치므로,
+    // 여기에 카드를 넣으면 '두 번 이상 수정'이 돼 이미지가 0×0 으로 굳는다(sendCard 주석).
+    after(() => handleRift(token, riotId, "new"));
+    // 버튼을 바로 걷어 여러 번 눌러 중복 조회되는 것도 막는다
     return NextResponse.json({
       type: 7, // UPDATE_MESSAGE
-      data: { content: `🔍 **${riotId}** 조회 중…`, components: [], embeds: [] },
+      data: {
+        content: `🔍 **${riotId}** 조회 중… 결과는 새 메시지로 보내드려요`,
+        components: [],
+        embeds: [],
+      },
     });
   }
 
