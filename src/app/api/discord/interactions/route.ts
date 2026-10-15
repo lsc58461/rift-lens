@@ -15,7 +15,6 @@ import type { MmrEstimate } from "@/lib/mmr/estimate";
 import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
 import { bestPartition, resolvePlayers, shuffled } from "@/lib/mmr/team";
 import { getRecentSearches } from "@/lib/recent";
-import { getAccountByRiotId } from "@/lib/riot/client";
 import type { PlatformRegion } from "@/lib/riot/types";
 
 export const dynamic = "force-dynamic";
@@ -61,22 +60,62 @@ interface Embed {
   footer?: { text: string };
 }
 
-/** defer 이후 결과 전송 (원본 메시지 수정) */
-async function followUp(
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+type Payload = { content?: string; embeds?: Embed[] };
+
+/**
+ * 웹훅으로 보낸다. 성공 여부를 돌려주고 실패는 로그로 남긴다 — 예전엔 전부 삼켜서,
+ * '갱신 중…'에서 멈춘 메시지(2026-10-15)의 원인을 확인할 방법이 없었다.
+ * 429 는 retry_after 만큼 기다렸다 다시 보낸다. 같은 내용을 다시 보내는 건 안전하다.
+ */
+async function sendWebhook(
   token: string,
-  payload: { content?: string; embeds?: Embed[] },
-): Promise<void> {
+  payload: Payload,
+  mode: "edit" | "new",
+): Promise<boolean> {
   const appId = process.env.DISCORD_CLIENT_ID;
-  if (!appId) return;
-  await fetch(
-    `https://discord.com/api/v10/webhooks/${appId}/${token}/messages/@original`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
-    },
-  ).catch(() => {});
+  if (!appId) return false;
+  const base = `https://discord.com/api/v10/webhooks/${appId}/${token}`;
+  const url = mode === "edit" ? `${base}/messages/@original` : base;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: mode === "edit" ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (res.ok) return true;
+      const text = await res.text().catch(() => "");
+      if (res.status === 429) {
+        let wait = 1000;
+        try {
+          wait = Math.ceil(Number(JSON.parse(text).retry_after ?? 1) * 1000);
+        } catch {}
+        console.warn(`[discord] ${mode} 429 — ${wait}ms 뒤 재시도 (${attempt}/3)`);
+        await sleep(Math.min(wait, 5_000));
+        continue;
+      }
+      console.error(`[discord] ${mode} 실패 ${res.status}: ${text.slice(0, 300)}`);
+      return false;
+    } catch (e) {
+      console.error(`[discord] ${mode} 오류 (${attempt}/3): ${(e as Error).message}`);
+    }
+  }
+  return false;
+}
+
+/** defer 이후 결과 전송 (원본 메시지 수정) */
+function followUp(token: string, payload: Payload): Promise<boolean> {
+  return sendWebhook(token, payload, "edit");
+}
+
+/** 최종 결과는 반드시 닿아야 한다 — 수정이 끝내 안 되면 새 메시지로라도 보낸다 */
+async function deliver(token: string, payload: Payload): Promise<"edit" | "new" | "fail"> {
+  if (await followUp(token, payload)) return "edit";
+  if (await sendWebhook(token, payload, "new")) return "new";
+  return "fail";
 }
 
 function parseRiotId(s: string): { gameName: string; tagLine: string } | null {
@@ -130,7 +169,7 @@ async function handleRift(token: string, summoner: string): Promise<void> {
         content: `🔍 **${id.gameName}#${id.tagLine}** 분석 중이에요… 최대 1~2분 걸릴 수 있어요`,
       });
       const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine);
-      await followUp(token, { content: "", embeds: [riftCard(fresh, "방금 분석했어요")] });
+      await deliver(token, { content: "", embeds: [riftCard(fresh, "방금 분석했어요")] });
       return;
     }
 
@@ -140,21 +179,39 @@ async function handleRift(token: string, summoner: string): Promise<void> {
       id.tagLine,
     ).catch(() => null);
     if (!isStale(stored, latestMatchId)) {
-      await followUp(token, { content: "", embeds: [riftCard(stored, "")] });
+      await deliver(token, { content: "", embeds: [riftCard(stored, "")] });
       return;
     }
 
-    // 오래된 값이라도 일단 보여 주고(빈 화면보다 낫다), 갱신이 끝나면 같은 메시지를 고친다.
     // 정밀 분석은 전역 큐에 하나씩 도는 저우선순위 작업이라 디스코드 응답 제한(15분) 안에
     // 끝난다는 보장이 없다 — 그래서 여기서는 수 초면 끝나는 빠른 분석만 돌린다.
-    await followUp(token, {
-      content: "",
-      embeds: [riftCard(stored, "예전 기록이에요 · 최신 정보로 갱신 중…")],
+    const t0 = Date.now();
+    const refreshing = runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch((e) => {
+      console.error(`[discord/rift] 갱신 실패 ${id.gameName}#${id.tagLine}: ${(e as Error).message}`);
+      return null;
     });
-    const fresh = await runQuickAnalysis(PLATFORM, id.gameName, id.tagLine).catch(
-      () => null,
-    );
-    await followUp(token, {
+
+    // 빠른 분석은 보통 3~10초다(2026-10-15 실측). 그 안에 끝나면 메시지를 한 번만 고친다 —
+    // '예전 기록 → 갱신 결과'로 두 번 고치면 그 사이 전송이 하나라도 어긋날 때 '갱신 중…'에서
+    // 멈춘 채 남는다(실제로 그랬다). 늦을 때만 예전 기록을 먼저 띄운다.
+    const early = await Promise.race([
+      refreshing.then((r) => ({ done: true as const, r })),
+      sleep(8_000).then(() => ({ done: false as const })),
+    ]);
+    let shownStale = false;
+    let fresh: MmrEstimate | null;
+    if (early.done) {
+      fresh = early.r;
+    } else {
+      shownStale = await followUp(token, {
+        content: "",
+        embeds: [riftCard(stored, "예전 기록이에요 · 최신 정보로 갱신 중…")],
+      });
+      // 끝까지 안 끝나도 '갱신 중…'으로 남겨 두지 않는다 — 상한을 두고 마지막 상태로 바꾼다
+      fresh = await Promise.race([refreshing, sleep(90_000).then(() => null)]);
+    }
+
+    const how = await deliver(token, {
       content: "",
       embeds: [
         fresh
@@ -162,6 +219,10 @@ async function handleRift(token: string, summoner: string): Promise<void> {
           : riftCard(stored, "갱신에 실패해 예전 기록을 보여드려요"),
       ],
     });
+    console.log(
+      `[discord/rift] ${id.gameName}#${id.tagLine} 오래된 기록 갱신 ` +
+        `${fresh ? "성공" : "실패"} ${Date.now() - t0}ms · 중간표시 ${shownStale ? "O" : "X"} · 전달 ${how}`,
+    );
   } catch {
     await followUp(token, {
       content: "조회에 실패했어요. 계정명을 확인해 주세요.",
