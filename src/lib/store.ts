@@ -838,6 +838,28 @@ export interface SummonerSuggestion {
   current_tier: string | null;
 }
 
+/**
+ * 태그 없이 닉네임만으로 찾기 — 그 닉네임을 **그대로** 쓰는 등록 소환사들 (디스코드 /rift 용).
+ * 띄어쓰기·대소문자·전각은 무시한다(라이엇도 그렇게 본다). 자동완성(searchRecentSummoners)과
+ * 달리 부분 일치는 안 본다 — "페이커"를 치면 "페이커팬123"이 아니라 태그만 다른 페이커들이 나와야 한다.
+ */
+export async function findSummonersByName(
+  platform: PlatformRegion,
+  gameName: string,
+  limit = 25,
+): Promise<SummonerSuggestion[]> {
+  const qc = compact(gameName);
+  if (!qc) return [];
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT game_name, tag_line, current_label, current_tier
+    FROM recent_searches
+    WHERE platform = ${platform}
+      AND replace(game_name_lower, ' ', '') = ${qc}
+    ORDER BY searched_at DESC LIMIT ${limit}`;
+  return rows as unknown as SummonerSuggestion[];
+}
+
 /** 소환사 자동완성 — 기록된 검색에서 부분 일치, 최근 검색 순 */
 export async function searchRecentSummoners(
   platform: PlatformRegion,

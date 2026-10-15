@@ -16,6 +16,11 @@ import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
 import { bestPartition, resolvePlayers, shuffled } from "@/lib/mmr/team";
 import { getRecentSearches } from "@/lib/recent";
 import type { PlatformRegion } from "@/lib/riot/types";
+import {
+  findSummonersByName,
+  searchRecentSummoners,
+  type SummonerSuggestion,
+} from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -62,7 +67,7 @@ interface Embed {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-type Payload = { content?: string; embeds?: Embed[] };
+type Payload = { content?: string; embeds?: Embed[]; components?: unknown[] };
 
 /**
  * 웹훅으로 보낸다. 성공 여부를 돌려주고 실패는 로그로 남긴다 — 예전엔 전부 삼켜서,
@@ -152,12 +157,69 @@ function isStale(stored: MmrEstimate, latestMatchId: string | null): boolean {
   return Date.now() - (stored.analyzedAt ?? 0) > FRESH_MAX_AGE_MS;
 }
 
-async function handleRift(token: string, summoner: string): Promise<void> {
-  const id = parseRiotId(summoner);
-  if (!id) {
-    await followUp(token, { content: "게임명#태그 형식으로 입력해 주세요" });
-    return;
+// 동명이인 선택 버튼의 custom_id 머리말 — 뒤에 '게임명#태그'가 붙는다
+const PICK_PREFIX = "rift:";
+const MAX_PICK = 25; // 디스코드 한 메시지 버튼 상한 (5줄 × 5개)
+
+/** 소환사 목록을 버튼으로 — 누르면 그 사람으로 /rift 를 다시 돈다. 티어를 붙여 고르기 쉽게 한다 */
+function pickerRows(list: SummonerSuggestion[]): unknown[] {
+  const buttons = list.slice(0, MAX_PICK).map((s) => {
+    const riotId = `${s.game_name}#${s.tag_line}`;
+    return {
+      type: 2, // BUTTON
+      style: 2, // SECONDARY
+      label: `${riotId}${s.current_label ? ` · ${s.current_label}` : ""}`.slice(0, 80),
+      custom_id: `${PICK_PREFIX}${riotId}`, // 게임명 16자 + 태그 5자라 상한 100자에 한참 못 미친다
+    };
+  });
+  const rows: unknown[] = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push({ type: 1, components: buttons.slice(i, i + 5) }); // ACTION_ROW
   }
+  return rows;
+}
+
+/**
+ * 태그 없이 닉네임만 들어왔을 때. 같은 닉네임을 그대로 쓰는 등록 소환사가
+ * 한 명이면 그 사람으로 바로 진행(카드 제목에 태그가 보이니 틀리면 알아챈다),
+ * 여러 명이면 버튼으로 고르게, 하나도 없으면 비슷한 이름을 '혹시 이 중에?'로 보여준다.
+ * 바로 진행할 대상이 있으면 돌려주고, 이미 안내를 보냈으면 null.
+ */
+async function resolveNameOnly(
+  token: string,
+  raw: string,
+): Promise<{ gameName: string; tagLine: string } | null> {
+  const name = raw.trim().normalize("NFKC").replace(/#+$/, "").trim();
+  if (!name) {
+    await followUp(token, { content: "닉네임만 쓰거나 게임명#태그로 입력해 주세요" });
+    return null;
+  }
+  const exact = await findSummonersByName(PLATFORM, name, MAX_PICK + 1).catch(() => []);
+  if (exact.length === 1) return { gameName: exact[0].game_name, tagLine: exact[0].tag_line };
+  if (exact.length > 1) {
+    const more = exact.length > MAX_PICK ? ` (최근 검색된 ${MAX_PICK}명만 보여요 — 없으면 태그까지 입력해 주세요)` : "";
+    await followUp(token, {
+      content: `**${name}** 닉네임을 쓰는 소환사가 여러 명이에요. 골라 주세요.${more}`,
+      components: pickerRows(exact),
+    });
+    return null;
+  }
+  const near = await searchRecentSummoners(PLATFORM, name, 10).catch(() => []);
+  await followUp(
+    token,
+    near.length
+      ? {
+          content: `**${name}** 그대로인 소환사는 기록에 없어요. 혹시 이 중에 있나요? 없으면 게임명#태그로 입력해 주세요.`,
+          components: pickerRows(near),
+        }
+      : { content: `**${name}** 은(는) 기록에 없는 이름이에요. 게임명#태그로 입력해 주세요.` },
+  );
+  return null;
+}
+
+async function handleRift(token: string, summoner: string): Promise<void> {
+  const id = parseRiotId(summoner) ?? (await resolveNameOnly(token, summoner));
+  if (!id) return;
   try {
     const stored =
       (await getStoredResult("deep", PLATFORM, id.gameName, id.tagLine)) ??
@@ -396,6 +458,28 @@ export async function POST(req: NextRequest) {
 
   // PING
   if (body.type === 1) return NextResponse.json({ type: 1 });
+
+  // MESSAGE_COMPONENT — /rift 에서 동명이인을 고르는 버튼
+  if (body.type === 3) {
+    const customId: string = body.data?.custom_id ?? "";
+    if (!customId.startsWith(PICK_PREFIX)) return NextResponse.json({ type: 6 }); // 모르는 버튼은 무시
+    const riotId = customId.slice(PICK_PREFIX.length);
+    const maint = await getMaintenanceInfo().catch(() => null);
+    if (isMaintenanceActive(maint)) {
+      return NextResponse.json({
+        type: 7, // UPDATE_MESSAGE
+        data: { content: "🔧 지금은 점검 중이에요 — 점검이 끝나면 다시 시도해 주세요.", components: [] },
+      });
+    }
+    const token: string = body.token;
+    after(() => handleRift(token, riotId));
+    // 버튼을 바로 걷고 같은 메시지를 '조회 중'으로 바꾼다 — 결과도 이 메시지에 채워진다.
+    // 버튼이 사라지니 여러 번 눌러 중복 조회되는 것도 막힌다.
+    return NextResponse.json({
+      type: 7, // UPDATE_MESSAGE
+      data: { content: `🔍 **${riotId}** 조회 중…`, components: [], embeds: [] },
+    });
+  }
 
   // APPLICATION_COMMAND
   if (body.type === 2) {

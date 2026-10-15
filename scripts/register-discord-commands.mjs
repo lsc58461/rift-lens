@@ -26,7 +26,8 @@ const commands = [
   {
     name: "rift",
     description: "소환사 매칭 구간 조회 (최근 로비 평균 랭크)",
-    options: [summoner("소환사", "닉네임#태그")],
+    // 태그 없이 닉네임만 써도 된다 — 같은 닉네임이 여럿이면 버튼으로 고르게 한다
+    options: [summoner("소환사", "닉네임#태그 · 태그 없이 닉네임만 써도 돼요")],
   },
   {
     name: "rift-team",
