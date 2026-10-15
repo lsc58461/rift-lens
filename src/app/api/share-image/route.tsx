@@ -2,6 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
+import sharp from "sharp";
 import { getStoredResult } from "@/lib/mmr/deep-jobs";
 import type { MmrEstimate } from "@/lib/mmr/estimate";
 import { TIER_COLORS, isApexPoints } from "@/lib/mmr/rank";
@@ -24,17 +25,24 @@ function gapText(gap: number | null, apex = false): string {
 }
 
 /**
- * ImageResponse 는 스트리밍(Transfer-Encoding: chunked, Content-Length 없음)으로 나간다.
- * 디스코드는 이걸 64KB·128KB 단위로 끊어 읽다가 깨진 이미지로 판단해, 임베드에 잠깐 떴던
- * 이미지를 지워 버렸다(2026-10-15 — 접속 기록에 정확히 65,536·131,072B 에서 끊긴 요청이 남음).
- * 디코에 정상으로 뜨는 라이엇 이미지는 Content-Length 를 준다. 그래서 끝까지 받아 크기를 붙여 보낸다.
- * (1200x630 PNG 한 장이 160KB 남짓이라 메모리에 담아도 부담 없다)
+ * 디스코드 임베드에서 이 카드가 잠깐 떴다가 사라졌다(2026-10-15).
+ *
+ * 1차 시도: ImageResponse 가 Content-Length 없이 chunked 로 나가서라고 보고 크기를 붙였다 —
+ * 디스코드가 온전히(179KB) 여러 번 받아가는 건 확인됐지만 여전히 사라졌다. 전송 문제가 아니었다.
+ * 2차: 디코에 정상으로 뜨는 라이엇 이미지는 83KB, 우리 카드는 매번 137~180KB 였고 디스코드는
+ * 정확히 131,072B(128KB)에서 읽기를 끊었다. 그래서 크기를 128KB 아래로 줄인다 — 256색 팔레트
+ * PNG 로 175KB → 43KB. 형식이 그대로 PNG 라 카톡 등 다른 미리보기엔 영향이 없다.
+ * (128KB 상한은 접속 기록으로 얻은 추론이다 — 이걸로도 안 되면 다른 원인이다)
  */
 export async function GET(req: NextRequest) {
   const res = await render(req);
   if (!res.ok) return res;
-  const body = await res.arrayBuffer();
-  return new Response(body, {
+  const raw = Buffer.from(await res.arrayBuffer());
+  const body = await sharp(raw)
+    .png({ palette: true, quality: 90, compressionLevel: 9 })
+    .toBuffer()
+    .catch(() => raw); // 압축이 실패해도 카드는 나가야 한다
+  return new Response(new Uint8Array(body), {
     status: res.status,
     headers: {
       "Content-Type": res.headers.get("Content-Type") ?? "image/png",
