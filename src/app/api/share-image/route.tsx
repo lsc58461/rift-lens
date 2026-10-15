@@ -23,7 +23,28 @@ function gapText(gap: number | null, apex = false): string {
   return "최근 로비 평균 랭크가 현재 티어와 비슷한 구간";
 }
 
+/**
+ * ImageResponse 는 스트리밍(Transfer-Encoding: chunked, Content-Length 없음)으로 나간다.
+ * 디스코드는 이걸 64KB·128KB 단위로 끊어 읽다가 깨진 이미지로 판단해, 임베드에 잠깐 떴던
+ * 이미지를 지워 버렸다(2026-10-15 — 접속 기록에 정확히 65,536·131,072B 에서 끊긴 요청이 남음).
+ * 디코에 정상으로 뜨는 라이엇 이미지는 Content-Length 를 준다. 그래서 끝까지 받아 크기를 붙여 보낸다.
+ * (1200x630 PNG 한 장이 160KB 남짓이라 메모리에 담아도 부담 없다)
+ */
 export async function GET(req: NextRequest) {
+  const res = await render(req);
+  if (!res.ok) return res;
+  const body = await res.arrayBuffer();
+  return new Response(body, {
+    status: res.status,
+    headers: {
+      "Content-Type": res.headers.get("Content-Type") ?? "image/png",
+      "Content-Length": String(body.byteLength),
+      "Cache-Control": res.headers.get("Cache-Control") ?? "public, max-age=300",
+    },
+  });
+}
+
+async function render(req: NextRequest): Promise<Response> {
   await ensureApexCutoffs();
   const sp = req.nextUrl.searchParams;
   const region = sp.get("region") ?? "";
