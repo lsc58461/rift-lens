@@ -14,7 +14,6 @@ import {
 import type { MmrEstimate } from "@/lib/mmr/estimate";
 import { FRESH_MAX_AGE_MS } from "@/lib/freshness";
 import { bestPartition, resolvePlayers, shuffled } from "@/lib/mmr/team";
-import { getRecentSearches } from "@/lib/recent";
 import type { PlatformRegion } from "@/lib/riot/types";
 import {
   findSummonersByName,
@@ -496,27 +495,6 @@ async function handleDuo(
   });
 }
 
-async function handleRecent(token: string): Promise<void> {
-  const list = (await getRecentSearches()).slice(0, 10);
-  await followUp(token, {
-    embeds: [
-      {
-        title: "최근 검색된 소환사",
-        description:
-          list
-            .map(
-              (r, i) =>
-                `${i + 1}. **${r.gameName}#${r.tagLine}** — ${r.estimatedLabel ?? "?"}`,
-            )
-            .join("\n") || "기록이 없어요",
-        url: SITE,
-        color: BLUE,
-        footer: { text: "Rift Lens" },
-      },
-    ],
-  });
-}
-
 // ── 알림 채널 설정 (/rift-alerts) ───────────────────────
 // 봇이 초대된 길드별로 관리자가 다운/복구 알림 채널을 지정한다.
 // 커맨드 자체에 default_member_permissions(서버 관리)가 걸려 있지만,
@@ -652,9 +630,6 @@ export async function POST(req: NextRequest) {
           break;
         case "rift-duo":
           await handleDuo(token, get("소환사1"), get("소환사2"));
-          break;
-        case "rift-recent":
-          await handleRecent(token);
           break;
         default:
           await followUp(token, { content: "알 수 없는 명령이에요" });

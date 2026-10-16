@@ -39,7 +39,6 @@ const commands = [
     description: "두 소환사 듀오 시너지 분석",
     options: [summoner("소환사1", "닉네임#태그"), summoner("소환사2", "닉네임#태그")],
   },
-  { name: "rift-recent", description: "최근 조회된 소환사 목록" },
   {
     name: "rift-alerts",
     description: "사이트 다운/복구 알림 채널 관리 — 서버 관리 권한자에게만 보이는 명령이에요",
