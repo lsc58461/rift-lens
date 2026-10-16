@@ -8,7 +8,6 @@ import Link from "next/link";
 import {
   BarChart3,
   CircleHelp,
-  History,
   Menu,
   Newspaper,
   Trophy,
@@ -24,7 +23,6 @@ import {
 const NAV_LINKS = [
   { href: "/champions", label: "챔피언", icon: BarChart3 },
   { href: "/ranking", label: "랭킹", icon: Trophy },
-  { href: "/recent", label: "최근 검색", icon: History },
   { href: "/patch-notes", label: "패치노트", icon: Newspaper },
   { href: "/faq", label: "FAQ", icon: CircleHelp },
   { href: "/tools", label: "도구", icon: Wrench },

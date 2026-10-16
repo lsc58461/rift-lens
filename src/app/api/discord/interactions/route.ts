@@ -509,7 +509,7 @@ async function handleRecent(token: string): Promise<void> {
                 `${i + 1}. **${r.gameName}#${r.tagLine}** — ${r.estimatedLabel ?? "?"}`,
             )
             .join("\n") || "기록이 없어요",
-        url: `${SITE}/recent`,
+        url: SITE,
         color: BLUE,
         footer: { text: "Rift Lens" },
       },

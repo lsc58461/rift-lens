@@ -2,7 +2,8 @@
 
 // 스포트라이트 검색 — GNB 돋보기 버튼이나 ⌘K(Ctrl+K)·`/` 로 어디서든 열린다.
 // 예전엔 소환사를 찾으려면 홈이나 전적 상세로 가야만 검색창이 있었다(2026-09-10).
-// 빈 상태에선 최근 검색된 소환사를 보여주고, 입력하면 초성·띄어쓰기 무시 검색이 걸린다.
+// 빈 상태에선 '내' 최근 검색·즐겨찾기(이 브라우저에만 저장)를, 입력하면 초성·띄어쓰기 무시 검색을 보여준다.
+// (예전엔 빈 상태에서 모든 방문자의 최근 검색을 보여줬다 — 2026-10-16 개인 기록으로 바꿈)
 //
 // 접근성: 열면 인풋에 포커스, Tab 은 모달 안에서만 순환(포커스 트랩), Esc 로 닫으면 트리거로 복귀.
 // 후보 항목은 onClick 으로 실행한다 — onMouseDown 만 두면 키보드(Tab→Enter)로는 눌리지 않는다.
@@ -14,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
+import { HistoryPanel, useHistoryList } from "@/components/history-panel";
 import { Input } from "@/components/ui/input";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { summonerPath } from "@/lib/summoner-url";
@@ -31,6 +33,10 @@ export function SearchPalette() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { items, loading, fetchSuggest, setItems } = useSuggestions();
+  const { tab, setTab, list: history } = useHistoryList();
+  const empty = query.trim() === "";
+  // 방향키로 고르는 대상 — 빈 칸이면 내 기록, 아니면 자동완성 후보
+  const pickable = empty ? history : items;
 
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
@@ -40,8 +46,7 @@ export function SearchPalette() {
     setOpen(true);
     setError(null);
     setHighlight(-1);
-    fetchSuggest("");
-  }, [fetchSuggest]);
+  }, []);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -100,8 +105,8 @@ export function SearchPalette() {
   };
 
   const submit = () => {
-    if (highlight >= 0 && items[highlight]) {
-      const s = items[highlight];
+    if (highlight >= 0 && pickable[highlight]) {
+      const s = pickable[highlight];
       go(`${s.name}#${s.tag}`);
       return;
     }
@@ -187,15 +192,18 @@ export function SearchPalette() {
                   setQuery(e.target.value);
                   setError(null);
                   setHighlight(-1);
-                  fetchSuggest(e.target.value);
+                  // 빈 칸이면 서버에 묻지 않는다 — 내 기록을 보여준다
+                  if (e.target.value.trim()) fetchSuggest(e.target.value);
+                  else setItems([]);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "ArrowDown" && items.length > 0) {
+                  const n = pickable.length;
+                  if (e.key === "ArrowDown" && n > 0) {
                     e.preventDefault();
-                    setHighlight((h) => (h + 1) % items.length);
-                  } else if (e.key === "ArrowUp" && items.length > 0) {
+                    setHighlight((h) => (h + 1) % n);
+                  } else if (e.key === "ArrowUp" && n > 0) {
                     e.preventDefault();
-                    setHighlight((h) => (h - 1 + items.length) % items.length);
+                    setHighlight((h) => (h - 1 + n) % n);
                   } else if (e.key === "Enter") {
                     e.preventDefault();
                     submit();
@@ -213,13 +221,20 @@ export function SearchPalette() {
               </p>
             )}
 
-            {items.length > 0 ? (
+            {empty ? (
+              <HistoryPanel
+                tab={tab}
+                onTab={(t) => {
+                  setTab(t);
+                  setHighlight(-1);
+                }}
+                list={history}
+                highlight={highlight}
+                onHighlight={setHighlight}
+                onSelect={(h) => go(`${h.name}#${h.tag}`)}
+              />
+            ) : items.length > 0 ? (
               <ul className="max-h-[50vh] overflow-y-auto p-1.5">
-                {query.trim() === "" && (
-                  <li className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                    최근 검색
-                  </li>
-                )}
                 {items.map((s: Suggestion, i) => (
                   <li key={`${s.name}#${s.tag}`}>
                     <button
@@ -253,9 +268,7 @@ export function SearchPalette() {
                 <p className="px-3.5 py-6 text-center text-xs text-muted-foreground">
                   {loading
                     ? "찾는 중…"
-                    : query.trim() === ""
-                      ? "최근 검색된 소환사가 없어요. 게임명#태그를 입력해 보세요."
-                      : "기록에 없는 소환사예요. 게임명#태그를 정확히 입력하면 새로 분석해 드려요."}
+                    : "기록에 없는 소환사예요. 게임명#태그를 정확히 입력하면 새로 분석해 드려요."}
                 </p>
               )
             )}

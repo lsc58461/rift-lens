@@ -30,6 +30,7 @@ import { HashFix } from "@/components/hash-fix";
 import { MmrChart, type MmrChartPoint } from "@/components/mmr-chart";
 import { SearchForm } from "@/components/search-form";
 import { ShareButton } from "@/components/share-button";
+import { SummonerBookmark } from "@/components/summoner-bookmark";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -620,6 +621,11 @@ export default async function SummonerPage({
                 #{account.tagLine}
               </span>
             </h1>
+            <SummonerBookmark
+              name={account.gameName}
+              tag={account.tagLine}
+              tier={estimatedRank?.tier ?? null}
+            />
             <Badge variant="secondary">
               {PLATFORM_LABELS[region as PlatformRegion]}
             </Badge>

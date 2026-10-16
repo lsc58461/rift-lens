@@ -34,7 +34,6 @@ function staticPages(): MetadataRoute.Sitemap {
     page("/champions", "daily", 0.9),
     page("/ranking", "hourly", 0.8),
     page("/ranking?tier=GRANDMASTER", "hourly", 0.7),
-    page("/recent", "hourly", 0.6),
     page("/patch-notes", "weekly", 0.6),
     page("/tools", "monthly", 0.5),
     page("/team", "monthly", 0.5),

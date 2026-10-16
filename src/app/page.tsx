@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Trophy,
 } from "lucide-react";
-import { summonerPath } from "@/lib/summoner-url";
 import type { Metadata } from "next";
 import { OG_BASE } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
@@ -18,11 +17,12 @@ import { SpotlightCard } from "@/components/home/spotlight-card";
 import { SearchForm } from "@/components/search-form";
 import { getApexCutoffs, getApexLadder } from "@/lib/apex-ladder";
 import { getHomeStats } from "@/lib/home-stats";
-import { getRecentSearches } from "@/lib/recent";
+import { MyRecentChips } from "@/components/my-recent-chips";
 import { TIER_COLORS } from "@/lib/mmr/rank";
 import { TOOLS } from "@/lib/tools";
 
-// 라이브 지표·최근 검색·랭킹을 보여주므로 요청 시 렌더 (지표는 10분 캐시, 랭킹은 30분 갱신)
+// 라이브 지표·랭킹을 보여주므로 요청 시 렌더 (지표는 10분 캐시, 랭킹은 30분 갱신).
+// '최근 본' 칩은 각자 브라우저의 기록이라 서버가 아니라 클라이언트에서 채운다(MyRecentChips).
 export const dynamic = "force-dynamic";
 
 const FEATURES = [
@@ -85,9 +85,8 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 export default async function Home() {
   // 전부 장식 데이터 — 실패해도 홈은 떠야 한다
-  const [stats, recent, ladder, cutoffs] = await Promise.all([
+  const [stats, ladder, cutoffs] = await Promise.all([
     getHomeStats().catch(() => null),
-    getRecentSearches(8).catch(() => []),
     getApexLadder("CHALLENGER").catch(() => ({ rows: [], fetchedAt: null })),
     getApexCutoffs().catch(() => null),
   ]);
@@ -130,28 +129,7 @@ export default async function Home() {
           <SpotlightCard className="z-20 p-4 shadow-2xl shadow-primary/10 sm:p-5">
             <SearchForm />
           </SpotlightCard>
-          {recent.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-              <span className="text-[11px] text-muted-foreground">방금 조회</span>
-              {recent.slice(0, 6).map((r) => (
-                <Link
-                  key={`${r.gameName}#${r.tagLine}`}
-                  href={summonerPath("kr", `${r.gameName}#${r.tagLine}`)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-card/50 px-2.5 py-1 text-xs backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
-                >
-                  <span
-                    className="size-1.5 rounded-full"
-                    style={{
-                      background: r.estimatedTier
-                        ? TIER_COLORS[r.estimatedTier]
-                        : "var(--color-muted-foreground)",
-                    }}
-                  />
-                  <span className="max-w-28 truncate">{r.gameName}</span>
-                </Link>
-              ))}
-            </div>
-          )}
+          <MyRecentChips />
         </div>
 
         {(stats || cutoffs) && (

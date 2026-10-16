@@ -112,9 +112,6 @@ export default function RootLayout({
               <Link href="/faq" className="whitespace-nowrap hover:text-foreground hover:underline">
                 자주 묻는 질문
               </Link>
-              <Link href="/recent" className="whitespace-nowrap hover:text-foreground hover:underline">
-                최근 검색
-              </Link>
               <Link href="/patch-notes" className="whitespace-nowrap hover:text-foreground hover:underline">
                 패치노트
               </Link>

@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/sitemap.xml", destination: "/sitemap-index.xml" }];
   },
+  // 모두의 최근 검색을 보여주던 /recent 는 없앴다(2026-10-16) — 최근 검색은 이제 각자 브라우저에만
+  // 남는 개인 기록(검색창·홈 칩)이다. 검색엔진·북마크로 들어오는 옛 주소는 홈으로 영구 이동.
+  async redirects() {
+    return [{ source: "/recent", destination: "/", permanent: true }];
+  },
   // 자체 서버(Docker) 빌드에서만 standalone 출력 — Vercel 빌드에는 영향 없음
   output: process.env.NEXT_STANDALONE ? "standalone" : undefined,
   // 서버리스 번들에 fs.readFile 대상 파일 포함 (Vercel 배포용)
