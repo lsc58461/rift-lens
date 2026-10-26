@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.22.1
           cache: npm
 
       # Next 빌드 캐시 — 러너가 매번 새 머신이라 명시적으로 보존해야 증분 빌드가 된다

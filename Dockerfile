@@ -1,6 +1,6 @@
 # 런타임 패키징 전용 — 빌드는 GitHub Actions ARM 러너에서 수행하고,
 # 여기서는 .next/standalone 산출물만 담는다 (CI에서 NEXT_STANDALONE=1 next build 선행 필수).
-FROM node:22-alpine
+FROM node:24.22.1-alpine
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
