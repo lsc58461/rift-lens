@@ -1,7 +1,8 @@
 // 라이엇 API 레이트리미터.
 //
-// 우선순위 2단계: 페이지 로딩 등 전경 호출(high)이 백그라운드 정밀 분석(low)보다
-// 항상 먼저 슬롯을 받는다 — 정밀 분석이 한도를 점유해도 페이지가 굶지 않는다.
+// 우선순위 3단계: 페이지 로딩 등 전경 호출(high) → 백그라운드 정밀 분석(low) →
+// 전체 갱신·크론 스윕(bg) 순으로 슬롯을 받는다 — 정밀 분석이 한도를 점유해도
+// 페이지가 굶지 않고, 전체 갱신이 돌아도 사용자 분석이 밀리지 않는다.
 //
 // 한도 계정(버킷)은 REDIS_URL이 있으면 **Redis 공유 슬라이딩 윈도**로 센다.
 // 앱 인스턴스가 2개(app-a/app-b) 이상이면 프로세스별 카운터로는 합산이 한도를
@@ -24,7 +25,9 @@ interface Bucket {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Priority = "high" | "low";
+// bg = 전체 갱신·새벽 크론 스윕. low(사용자가 띄운 정밀 분석 등)보다도 뒤에 서고,
+// 유저 트래픽이 있을 때 더 많이 양보한다(BG_RESERVE_RATIO).
+type Priority = "high" | "low" | "bg";
 
 // 호출 경로 전체에 priority 인자를 뚫는 대신 ALS 컨텍스트로 전달한다.
 // ※ Turbopack 이 이 모듈을 서버 청크마다 복제해서, 모듈 변수로 두면 withLowPriority 를
@@ -36,9 +39,15 @@ const g = globalThis as unknown as {
 };
 const priorityContext = (g.__riftPriorityCtx ??= new AsyncLocalStorage<Priority>());
 
-/** 이 콜백 안에서 발생하는 라이엇 API 호출을 저우선순위로 처리 */
+/** 이 콜백 안에서 발생하는 라이엇 API 호출을 저우선순위로 처리.
+ *  이미 bg 안이면 bg 를 유지한다 — 스윕이 부르는 runDeepAnalysis 가 안쪽에서 다시 감싸도 low 로 올라가지 않게 */
 export function withLowPriority<T>(fn: () => Promise<T>): Promise<T> {
-  return priorityContext.run("low", fn);
+  return priorityContext.run(currentPriority() === "bg" ? "bg" : "low", fn);
+}
+
+/** 전체 갱신·크론 스윕용 — 사용자 요청(high·low) 모두에 양보한다 */
+export function withBackgroundPriority<T>(fn: () => Promise<T>): Promise<T> {
+  return priorityContext.run("bg", fn);
 }
 
 export function currentPriority(): Priority {
@@ -71,6 +80,10 @@ export interface LimiterSnapshot {
 const HOT_KEY = "riot:rl:hot";
 const HOT_TTL_MS = 30_000;
 const LOW_RESERVE_RATIO = 0.4; // hot일 때 low가 못 쓰는 비율
+// hot일 때 bg가 못 쓰는 비율. 0.4(=low와 같음)였을 땐 전체 갱신이 50건 중 30건을 쓰고 유저 몫이
+// 20건이라, 갱신 중엔 빠른 분석이 4초 → 8~10초로 늘었다(2026-10-26 실측). 사용자 정밀 분석은
+// low 라 이 값의 영향을 받지 않는다.
+const BG_RESERVE_RATIO = 0.7;
 
 // KEYS = [hot, 버킷 키들...], ARGV = [now, member, isHigh(0/1), reserveRatio, hotTtl, cap1, win1, cap2, win2, ...]
 // 반환 = [waitMs, used1, used2, ...] (waitMs가 0이면 예약 완료)
@@ -125,6 +138,7 @@ class RateLimiter {
   private buckets: Bucket[];
   private high: Array<() => void> = [];
   private low: Array<() => void> = [];
+  private bg: Array<() => void> = [];
   private pumping = false;
   private seq = 0;
   /** 마지막 Redis 응답 — 스냅샷(어드민 표시)에 쓴다 */
@@ -154,19 +168,30 @@ class RateLimiter {
     return {
       buckets,
       waitingHigh: this.high.length,
-      waitingLow: this.low.length,
+      waitingLow: this.low.length + this.bg.length,
       nextSlotInMs: Math.max(0, ...buckets.map((b) => b.nextSlotInMs)),
       saturated: buckets.some((b) => b.used >= b.capacity),
       shared: sharedFresh !== null,
     };
   }
 
-  /** 슬롯이 날 때까지 대기 후 반환. high 큐가 항상 low 큐보다 먼저 소진된다 */
+  /** 슬롯이 날 때까지 대기 후 반환. high → low → bg 순으로 소진된다 */
   acquire(priority: Priority = "high"): Promise<void> {
     return new Promise<void>((resolve) => {
-      (priority === "high" ? this.high : this.low).push(resolve);
+      (priority === "high" ? this.high : priority === "low" ? this.low : this.bg).push(resolve);
       void this.pump();
     });
+  }
+
+  private nextPriority(): Priority | null {
+    if (this.high.length > 0) return "high";
+    if (this.low.length > 0) return "low";
+    if (this.bg.length > 0) return "bg";
+    return null;
+  }
+
+  private takeNext(): (() => void) | undefined {
+    return this.high.shift() ?? this.low.shift() ?? this.bg.shift();
   }
 
   /** Redis 공유 버킷에서 슬롯 예약 시도. 반환: 대기 ms(0이면 예약됨), Redis 불가면 null */
@@ -182,7 +207,7 @@ class RateLimiter {
         String(now),
         member,
         priority === "high" ? "1" : "0",
-        String(LOW_RESERVE_RATIO),
+        String(priority === "bg" ? BG_RESERVE_RATIO : LOW_RESERVE_RATIO),
         String(HOT_TTL_MS),
       ];
       for (const b of this.buckets) args.push(String(b.capacity), String(b.windowMs));
@@ -204,14 +229,13 @@ class RateLimiter {
     if (this.pumping) return;
     this.pumping = true;
     try {
-      while (this.high.length > 0 || this.low.length > 0) {
+      for (let nextPriority = this.nextPriority(); nextPriority; nextPriority = this.nextPriority()) {
         // 다음에 슬롯을 받을 대기자의 우선순위로 예약한다 (high가 항상 먼저)
-        const nextPriority: Priority = this.high.length > 0 ? "high" : "low";
         const shared = await this.acquireShared(nextPriority);
         if (shared !== null) {
           if (shared > 0) {
-            // low가 유저 예약분에 막힌 경우는 짧게 재시도 (유저 트래픽이 끊기면 바로 풀린다)
-            await sleep(Math.min(shared, nextPriority === "low" ? 500 : 2_000));
+            // low·bg가 유저 예약분에 막힌 경우는 짧게 재시도 (유저 트래픽이 끊기면 바로 풀린다)
+            await sleep(Math.min(shared, nextPriority === "high" ? 2_000 : 500));
             continue;
           }
           // 예약 완료 — 로컬 버킷에도 기록해 폴백 시 연속성을 유지한다
@@ -220,7 +244,7 @@ class RateLimiter {
             b.timestamps = b.timestamps.filter((t) => ts - t < b.windowMs);
             b.timestamps.push(ts);
           }
-          const next = this.high.shift() ?? this.low.shift();
+          const next = this.takeNext();
           if (!next) break;
           next();
           continue;
@@ -239,7 +263,7 @@ class RateLimiter {
           await sleep(waitMs);
           continue;
         }
-        const next = this.high.shift() ?? this.low.shift();
+        const next = this.takeNext();
         if (!next) break;
         const ts = Date.now();
         for (const b of this.buckets) b.timestamps.push(ts);

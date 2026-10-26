@@ -9,7 +9,7 @@
 
 import "server-only";
 import { runRefreshSweep } from "@/lib/refresh-sweep";
-import { withLowPriority } from "@/lib/riot/limiter";
+import { withBackgroundPriority } from "@/lib/riot/limiter";
 import { ALGO_VERSION } from "@/lib/mmr/estimate";
 import { riotKeyFp } from "@/lib/riot/client";
 import { buildRefreshQueue, listRefreshQueue } from "@/lib/store";
@@ -177,8 +177,9 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     // 라운드 중 실시간 진행 저장 (2초 스로틀) — 중지 클릭을 덮어쓰지 않도록
     // 매번 최신 상태를 읽고 그 위에 얹는다
     let lastProgressSave = 0;
-    // 스윕 전체(최신 매치 확인·빠른 추정·정밀)를 저우선순위로 — 예전엔 정밀만
-    // 저우선순위라 빠른 추정·매치 확인 콜이 유저 검색과 동등하게 경쟁했다
+    // 스윕 전체(최신 매치 확인·빠른 추정·정밀)를 백그라운드 등급으로 — 예전엔 정밀만
+    // 저우선순위라 빠른 추정·매치 확인 콜이 유저 검색과 동등하게 경쟁했다.
+    // low 가 아니라 bg 인 건 사용자가 띄운 정밀 분석(low)보다도 뒤에 서기 위해서다.
     // 큐가 없는 옛 상태(passId 0)면 지금 만든다 — 그 시점부터 순서 고정
     let passId = state.passId ?? 0;
     if (!passId) {
@@ -189,7 +190,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
     }
     const queue = await listRefreshQueue(riotKeyFp(), passId);
     const list = queue.map((r) => ({ region: r.platform, gameName: r.game_name, tagLine: r.tag_line }));
-    const d = await withLowPriority(() => runRefreshSweep({
+    const d = await withBackgroundPriority(() => runRefreshSweep({
       limit: ROUND_LIMIT,
       budgetMs: 220_000,
       deepDeadlineMs: 180_000,
@@ -246,8 +247,17 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
             .join(" | ")
         : null,
     };
-    // 진전 없는 라운드 카운트 — 러너 락이 다른 분석에 잡혀 계속 못 도는 경우 감지
-    state.idleRounds = didWork ? 0 : (fresh.idleRounds ?? 0) + 1;
+    // 진전 없는 라운드 카운트 — 한 일도 없고 커서도 못 나간 라운드만 센다. 정밀 자리가
+    // 사용자 검색에 잡혀 기다리다 끝난 라운드(deepBlocked)는 세지 않는다 — 멈춘 게 아니라
+    // 양보한 것이다. 예전엔 이것도 세서 사용자 정밀 분석 한 건에 전체 갱신이 꺼졌다(2026-10-26).
+    // 기다리는 라운드는 정밀 마감(180초)까지 버티므로 세지 않아도 헛돌지 않고, 죽은 락은
+    // JOB_STALE_MS 가 지나면 빈 것으로 본다.
+    const progressed = didWork || d.nextIndex > cursor;
+    state.idleRounds = progressed
+      ? 0
+      : d.deepBlocked
+        ? (fresh.idleRounds ?? 0)
+        : (fresh.idleRounds ?? 0) + 1;
     if (d.reachedEnd) {
       // 한 바퀴 완료. 바퀴 내내 한 일이 없고 정밀 대기도 없으면 더 할 게 없다
       if (passWork === 0 && !d.deepPending) {
@@ -264,10 +274,10 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
         state.scanned = 0;
       }
     } else if (state.idleRounds >= 8) {
-      // 이어서 돌 목록은 남았는데 8라운드 연속 아무것도 못 했으면(락 점유 등) 멈춘다
+      // 이어서 돌 목록은 남았는데 8라운드 연속 한 일도, 나간 자리도 없으면 멈춘다
       state.running = false;
       state.done = true;
-      state.lastError = "진전이 없어 종료했어요 (다른 분석이 실행 중일 수 있음)";
+      state.lastError = "진전이 없어 종료했어요";
     }
     await save(state);
     // 아직 할 일이 남았으면 탭 폴링 없이도 다음 라운드를 잇는다

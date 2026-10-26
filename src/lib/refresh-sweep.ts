@@ -61,6 +61,59 @@ async function analyzedWithin(
 const deepAnalyzedWithin = (p: string, g: string, t: string, ms: number) =>
   analyzedWithin(p, g, t, "deep", ms);
 
+const DEEP_WAIT_POLL_MS = 3_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 이 소환사의 정밀 분석을 돌리고 끝날 때까지 기다린다. 러너 락(한 번에 1건)을 사용자 검색이
+ * 쥐고 있으면 풀릴 때까지 여기서 기다린다 — 예전엔 곧바로 라운드를 끝냈는데, 전체 갱신은
+ * 라운드를 간격 없이 잇기 때문에 사용자 정밀 분석 한 건(15~40초) 동안 빈 라운드 8번이 쌓여
+ * '진전 없음'으로 전체 갱신이 꺼졌다(2026-10-26 실측: 사용자 검색 14초 만에 종료).
+ * 기다리는 동안엔 라이엇 호출을 하지 않으므로 그 사용자 분석도 한도를 온전히 쓴다.
+ *
+ * completed: 이번에 끝난 정밀 수 — 락이 비었을 때 대기열 맨 앞이 남의 잡이면 그것부터 돌리므로
+ * 1보다 클 수 있고, 다른 요청이 내 잡을 대신 돌려 끝낸 경우도 1로 센다.
+ * ok: 이 소환사의 정밀이 끝났는지. false면 canWait 가 그만두라고 했다(마감·중지).
+ */
+async function deepWhenFree(
+  r: { region: PlatformRegion; gameName: string; tagLine: string },
+  latest: string | null,
+  canWait: () => Promise<boolean>,
+): Promise<{ completed: number; ok: boolean }> {
+  let completed = 0;
+  for (;;) {
+    const started: { run?: Promise<void>; mine?: boolean } = {};
+    await ensureQueuedAndSchedule(
+      r.region,
+      r.gameName,
+      r.tagLine,
+      (p, g, t) => {
+        started.mine =
+          p === r.region && canon(g) === canon(r.gameName) && canon(t) === canon(r.tagLine);
+        // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
+        // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=30) 빌드를 한 번에 다
+        // 수확해 백필거리를 남기지 않는다 (인터랙티브 검색은 기본 10 유지).
+        started.run = runDeepAnalysis(p, g, t, 30);
+      },
+      { background: true }, // 사용자 검색이 항상 먼저
+    );
+    if (started.run) {
+      await started.run;
+      completed++;
+      if (started.mine) return { completed, ok: true };
+      // 맨 앞의 남의 잡을 대신 돌렸다 — 시간이 남았으면 내 차례를 다시 노린다
+      if (!(await canWait())) return { completed, ok: false };
+      continue;
+    }
+    // 락이 잡혀 있다. 사용자 폴링이 대기열 맨 앞의 내 잡을 대신 시작해 끝냈을 수도 있다
+    if (await getFreshDeepResult(r.region, r.gameName, r.tagLine, latest).catch(() => null)) {
+      return { completed: completed + 1, ok: true };
+    }
+    if (!(await canWait())) return { completed, ok: false };
+    await sleep(DEEP_WAIT_POLL_MS);
+  }
+}
+
 export interface SweepResult {
   quickRefreshed: string[];
   deepCompleted: number;
@@ -123,7 +176,7 @@ export async function runRefreshSweep(opts: {
 
   const quickRefreshed: string[] = [];
   let deepCompleted = 0;
-  let deepBlocked = false; // 러너 락이 다른 분석에 잡혀 있으면 이번 스윕에선 정밀 생략
+  let deepBlocked = false; // 정밀 마감까지 러너 락이 안 풀려(다른 분석이 쥠) 라운드를 끝냄
   let deepPending = false; // 시간 게이트에 걸려 정밀을 못 돌린 스테일 소환사가 남음
   let brokeEarly = false; // 예산/상한으로 순회를 중단함 — 다음 스윕에서 이어서
   let skipped = 0;
@@ -201,25 +254,14 @@ export async function runRefreshSweep(opts: {
 
       // 2) 이어서 정밀 분석 — 완료까지 기다린 뒤 다음 소환사로 (러너 락 존중)
       if (!deepBlocked && elapsed() < opts.deepDeadlineMs) {
-        let deepRun: Promise<void> | null = null;
-        await ensureQueuedAndSchedule(
-          r.region,
-          r.gameName,
-          r.tagLine,
-          (p, g, t) => {
-            // 크론 갱신에서도 마일스톤 변화가 있으면 알림 발송
-            // 전체 갱신은 분석에 쓰인 매치(DEEP_DEPTH=30) 빌드를 한 번에 다
-            // 수확해 백필거리를 남기지 않는다 (인터랙티브 검색은 기본 10 유지).
-            deepRun = runDeepAnalysis(p, g, t, 30);
-          },
-          { background: true }, // 사용자 검색이 항상 먼저
+        const deep = await deepWhenFree(r, latest, async () =>
+          elapsed() < opts.deepDeadlineMs &&
+          (!opts.shouldContinue || (await opts.shouldContinue())),
         );
-        if (deepRun) {
-          await deepRun;
-          deepCompleted++;
-        } else {
-          // 러너 락을 사용자 검색이 잡고 있다 — 여기서 라운드를 끝낸다. 계속 돌면 남은 사람들을
-          // '빠른만' 하고 커서를 넘겨 정밀 없는 상태로 남는다. 커서를 올리지 않으므로
+        deepCompleted += deep.completed;
+        if (!deep.ok) {
+          // 정밀 마감까지 러너 락이 안 풀렸다(또는 중지) — 여기서 라운드를 끝낸다. 계속 돌면 남은
+          // 사람들을 '빠른만' 하고 커서를 넘겨 정밀 없는 상태로 남는다. 커서를 올리지 않으므로
           // 다음 라운드가 이 사람부터 이어서 정밀까지 한다.
           deepBlocked = true;
           deepPending = true;
