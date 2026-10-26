@@ -1,6 +1,6 @@
 // 롤 패치노트 — DDragon 버전 목록에서 major.minor를 뽑아 공식 패치노트 링크를 만든다.
 // 라이엇에 패치노트 API가 없어 공식 페이지 URL을 규칙으로 구성한다(ko-kr).
-import { cached } from "@/lib/cache";
+import { cache } from "@/lib/cache";
 
 const FALLBACK = "16.16.1";
 
@@ -71,11 +71,12 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
-/** 공식 패치노트 페이지에서 히어로 이미지·게시일·요약을 뽑는다(메타태그/JSON-LD). */
+/** 공식 패치노트 페이지에서 히어로 이미지·게시일·요약을 뽑는다(메타태그/JSON-LD).
+ *  페이지가 없으면 {}, 네트워크 오류면 null(캐시하지 않고 다음에 다시 본다). */
 async function enrich(
   url: string,
   fallbackUrl?: string,
-): Promise<Partial<PatchNote>> {
+): Promise<Partial<PatchNote> | null> {
   try {
     const get = (u: string) =>
       fetch(u, {
@@ -115,46 +116,95 @@ async function enrich(
     const date = html.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1];
     return { image, summary: summary ? decodeEntities(summary) : undefined, date, url: usedUrl };
   } catch {
-    return {};
+    return null;
   }
+}
+
+// 캐시 — 예전엔 목록 전체를 6시간 캐시하고, 만료되면 그다음 방문자가 DDragon 버전 목록 +
+// 라이엇 패치노트 페이지 16~18개(하나에 0.7~0.9초, 없으면 옛 주소로 한 번 더)를 받을 때까지
+// 기다렸다 — 캐시가 없을 때만 다른 페이지보다 눈에 띄게 느렸던 이유(2026-10-26).
+// ① 패치별 메타는 한 번 받으면 거의 안 바뀌니 따로 7일 둔다(아직 없는 다음 패치 후보는 1시간).
+// ② 목록은 6시간이 지나도 낡은 것을 바로 내주고 뒤에서 다시 만든다. 기다리는 건 처음 한 번뿐.
+const META_TTL_FOUND = 7 * 24 * 60 * 60;
+const META_TTL_MISSING = 60 * 60;
+const LIST_TTL = 7 * 24 * 60 * 60;
+const LIST_REFRESH_MS = 6 * 60 * 60_000;
+const listRefreshing = new Set<string>();
+
+async function enrichCached(
+  patch: string,
+  url: string,
+  legacy: string,
+): Promise<Partial<PatchNote> | null> {
+  const key = `patchnotes:meta:v1:${patch}`;
+  const hit = await cache.get<{ meta: Partial<PatchNote> | null }>(key).catch(() => null);
+  if (hit) return hit.meta;
+  const meta = await enrich(url, legacy);
+  if (meta === null) return null; // 네트워크 오류 — 캐시하지 않는다
+  const found = meta.url ? meta : null;
+  await cache
+    .set(key, { meta: found }, found ? META_TTL_FOUND : META_TTL_MISSING)
+    .catch(() => {});
+  return found;
+}
+
+async function buildPatchNotes(limit: number): Promise<PatchNote[]> {
+  let versions: string[] = [];
+  try {
+    const res = await fetch(
+      "https://ddragon.leagueoflegends.com/api/versions.json",
+      { cache: "no-store", signal: AbortSignal.timeout(5_000) },
+    );
+    if (res.ok) versions = await res.json();
+  } catch {
+    versions = [FALLBACK];
+  }
+  const seen = new Set<string>();
+  const base: { patch: string; url: string; legacy: string }[] = [];
+  // DDragon 이 아직 못 따라온 최신 패치를 먼저 후보로 넣는다(위 nextLabels 주석 참고).
+  // 실재하지 않으면 아래 enrich 가 404 로 떨어뜨리므로 목록엔 안 남는다.
+  for (const label of nextLabels(patchLabel(versions[0] ?? FALLBACK))) {
+    seen.add(label);
+    base.push({ patch: label, ...urlsForLabel(label) });
+  }
+  for (const v of versions) {
+    const label = patchLabel(v);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    base.push({ patch: label, ...urlsForLabel(label) });
+    if (base.length >= limit) break;
+  }
+  // 각 패치 페이지에서 히어로 이미지·게시일을 병렬로 채우고, 404면 구형식 URL로
+  // 폴백한다. 어느 쪽도 없으면 해당 패치는 목록에서 제외한다.
+  const enriched = await Promise.all(
+    base.map(async ({ patch, url, legacy }) => {
+      const meta = await enrichCached(patch, url, legacy);
+      return meta?.url ? { patch, ...meta, url: meta.url } : null;
+    }),
+  );
+  return enriched.filter((n): n is PatchNote => n !== null);
 }
 
 /** 최근 패치 목록(중복 major.minor 제거, 최신순). */
 export async function getRecentPatchNotes(limit = 16): Promise<PatchNote[]> {
-  return cached(`patchnotes:list:v2:${limit}`, 60 * 60 * 6, async () => {
-    let versions: string[] = [];
-    try {
-      const res = await fetch(
-        "https://ddragon.leagueoflegends.com/api/versions.json",
-        { cache: "no-store", signal: AbortSignal.timeout(5_000) },
-      );
-      if (res.ok) versions = await res.json();
-    } catch {
-      versions = [FALLBACK];
+  const key = `patchnotes:list:v3:${limit}`;
+  const hit = await cache.get<{ builtAt: number; notes: PatchNote[] }>(key).catch(() => null);
+  const store = async () => {
+    const notes = await buildPatchNotes(limit);
+    // 빈 목록(전부 오류)은 저장하지 않는다 — 낡은 목록이 빈 화면보다 낫다
+    if (notes.length > 0) {
+      await cache.set(key, { builtAt: Date.now(), notes }, LIST_TTL).catch(() => {});
     }
-    const seen = new Set<string>();
-    const base: { patch: string; url: string; legacy: string }[] = [];
-    // DDragon 이 아직 못 따라온 최신 패치를 먼저 후보로 넣는다(위 nextLabels 주석 참고).
-    // 실재하지 않으면 아래 enrich 가 404 로 떨어뜨리므로 목록엔 안 남는다.
-    for (const label of nextLabels(patchLabel(versions[0] ?? FALLBACK))) {
-      seen.add(label);
-      base.push({ patch: label, ...urlsForLabel(label) });
+    return notes;
+  };
+  if (hit) {
+    if (Date.now() - hit.builtAt > LIST_REFRESH_MS && !listRefreshing.has(key)) {
+      listRefreshing.add(key);
+      void store()
+        .catch(() => {})
+        .finally(() => listRefreshing.delete(key));
     }
-    for (const v of versions) {
-      const label = patchLabel(v);
-      if (seen.has(label)) continue;
-      seen.add(label);
-      base.push({ patch: label, ...urlsForLabel(label) });
-      if (base.length >= limit) break;
-    }
-    // 각 패치 페이지에서 히어로 이미지·게시일을 병렬로 채우고, 404면 구형식 URL로
-    // 폴백한다(6h 캐시 내 1회). 어느 쪽도 없으면 해당 패치는 목록에서 제외한다.
-    const enriched = await Promise.all(
-      base.map(async ({ patch, url, legacy }) => {
-        const meta = await enrich(url, legacy);
-        return meta.url ? { patch, ...meta, url: meta.url } : null;
-      }),
-    );
-    return enriched.filter((n): n is PatchNote => n !== null);
-  });
+    return hit.notes;
+  }
+  return store();
 }

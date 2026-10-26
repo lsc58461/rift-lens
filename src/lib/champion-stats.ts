@@ -105,7 +105,7 @@ const refreshing = new Map<string, Promise<void>>();
  * 예전엔 get 으로 확인하고 set 으로 거는 두 단계라, 두 앱이 같은 순간에 둘 다 통과했다
  * (2026-10-15 배포 직후 패치 16.19 집계가 app-a·app-b 양쪽에 찍힘). Redis 면 SET NX 로 한 번에.
  */
-async function tryLock(key: string, ttlSec: number): Promise<boolean> {
+export async function tryLock(key: string, ttlSec: number): Promise<boolean> {
   const redis = getRedisClient();
   if (redis) {
     const c = await redis;
@@ -119,7 +119,7 @@ async function tryLock(key: string, ttlSec: number): Promise<boolean> {
 // 뒤에서 하는 재집계는 한 번에 하나씩 — 랭크 구간마다 키가 달라서, 막지 않으면 오래된 키
 // 여러 개가 동시에 17GB 참가자 테이블을 훑는다.
 let buildChain: Promise<unknown> = Promise.resolve();
-function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+export function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
   const run = buildChain.then(fn, fn);
   buildChain = run.catch(() => {});
   return run;

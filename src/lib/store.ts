@@ -697,21 +697,69 @@ export interface QuickAnalysisPage {
   analyzed_at: string | null;
 }
 
-export async function listQuickAnalysisPages(limit = 50_000, offset = 0): Promise<QuickAnalysisPage[]> {
+// 사이트맵에 넣을 소환사 — 실제로 누군가 검색한 적 있거나(시드 수집분은 searched_at 이
+// 2000-01-01 로 박혀 있다, crawl-seed.ts SEED_SEARCHED_AT) 마스터 이상인 사람, 없어진 계정 제외.
+// 예전엔 분석이 있는 2.67만 명을 전부 넣었는데, 구글은 비슷한 틀의 페이지가 너무 많으면 일부만 보고
+// 나머지를 미룬다 — 서치 콘솔 '발견됨 - 현재 색인이 생성되지 않음' 1.92만 개, 구글봇 하루 2~5페이지
+// (2026-10-26). 찾아볼 사람이 있는 페이지로 좁혀 9,441명. 빠진 페이지도 주소는 그대로 열린다.
+const SITEMAP_SUMMONER_FROM = `
+  FROM analyses a
+  JOIN recent_searches r ON r.platform = a.platform
+   AND r.game_name_lower = a.game_name_lower AND r.tag_line_lower = a.tag_line_lower
+  WHERE a.kind = 'quick' AND r.gone_at IS NULL
+    AND (r.searched_at > '2000-01-01T00:00:00Z'
+         OR r.current_tier IN ('MASTER', 'GRANDMASTER', 'CHALLENGER'))`;
+
+export async function listSitemapSummoners(limit = 50_000, offset = 0): Promise<QuickAnalysisPage[]> {
   const sql = await getSql();
-  const rows = await sql`
-    SELECT platform, game_name, tag_line, analyzed_at
-    FROM analyses WHERE kind = 'quick'
-    ORDER BY analyzed_at DESC NULLS LAST
-    LIMIT ${limit} OFFSET ${offset}`;
+  const rows = await sql.unsafe(
+    `SELECT a.platform, a.game_name, a.tag_line, a.analyzed_at ${SITEMAP_SUMMONER_FROM}
+     ORDER BY a.analyzed_at DESC NULLS LAST, a.platform, a.game_name_lower, a.tag_line_lower
+     LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  );
   return rows as unknown as QuickAnalysisPage[];
 }
 
 /** 사이트맵 분할용 — 색인 대상 소환사 페이지 수 */
-export async function countQuickAnalysisPages(): Promise<number> {
+export async function countSitemapSummoners(): Promise<number> {
   const sql = await getSql();
-  const r = await sql`SELECT count(*)::int AS n FROM analyses WHERE kind = 'quick'`;
-  return (r[0]?.n as number) ?? 0;
+  const r = await sql.unsafe(`SELECT count(*)::int AS n ${SITEMAP_SUMMONER_FROM}`);
+  return ((r as unknown as { n: number }[])[0]?.n as number) ?? 0;
+}
+
+export interface PopularSummoner {
+  platform: string;
+  game_name: string;
+  tag_line: string;
+  current_tier: string | null;
+  visits: number;
+}
+
+/** 최근 며칠간 사용자가 많이 본 소환사(봇 제외 방문 기록) — 홈 '많이 본 소환사'.
+ *  조회 수가 아니라 '조회된 시간대(1시간 단위) 수'로 센다 — 방문 기록엔 방문자 구분이 없어,
+ *  한 사람이 새로고침을 연타하면 조회 수로는 맨 위에 오른다(시험 요청 20번이 1위가 됨, 2026-10-26).
+ *  두 시간대 이상, 페이지가 있는(빠른 분석 있음) 살아 있는 계정만. */
+export async function popularSummoners(days: number, limit: number): Promise<PopularSummoner[]> {
+  const sql = await getSql();
+  const rows = await sql`
+    SELECT r.platform, r.game_name, r.tag_line, r.current_tier, v.visits
+    FROM (
+      -- 등록부 키와 같은 정규화(canon: NFKC → trim → lower)
+      SELECT platform, lower(btrim(normalize(game_name, NFKC))) AS g,
+             lower(btrim(normalize(tag_line, NFKC))) AS t,
+             count(DISTINCT date_trunc('hour', at))::int AS visits
+      FROM visit_log
+      WHERE source = 'user' AND at > now() - ${`${days} days`}::interval
+      GROUP BY 1, 2, 3 HAVING count(DISTINCT date_trunc('hour', at)) >= 2
+    ) v
+    JOIN recent_searches r ON r.platform = v.platform
+     AND r.game_name_lower = v.g AND r.tag_line_lower = v.t AND r.gone_at IS NULL
+    JOIN analyses a ON a.platform = r.platform AND a.game_name_lower = r.game_name_lower
+     AND a.tag_line_lower = r.tag_line_lower AND a.kind = 'quick'
+    ORDER BY v.visits DESC, r.searched_at DESC
+    LIMIT ${limit}`;
+  return rows as unknown as PopularSummoner[];
 }
 
 // ── 최근 검색 ───────────────────────────────────────────

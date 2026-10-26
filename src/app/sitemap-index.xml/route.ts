@@ -7,14 +7,15 @@ export const dynamic = "force-dynamic";
 
 const BASE = SITE_URL;
 
+// lastmod 는 내지 않는다 — 매 요청 '지금'을 찍으면 늘 바뀌는 값이라 구글이 lastmod 를 불신한다
+// (정적 페이지에 lastmod 를 안 내는 sitemap.ts 와 같은 이유).
 export async function GET() {
   const ids = await generateSitemaps();
-  const now = new Date().toISOString();
   const body =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
     ids
-      .map(({ id }) => `  <sitemap><loc>${BASE}/sitemap/${id}.xml</loc><lastmod>${now}</lastmod></sitemap>`)
+      .map(({ id }) => `  <sitemap><loc>${BASE}/sitemap/${id}.xml</loc></sitemap>`)
       .join("\n") +
     `\n</sitemapindex>\n`;
   return new Response(body, {

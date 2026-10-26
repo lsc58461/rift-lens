@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
 import { summonerPath } from "@/lib/summoner-url";
 import { SITE_URL } from "@/lib/site";
-import { countQuickAnalysisPages, listQuickAnalysisPages } from "@/lib/store";
+import { countSitemapSummoners, listSitemapSummoners } from "@/lib/store";
 import { getChampionStats, listPatches } from "@/lib/champion-stats";
 
 // 사이트맵 구조 — 인덱스(/sitemap.xml, 별도 라우트) 아래에
 //   /sitemap/0.xml : 정적 페이지  (인덱스는 /sitemap-index.xml — /sitemap.xml은 Next 예약 경로)
-//   /sitemap/1.xml … : 소환사 페이지 10,000개씩 (최근 분석순)
+//   /sitemap/1.xml … : 소환사 페이지 10,000개씩 (최근 분석순, 대상 기준은 store.ts SITEMAP_SUMMONER_FROM)
 // 소환사 페이지가 수만 개라 한 파일(5만 URL 상한)에 몰아넣지 않고 쪼갠다.
 // 요청 시 생성(force-dynamic) — 빌드 환경엔 DB가 없어 프리렌더하면 빈 결과가 캐시된다.
 // 크롤러 방문 빈도는 낮고 쿼리도 가벼워(count 1회 / 1만 행) 매 요청 계산으로 충분.
@@ -16,7 +16,7 @@ export const SUMMONERS_PER_SITEMAP = 10_000;
 export const dynamic = "force-dynamic";
 
 export async function generateSitemaps(): Promise<{ id: number }[]> {
-  const total = await countQuickAnalysisPages().catch(() => 0);
+  const total = await countSitemapSummoners().catch(() => 0);
   const chunks = Math.max(0, Math.ceil(total / SUMMONERS_PER_SITEMAP));
   return [{ id: 0 }, ...Array.from({ length: chunks }, (_, i) => ({ id: i + 1 }))];
 }
@@ -72,7 +72,7 @@ export default async function sitemap({
   const n = parseInt(String(await id), 10);
   if (!Number.isFinite(n) || n <= 0) return [...staticPages(), ...(await championPages())];
   try {
-    const pages = await listQuickAnalysisPages(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
+    const pages = await listSitemapSummoners(SUMMONERS_PER_SITEMAP, (n - 1) * SUMMONERS_PER_SITEMAP);
     return pages.map((p) => ({
       url: `${BASE}${summonerPath(p.platform, `${p.game_name}#${p.tag_line}`)}`,
       lastModified: p.analyzed_at ? new Date(p.analyzed_at) : undefined,

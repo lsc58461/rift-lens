@@ -19,7 +19,9 @@ import {
   getRuneMapKo,
   getRuneTreesKo,
 } from "@/lib/ddragon";
-import { safeDecode } from "@/lib/summoner-url";
+import { safeDecode, summonerPath } from "@/lib/summoner-url";
+import { getChampionMains } from "@/lib/champion-mains";
+import { TIER_COLORS } from "@/lib/mmr/rank";
 import { ChampionDetail } from "../champion-detail";
 import { POSITION_LABEL, WinrateText, wr } from "../shared";
 
@@ -92,11 +94,12 @@ export default async function ChampionPage({ params, searchParams }: { params: P
   if (!c) notFound();
 
   const version = await getDDragonVersion();
-  const [names, runeMap, runeTrees, skills] = await Promise.all([
+  const [names, runeMap, runeTrees, skills, mains] = await Promise.all([
     getChampionNamesKo(version),
     getRuneMapKo(version),
     getRuneTreesKo(version),
     getChampionSkills(version, c.champ),
+    getChampionMains(c.champ).catch(() => null),
   ]);
   const nameKo = championNameKo(names, c.champ);
   const pos = mainPosition(c);
@@ -148,6 +151,56 @@ export default async function ChampionPage({ params, searchParams }: { params: P
         runeTrees={runeTrees}
         skills={skills}
       />
+
+      {/* 장인 — 서버에서 그려 소환사 페이지 링크가 검색엔진에도 보이게 한다 */}
+      {mains && mains.length > 0 && (
+        <section>
+          <div className="mb-1.5 flex items-baseline justify-between gap-2">
+            <h2 className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+              {nameKo} 장인
+            </h2>
+            <span className="text-[11px] text-muted-foreground">최근 2개 패치 · 판수순</span>
+          </div>
+          <ol className="divide-y overflow-hidden rounded-xl border bg-card">
+            {mains.map((m, i) => {
+              const cut = m.name.lastIndexOf("#");
+              return (
+                <li key={m.name}>
+                  <Link
+                    href={summonerPath(m.platform, m.name)}
+                    className="flex items-center gap-2.5 px-3.5 py-2 text-sm transition-colors hover:bg-accent/60"
+                  >
+                    <span className="w-4 shrink-0 text-right text-xs font-semibold tabular-nums text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{
+                        background: m.tier ? TIER_COLORS[m.tier] : "var(--color-muted-foreground)",
+                      }}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {m.name.slice(0, cut)}
+                      <span className="font-normal text-muted-foreground">{m.name.slice(cut)}</span>
+                    </span>
+                    {m.label && (
+                      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                        {m.label}
+                      </span>
+                    )}
+                    <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                      {m.games}판
+                    </span>
+                    <span className="w-9 shrink-0 text-right text-xs font-semibold">
+                      <WinrateText wins={m.wins} games={m.games} />
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       <p className="text-xs text-muted-foreground">
         이 사이트에서 분석된 소환사들의 경기에서 집계한 표본이라 전체 서버 통계와 다를 수 있어요.

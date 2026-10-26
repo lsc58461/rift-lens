@@ -2,6 +2,7 @@ import {
   ArrowRight,
   BarChart3,
   Crown,
+  Eye,
   Gauge,
   Radar,
   Sparkles,
@@ -18,11 +19,15 @@ import { SearchForm } from "@/components/search-form";
 import { getApexCutoffs, getApexLadder } from "@/lib/apex-ladder";
 import { getHomeStats } from "@/lib/home-stats";
 import { MyRecentChips } from "@/components/my-recent-chips";
+import { cached } from "@/lib/cache";
 import { TIER_COLORS } from "@/lib/mmr/rank";
+import { popularSummoners } from "@/lib/store";
+import { summonerPath } from "@/lib/summoner-url";
 import { TOOLS } from "@/lib/tools";
 
 // 라이브 지표·랭킹을 보여주므로 요청 시 렌더 (지표는 10분 캐시, 랭킹은 30분 갱신).
 // '최근 본' 칩은 각자 브라우저의 기록이라 서버가 아니라 클라이언트에서 채운다(MyRecentChips).
+// '많이 본 소환사'는 서버에서 그린다 — 소환사 페이지로 가는 링크가 검색엔진에도 보이게(2026-10-26).
 export const dynamic = "force-dynamic";
 
 const FEATURES = [
@@ -85,10 +90,11 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 export default async function Home() {
   // 전부 장식 데이터 — 실패해도 홈은 떠야 한다
-  const [stats, ladder, cutoffs] = await Promise.all([
+  const [stats, ladder, cutoffs, popular] = await Promise.all([
     getHomeStats().catch(() => null),
     getApexLadder("CHALLENGER").catch(() => ({ rows: [], fetchedAt: null })),
     getApexCutoffs().catch(() => null),
+    cached("home:popular:v1", 10 * 60, () => popularSummoners(7, 12)).catch(() => []),
   ]);
   const top = ladder.rows.filter((r) => r.name).slice(0, 3);
 
@@ -218,6 +224,41 @@ export default async function Home() {
           </span>
         </SpotlightCard>
       </section>
+
+      {/* ── 많이 본 소환사 ─────────────────────────────────── */}
+      {popular.length > 0 && (
+        <section className="mx-auto mt-14 max-w-6xl space-y-4">
+          <div className="flex items-end justify-between">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
+              <Eye className="size-4 text-primary" />
+              많이 본 소환사
+            </h2>
+            <span className="text-xs text-muted-foreground">최근 7일</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {popular.map((p) => (
+              <Link
+                key={`${p.platform}:${p.game_name}#${p.tag_line}`}
+                href={summonerPath(p.platform, `${p.game_name}#${p.tag_line}`)}
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-card/50 px-3 py-1.5 text-sm backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
+              >
+                <span
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{
+                    background: p.current_tier
+                      ? TIER_COLORS[p.current_tier]
+                      : "var(--color-muted-foreground)",
+                  }}
+                />
+                <span className="truncate">
+                  {p.game_name}
+                  <span className="text-muted-foreground">#{p.tag_line}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── 도구 ───────────────────────────────────────────── */}
       <section className="mx-auto mt-14 mb-10 max-w-6xl space-y-4">
