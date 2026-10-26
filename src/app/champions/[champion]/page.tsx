@@ -4,7 +4,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbLd, pageMeta } from "@/lib/seo";
 import { getChampionStats, listPatches, type ChampionStat } from "@/lib/champion-stats";
@@ -156,10 +156,10 @@ export default async function ChampionPage({ params, searchParams }: { params: P
       {mains && mains.length > 0 && (
         <section>
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
-            <h2 className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            <h2 className="shrink-0 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
               {nameKo} 장인
             </h2>
-            <span className="text-[11px] text-muted-foreground">최근 2개 패치 · 판수순</span>
+            <span className="text-[11px] text-muted-foreground">최근 2개 패치</span>
           </div>
           <ol className="divide-y overflow-hidden rounded-xl border bg-card">
             {mains.map((m, i) => {
@@ -168,32 +168,44 @@ export default async function ChampionPage({ params, searchParams }: { params: P
                 <li key={m.name}>
                   <Link
                     href={summonerPath(m.platform, m.name)}
-                    className="flex items-center gap-2.5 px-3.5 py-2 text-sm transition-colors hover:bg-accent/60"
+                    className="group flex items-center gap-2.5 px-3.5 py-2.5 text-sm transition-colors hover:bg-accent/60"
                   >
                     <span className="w-4 shrink-0 text-right text-xs font-semibold tabular-nums text-muted-foreground">
                       {i + 1}
                     </span>
                     <span
+                      aria-hidden
                       className="size-1.5 shrink-0 rounded-full"
                       style={{
                         background: m.tier ? TIER_COLORS[m.tier] : "var(--color-muted-foreground)",
                       }}
                     />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {m.name.slice(0, cut)}
-                      <span className="font-normal text-muted-foreground">{m.name.slice(cut)}</span>
+                    {/* 이름이 길면 닉네임만 잘리고 #태그는 남긴다 — 동명이인 구분 */}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 font-medium group-hover:underline">
+                        <span className="truncate">{m.name.slice(0, cut)}</span>
+                        <span className="shrink-0 font-normal text-muted-foreground">
+                          {m.name.slice(cut)}
+                        </span>
+                      </span>
+                      {m.label && (
+                        <span className="block truncate text-[11px] text-muted-foreground sm:hidden">
+                          {m.label}
+                        </span>
+                      )}
                     </span>
                     {m.label && (
                       <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                         {m.label}
                       </span>
                     )}
-                    <span className="w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    <span className="min-w-11 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                       {m.games}판
                     </span>
                     <span className="w-9 shrink-0 text-right text-xs font-semibold">
                       <WinrateText wins={m.wins} games={m.games} />
                     </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
                   </Link>
                 </li>
               );

@@ -2,7 +2,7 @@ import {
   ArrowRight,
   BarChart3,
   Crown,
-  Eye,
+  Flame,
   Gauge,
   Radar,
   Sparkles,
@@ -230,33 +230,36 @@ export default async function Home() {
         <section className="mx-auto mt-14 max-w-6xl space-y-4">
           <div className="flex items-end justify-between">
             <h2 className="flex items-center gap-2 text-base font-semibold">
-              <Eye className="size-4 text-primary" />
+              <Flame className="size-4 text-primary" />
               많이 본 소환사
             </h2>
             <span className="text-xs text-muted-foreground">최근 7일</span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <ul className="flex flex-wrap gap-2">
             {popular.map((p) => (
-              <Link
-                key={`${p.platform}:${p.game_name}#${p.tag_line}`}
-                href={summonerPath(p.platform, `${p.game_name}#${p.tag_line}`)}
-                className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-card/50 px-3 py-1.5 text-sm backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
-              >
-                <span
-                  className="size-1.5 shrink-0 rounded-full"
-                  style={{
-                    background: p.current_tier
-                      ? TIER_COLORS[p.current_tier]
-                      : "var(--color-muted-foreground)",
-                  }}
-                />
-                <span className="truncate">
-                  {p.game_name}
-                  <span className="text-muted-foreground">#{p.tag_line}</span>
-                </span>
-              </Link>
+              <li key={`${p.platform}:${p.game_name}#${p.tag_line}`} className="min-w-0 max-w-full">
+                <Link
+                  href={summonerPath(p.platform, `${p.game_name}#${p.tag_line}`)}
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:border-primary/40 hover:text-primary"
+                >
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{
+                      background: p.current_tier
+                        ? TIER_COLORS[p.current_tier]
+                        : "var(--color-muted-foreground)",
+                    }}
+                  />
+                  {/* 이름이 길면 닉네임만 잘리고 #태그는 남긴다 */}
+                  <span className="flex min-w-0">
+                    <span className="truncate">{p.game_name}</span>
+                    <span className="shrink-0 text-muted-foreground">#{p.tag_line}</span>
+                  </span>
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       )}
 

@@ -18,7 +18,7 @@ export function MyRecentChips() {
         <Link
           key={`${r.name}#${r.tag}`}
           href={summonerPath("kr", `${r.name}#${r.tag}`)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-card/50 px-2.5 py-1 text-xs backdrop-blur-sm transition-colors hover:border-primary/40 hover:text-primary dark:border-white/8"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs transition-colors hover:border-primary/40 hover:text-primary"
         >
           <span
             className="size-1.5 rounded-full"
