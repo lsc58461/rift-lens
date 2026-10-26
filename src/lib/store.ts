@@ -1273,32 +1273,32 @@ export interface AdminSummonerRow {
   analysis: AdminAnalysisState;
 }
 
+// ad = 정밀 분석 행, aq = 빠른 분석 행 (AGG_SQL 이 붙인다)
 const STATE_SQL = `
   CASE
-    WHEN a.deep_at IS NOT NULL THEN
-      CASE WHEN a.deep_ver = $1 AND a.deep_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
-                AND NOT (a.quick_at IS NOT NULL AND a.quick_at > a.deep_at
-                         AND a.quick_mid IS DISTINCT FROM a.deep_mid)
+    WHEN ad.analyzed_at IS NOT NULL THEN
+      CASE WHEN ad.algo_version = $1 AND ad.analyzed_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
+                AND NOT (aq.analyzed_at IS NOT NULL AND aq.analyzed_at > ad.analyzed_at
+                         AND aq.latest_match_id IS DISTINCT FROM ad.latest_match_id)
            THEN 'deep' ELSE 'deep-stale' END
-    WHEN a.quick_at IS NOT NULL THEN
-      CASE WHEN a.quick_ver = $1 AND a.quick_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
+    WHEN aq.analyzed_at IS NOT NULL THEN
+      CASE WHEN aq.algo_version = $1 AND aq.analyzed_at > now() - interval '${FRESH_MAX_AGE_HOURS} hours'
            THEN 'quick' ELSE 'quick-stale' END
     ELSE 'none'
   END`;
 
+// analyses 는 (소환사, kind) 가 기본 키라 종류마다 많아야 한 행 — 기본 키로 바로 붙인다.
+// 예전엔 analyses 전체를 GROUP BY 해 max() 로 접었는데, 행이 5만을 넘자 정렬이 work_mem(4MB)을
+// 넘쳐 디스크 정렬로 바뀌었고(한글 이름 비교라 더 느림) 쿼리 하나가 4초 걸렸다 — 대시보드가
+// 2초마다 부르는 목록·상태 개수가 늘 늦게 뜬 원인(2026-10-26 실측: 목록 4,203ms → 6.8ms,
+// 상태별 개수 3,807ms → 100ms, 결과 동일).
 const AGG_SQL = `
-  LEFT JOIN (
-    SELECT platform, game_name_lower, tag_line_lower,
-      max(CASE WHEN kind='deep'  THEN algo_version END)     AS deep_ver,
-      max(CASE WHEN kind='deep'  THEN analyzed_at END)      AS deep_at,
-      max(CASE WHEN kind='deep'  THEN latest_match_id END)  AS deep_mid,
-      max(CASE WHEN kind='quick' THEN algo_version END)     AS quick_ver,
-      max(CASE WHEN kind='quick' THEN analyzed_at END)      AS quick_at,
-      max(CASE WHEN kind='quick' THEN latest_match_id END)  AS quick_mid
-    FROM analyses GROUP BY 1,2,3
-  ) a ON a.platform = r.platform
-     AND a.game_name_lower = r.game_name_lower
-     AND a.tag_line_lower = r.tag_line_lower`;
+  LEFT JOIN analyses ad ON ad.platform = r.platform
+     AND ad.game_name_lower = r.game_name_lower
+     AND ad.tag_line_lower = r.tag_line_lower AND ad.kind = 'deep'
+  LEFT JOIN analyses aq ON aq.platform = r.platform
+     AND aq.game_name_lower = r.game_name_lower
+     AND aq.tag_line_lower = r.tag_line_lower AND aq.kind = 'quick'`;
 
 // 티어 필터 조건 — 'all' 전체, 'none' 티어 없음(언랭·미수집), 그 외 current_tier 일치
 const TIER_WHERE = (param: string) =>
@@ -1411,7 +1411,7 @@ export async function adminSummonerPage(
     sql.unsafe(
       `SELECT r.platform, r.game_name, r.tag_line, r.current_label,
               r.estimated_label, r.searched_at,
-              GREATEST(a.deep_at, a.quick_at) AS refreshed_at, ${STATE_SQL} AS state
+              GREATEST(ad.analyzed_at, aq.analyzed_at) AS refreshed_at, ${STATE_SQL} AS state
        FROM recent_searches r ${AGG_SQL} ${where}
        ORDER BY r.searched_at DESC, r.platform, r.game_name_lower, r.tag_line_lower
        LIMIT $5 OFFSET $6`,

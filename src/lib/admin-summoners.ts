@@ -43,7 +43,7 @@ export async function getSummonerPage(opts: {
   const tier = opts.tier ?? "all";
 
   // 대시보드가 몇 초마다 부르는데, 목록·상태 집계는 25,000명 전체의 상태(STATE_SQL)를 계산해
-  // 호출당 ~450ms 가 든다 — 같은 인자의 결과를 5초 재사용 (하루 2만 번 → 수천 번)
+  // 호출당 ~100ms 가 든다(10-26 쿼리 개선 전엔 4초) — 같은 인자의 결과를 5초 재사용
   const key = JSON.stringify([page, size, q, filter, tier]);
   const hit = pageCache.get(key);
   if (hit && Date.now() - hit.at < PAGE_TTL_MS) return hit.value;
