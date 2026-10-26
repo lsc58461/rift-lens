@@ -28,6 +28,14 @@ const ROUND_STALE_MS = 300_000; // 이 시간 넘게 갱신이 없으면 죽은 
 const ROUND_LIMIT = 40; // 라운드당 갱신할 소환사 수 (220초 예산 안에서)
 const ROUND_GAP_MS = 0; // 라운드 사이 최소 간격
 
+// 이 프로세스가 돌리는 라운드 수 — 종료 때 내 라운드만 놓는다. 숫자인 건 라운드 끝의 이어달리기가
+// 같은 프로세스에서 다음 라운드를 먼저 시작한 뒤 이전 라운드가 빠지는 짧은 겹침 때문. 예전엔 먼저 내려가는
+// 인스턴스가 다른 인스턴스의 살아 있는 라운드를 '놓았다'고 표시해, 새 인스턴스가 같은 커서에서
+// 라운드를 하나 더 열었다(2026-10-26 배포 때 관측). Turbopack 청크 복제 대비 globalThis.
+const localRound = ((globalThis as unknown as {
+  __riftRefreshAllLocal?: { active: number };
+}).__riftRefreshAllLocal ??= { active: 0 });
+
 export interface RefreshAllState {
   running: boolean;
   /** 한 라운드가 실제로 도는 중인지 — 라운드 사이 대기와 구분해 중복 실행을 막는다 */
@@ -133,6 +141,7 @@ export async function stopRefreshAll(): Promise<void> {
 /** 프로세스 종료(배포로 컨테이너 교체) 직전 — 돌던 라운드를 "놓았다"고 표시해
  *  새 인스턴스가 5분 스테일 타이머를 기다리지 않고 바로 이어받게 한다. */
 export async function releaseRefreshAllRound(): Promise<boolean> {
+  if (localRound.active === 0) return false;
   const s = await getRefreshAllState();
   if (!s?.running || !s.roundActive) return false;
   await save({ ...s, roundActive: false });
@@ -159,6 +168,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
   });
   if (!claimed) return;
   state = claimed;
+  localRound.active++;
 
   try {
     // 취소 확인은 5초에 한 번만 DB를 읽는다
@@ -291,5 +301,7 @@ export async function runRefreshAllRound(origin: string): Promise<void> {
       roundActive: false,
       lastError: e instanceof Error ? e.message : String(e),
     });
+  } finally {
+    localRound.active--;
   }
 }

@@ -233,6 +233,12 @@ interface RunnerLock {
   at: number;
 }
 
+// 이 프로세스에서 돌고 있는 정밀 잡 — 종료(배포) 때 내 잡만 놓고, 종료가 시작되면 진행 기록을 멈춘다.
+// Turbopack 이 모듈을 청크마다 복제하므로 limiter 처럼 globalThis 에 하나만 둔다.
+const localDeep = ((globalThis as unknown as {
+  __riftDeepLocal?: { running: Set<string>; shuttingDown: boolean };
+}).__riftDeepLocal ??= { running: new Set<string>(), shuttingDown: false });
+
 interface QueueEntry {
   key: string;
   at: number;
@@ -407,19 +413,28 @@ async function releaseDeepRunner(key: string): Promise<void> {
 /** 프로세스 종료(배포) 직전 — 이 프로세스가 돌리던 정밀 잡은 여기서 죽는다.
  *  러너 락을 즉시 놓고 잡 상태를 지워, 페이지 폴링이 5분 스테일을 기다리지 않고
  *  바로 다시 대기열에 넣어 새 인스턴스에서 처음부터(캐시된 매치라 빠름) 돌게 한다.
- *  반환: 놓은 잡 키(없으면 null). */
+ *  반환: 놓은 잡 키(없으면 null).
+ *
+ *  내 프로세스의 잡만 다룬다. 예전엔 지금 락을 쥔 잡을 무조건 놓아서, 먼저 내려가는 인스턴스가
+ *  다른 인스턴스의 살아 있는 잡 락까지 풀었다(그 사이 정밀 2건이 동시에 돎). 또 놓은 직후 죽어 가는
+ *  잡의 진행 기록이 락을 다시 잡아, 배포 뒤 5분 동안 정밀 분석이 전부 대기에 걸렸다(2026-10-26 실측:
+ *  잡 상태를 지운 뒤에 같은 시각으로 잡 상태·락이 다시 쓰여 있었음) — shuttingDown 으로 막는다. */
 export async function releaseDeepRunnerOnShutdown(): Promise<string | null> {
+  localDeep.shuttingDown = true;
+  const mine = [...localDeep.running];
+  if (mine.length === 0) return null;
   const holder = await cache.get<RunnerLock>(RUNNER_LOCK_KEY).catch(() => null);
-  if (!holder || holder.at === 0) return null;
-  await cache.set<RunnerLock>(RUNNER_LOCK_KEY, { key: holder.key, at: 0 }, 1).catch(() => {});
-  await cache.delete(holder.key).catch(() => {});
+  if (holder && holder.at !== 0 && mine.includes(holder.key)) {
+    await cache.set<RunnerLock>(RUNNER_LOCK_KEY, { key: holder.key, at: 0 }, 1).catch(() => {});
+  }
   // 대기열 맨 앞에 다시 세워 다음 폴링(누구의 것이든)이 바로 이어 돌리게 한다
   const queue = await getQueue().catch(() => [] as QueueEntry[]);
-  if (!queue.some((e) => e.key === holder.key)) {
-    queue.unshift({ key: holder.key, at: Date.now() });
-    await cache.set(QUEUE_KEY, queue, 60 * 15).catch(() => {});
+  for (const key of mine) {
+    await cache.delete(key).catch(() => {});
+    if (!queue.some((e) => e.key === key)) queue.unshift({ key, at: Date.now() });
   }
-  return holder.key;
+  await cache.set(QUEUE_KEY, queue, 60 * 15).catch(() => {});
+  return mine.join(", ");
 }
 
 export function isJobStale(job: DeepJob): boolean {
@@ -451,13 +466,15 @@ export async function runDeepAnalysis(
   const jk = jobKey(platform, gameName, tagLine);
   let lastWritten = 0;
   let harvestAfterDeep: string[] | null = null;
+  localDeep.running.add(jk);
   try {
     // 백그라운드 작업은 저우선순위 — 페이지 로딩(전경) 호출이 항상 먼저 처리된다
     const result = await withLowPriority(() =>
       estimateMmr(platform, gameName, tagLine, DEEP_DEPTH, (done, total) => {
         const p = total ? done / total : 0;
-        // 진행률은 5% 단위로만 기록해 DB 쓰기를 아낀다 (러너 락도 함께 갱신)
-        if (p - lastWritten >= 0.05) {
+        // 진행률은 5% 단위로만 기록해 DB 쓰기를 아낀다 (러너 락도 함께 갱신).
+        // 종료 중이면 기록하지 않는다 — 종료 처리가 놓은 락을 되살리지 않게
+        if (p - lastWritten >= 0.05 && !localDeep.shuttingDown) {
           lastWritten = p;
           void cache.set<DeepJob>(
             jk,
@@ -500,7 +517,10 @@ export async function runDeepAnalysis(
       )
       .catch(() => {});
   } finally {
-    await releaseDeepRunner(jk).catch(() => {});
+    localDeep.running.delete(jk);
+    // 종료 중이면 종료 처리가 이미 락을 놓았다 — 그새 새 인스턴스가 같은 잡을 다시 잡았을 수
+    // 있으니(키가 같다) 여기서 또 놓지 않는다
+    if (!localDeep.shuttingDown) await releaseDeepRunner(jk).catch(() => {});
   }
   // 러너 락을 놓은 뒤에 수확 — 다음 대기자 분석을 막지 않는다
   if (harvestAfterDeep) {
