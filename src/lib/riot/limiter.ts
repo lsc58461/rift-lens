@@ -76,7 +76,7 @@ export interface LimiterSnapshot {
 // 인스턴스 간 우선순위: 대기 큐는 프로세스 로컬이라 다른 인스턴스의 유저 요청이
 // 이쪽 백그라운드 작업에 밀릴 수 있다. 그래서 high 예약은 "최근 유저 트래픽 있음"
 // 마커(hot)를 남기고, 마커가 살아 있는 동안 low 예약은 용량의 일부(RESERVE)를
-// 유저 몫으로 비워 둔다. 유저가 없으면 마커가 사라져 백그라운드가 전량을 쓴다.
+// 유저 몫으로 비워 둔다. 유저가 없으면 마커가 사라져 low 는 전량을 쓴다(bg 는 아래 IDLE 몫을 남김).
 const HOT_KEY = "riot:rl:hot";
 const HOT_TTL_MS = 30_000;
 const LOW_RESERVE_RATIO = 0.4; // hot일 때 low가 못 쓰는 비율
@@ -84,8 +84,13 @@ const LOW_RESERVE_RATIO = 0.4; // hot일 때 low가 못 쓰는 비율
 // 20건이라, 갱신 중엔 빠른 분석이 4초 → 8~10초로 늘었다(2026-10-26 실측). 사용자 정밀 분석은
 // low 라 이 값의 영향을 받지 않는다.
 const BG_RESERVE_RATIO = 0.7;
+// 유저가 없을 때(hot 아님)도 bg 가 못 쓰는 비율. hot 예약은 유저가 '이미 있을 때'만 걸려서, 유저가 없는
+// 동안 전체 갱신이 10초 창 50건을 꽉 채워 두면(실측: 30초 중 대부분 50/50) 막 들어온 유저의 첫 호출들이
+// 창이 빌 때까지 기다렸다 — 갱신 중 오래된 소환사 페이지가 0.3초 → 1~8초(2026-10-26 실측).
+// 15건을 늘 비워 두면 페이지 첫 호출들은 바로 나가고, 그 뒤로는 hot 예약이 이어받는다.
+const BG_IDLE_RESERVE_RATIO = 0.3;
 
-// KEYS = [hot, 버킷 키들...], ARGV = [now, member, isHigh(0/1), reserveRatio, hotTtl, cap1, win1, cap2, win2, ...]
+// KEYS = [hot, 버킷 키들...], ARGV = [now, member, isHigh(0/1), reserveRatio, hotTtl, idleReserveRatio, cap1, win1, cap2, win2, ...]
 // 반환 = [waitMs, used1, used2, ...] (waitMs가 0이면 예약 완료)
 const ACQUIRE_LUA = `
 local now = tonumber(ARGV[1])
@@ -93,6 +98,7 @@ local member = ARGV[2]
 local isHigh = ARGV[3] == '1'
 local reserve = tonumber(ARGV[4])
 local hotTtl = tonumber(ARGV[5])
+local idleReserve = tonumber(ARGV[6])
 local hotKey = KEYS[1]
 if isHigh then
   redis.call('SET', hotKey, '1', 'PX', hotTtl)
@@ -102,9 +108,13 @@ local wait = 0
 local used = {}
 for i = 2, #KEYS do
   local key = KEYS[i]
-  local cap = tonumber(ARGV[2*i+2])
-  local win = tonumber(ARGV[2*i+3])
-  if hot then cap = math.floor(cap * (1 - reserve)) end
+  local cap = tonumber(ARGV[2*i+3])
+  local win = tonumber(ARGV[2*i+4])
+  if hot then
+    cap = math.floor(cap * (1 - reserve))
+  elseif not isHigh then
+    cap = math.floor(cap * (1 - idleReserve))
+  end
   redis.call('ZREMRANGEBYSCORE', key, 0, now - win)
   local n = redis.call('ZCARD', key)
   used[i-1] = n
@@ -122,7 +132,7 @@ end
 local out = {0}
 for i = 2, #KEYS do
   local key = KEYS[i]
-  local win = tonumber(ARGV[2*i+3])
+  local win = tonumber(ARGV[2*i+4])
   redis.call('ZADD', key, now, member)
   redis.call('PEXPIRE', key, win + 1000)
   out[#out+1] = used[i-1] + 1
@@ -209,6 +219,7 @@ class RateLimiter {
         priority === "high" ? "1" : "0",
         String(priority === "bg" ? BG_RESERVE_RATIO : LOW_RESERVE_RATIO),
         String(HOT_TTL_MS),
+        String(priority === "bg" ? BG_IDLE_RESERVE_RATIO : 0),
       ];
       for (const b of this.buckets) args.push(String(b.capacity), String(b.windowMs));
       const res = (await c.eval(ACQUIRE_LUA, {
